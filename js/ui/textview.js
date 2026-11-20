@@ -43,7 +43,7 @@ export function initTextView(opts) {
     out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'),
     errActions: $('out-error-actions'), mockChip: $('mock-chip'),
     speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), starBtn: $('btn-star'),
-    inputCard: $('input-card'),
+    inputCard: $('input-card'), live: $('out-live'),
   };
 
   createLangBar(el.view.querySelector('[data-langbar]'), { onSwap: swapTexts });
@@ -258,6 +258,12 @@ function showResult(r) {
   // "Offline demo translation", or which service answered when the first choice couldn't
   el.mockChip.textContent = r.mock ? 'Offline demo translation' : r.via ? `Translated with ${r.via}` : '';
   el.mockChip.hidden = !r.mock && !r.via;
+  // one short polite announcement instead of a live region around the whole card
+  if (el.live) {
+    const t = document.createElement('span');
+    t.lang = r.target; t.textContent = r.text;
+    el.live.replaceChildren(`${langName(r.target)}: `, t, el.mockChip.hidden ? '' : `. ${el.mockChip.textContent}`);
+  }
   setOutputActions(true);
   renderStar();
   renderLabels();
@@ -312,6 +318,7 @@ function clearOutput() {
   el.err.hidden = true;
   el.mockChip.hidden = true;
   el.placeholder.hidden = false;
+  if (el.live) el.live.textContent = '';
   setOutputActions(false);
   renderStar();
 }

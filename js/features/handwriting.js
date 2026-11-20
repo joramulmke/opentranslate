@@ -178,7 +178,7 @@ export function initHandwriting({ sendToText }) {
       }
       status(`Tap a suggestion to use it · ${engineLabel[res.engine]}`);
       el.candidates.innerHTML = cands.slice(0, 4).map((c, i) =>
-        `<button type="button" class="chip" role="option" aria-selected="${i === 0}" data-text="${escapeHtml(c)}" lang="${lang}">${escapeHtml(c)}</button>`).join('');
+        `<button type="button" class="chip" data-text="${escapeHtml(c)}" lang="${lang}">${escapeHtml(c)}</button>`).join('');
     } catch (e) {
       if (id !== job) return;
       status('');

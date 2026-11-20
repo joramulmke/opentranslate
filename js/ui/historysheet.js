@@ -67,6 +67,7 @@ function render() {
     b.setAttribute('aria-selected', String(on));
     b.tabIndex = on ? 0 : -1;
   });
+  dlg.querySelector('#history-panel').setAttribute('aria-labelledby', `seg-${mode}`);
   title.textContent = mode === 'history' ? 'History' : 'Saved';
   const items = mode === 'history' ? history.all() : phrasebook.all();
   clearBtn.hidden = !items.length;

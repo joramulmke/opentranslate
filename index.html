@@ -70,8 +70,10 @@
     </nav>
 
     <main id="main" class="main" tabindex="-1">
+      <h1 class="visually-hidden">OpenTranslate</h1>
       <!-- ============ TEXT ============ -->
       <section class="view view-text" id="view-text" role="tabpanel" aria-labelledby="tab-text">
+        <h2 class="visually-hidden">Translate text</h2>
         <!-- On phones this is the light sheet with the drag handle; 720px+ shows two side-by-side panes. -->
         <div class="langbar-slot" data-langbar></div>
 
@@ -100,7 +102,7 @@
 
           <div class="out-divider" aria-hidden="true"></div>
 
-          <div class="card output-card" id="output-card" data-state="empty" aria-live="polite" aria-busy="false">
+          <div class="card output-card" id="output-card" data-state="empty" aria-busy="false">
             <div class="pane-label" id="tgt-label">Spanish</div>
             <div class="output-body">
               <p class="placeholder" id="out-placeholder">Translation</p>
@@ -123,6 +125,7 @@
           </div>
           <div class="drag-handle sheet-handle" aria-hidden="true"></div>
         </div>
+        <p class="visually-hidden" id="out-live" role="status"></p>
 
         <!-- 1200px+ only: round History · Saved buttons under the panes -->
         <div class="web-actions" role="group" aria-label="History and saved translations">
@@ -144,6 +147,7 @@
 
       <!-- ============ CAMERA ============ -->
       <section class="view view-camera" id="view-camera" role="tabpanel" aria-labelledby="tab-camera" hidden>
+        <h2 class="visually-hidden">Translate with the camera</h2>
         <div class="camera-stage" id="camera-stage">
           <video id="cam-video" class="cam-video" playsinline muted autoplay aria-label="Camera preview"></video>
           <div class="shot-wrap" id="shot-wrap" hidden>
@@ -154,7 +158,7 @@
           </div>
           <div class="cam-empty" id="cam-empty" role="region" aria-labelledby="cam-empty-title" hidden>
             <span class="cam-empty-icon" id="cam-empty-icon" aria-hidden="true"><i data-icon="videocamOff"></i></span>
-            <h2 id="cam-empty-title">Camera unavailable</h2>
+            <h3 id="cam-empty-title">Camera unavailable</h3>
             <p id="cam-empty-msg"></p>
             <ol class="perm-steps" id="cam-empty-steps" hidden></ol>
             <div class="row-gap">
@@ -181,6 +185,7 @@
 
       <!-- ============ CONVERSATION ============ -->
       <section class="view view-convo" id="view-conversation" role="tabpanel" aria-labelledby="tab-conversation" hidden>
+        <h2 class="visually-hidden">Conversation</h2>
         <!-- Conversation screen (opened after the setup sheet): language pair on top, transcript canvas,
              mode pill + big mic + keyboard at the bottom. Same flow at every width. -->
         <header class="convo-top">
@@ -222,6 +227,7 @@
 
       <!-- ============ HANDWRITING ============ -->
       <section class="view view-hand" id="view-handwriting" role="tabpanel" aria-labelledby="tab-handwriting" hidden>
+        <h2 class="visually-hidden">Translate handwriting</h2>
         <div class="card hand-card">
           <div class="hand-field-row">
             <label class="visually-hidden" for="hand-text">Text to translate (recognized handwriting)</label>
@@ -229,7 +235,7 @@
             <button class="icon-btn" id="hand-text-clear" type="button" aria-label="Clear recognized text" hidden><i data-icon="close"></i></button>
           </div>
           <button class="chip-btn paste-btn" id="hand-paste" type="button"><i data-icon="paste"></i><span>Paste</span></button>
-          <div class="candidates" id="hand-candidates" role="listbox" aria-label="Recognition suggestions"></div>
+          <div class="candidates" id="hand-candidates" role="group" aria-label="Recognition suggestions"></div>
           <div class="hand-result" id="hand-result" hidden>
             <p class="out-text" id="hand-out"></p>
             <div class="pane-footer">
@@ -286,7 +292,7 @@
       <button class="icon-btn" type="button" id="lang-search-btn" aria-label="Search languages" aria-pressed="false"><i data-icon="search"></i></button>
     </div>
     <h2 class="picker-title" id="lang-title">Translate from</h2>
-    <div class="lang-list" id="lang-list" role="listbox" aria-labelledby="lang-title"></div>
+    <div class="lang-list" id="lang-list" role="group" aria-labelledby="lang-title"></div>
   </dialog>
 
   <!-- History / Saved -->
@@ -299,11 +305,13 @@
       <button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="close"></i></button>
     </div>
     <div class="segmented" role="tablist" aria-label="History or saved">
-      <button role="tab" id="seg-history" aria-selected="true" data-seg="history">History</button>
-      <button role="tab" id="seg-saved" aria-selected="false" data-seg="saved" tabindex="-1">Saved</button>
+      <button role="tab" id="seg-history" aria-selected="true" aria-controls="history-panel" data-seg="history">History</button>
+      <button role="tab" id="seg-saved" aria-selected="false" aria-controls="history-panel" data-seg="saved" tabindex="-1">Saved</button>
     </div>
-    <ul class="entry-list" id="entry-list" aria-labelledby="history-title"></ul>
-    <div class="empty-state" id="entry-empty" hidden></div>
+    <div class="history-panel" id="history-panel" role="tabpanel" aria-labelledby="seg-history">
+      <ul class="entry-list" id="entry-list" aria-labelledby="history-title"></ul>
+      <div class="empty-state" id="entry-empty" hidden></div>
+    </div>
   </dialog>
 
   <!-- Settings -->
@@ -375,12 +383,12 @@
   </dialog>
 
   <!-- Classic / Advanced translation mode -->
-  <dialog class="menu mode-menu" id="mode-menu" aria-label="Translation mode">
+  <dialog class="menu mode-menu" id="mode-menu">
     <div role="menu" aria-label="Translation mode" id="mode-items"></div>
   </dialog>
 
   <!-- Overflow menu (phones) / main menu (1200px+) -->
-  <dialog class="menu" id="more-menu" aria-label="More options">
+  <dialog class="menu" id="more-menu">
     <div role="menu" aria-label="More options">
       <button type="button" role="menuitem" data-menu="history"><i data-icon="history"></i><span>History</span></button>
       <button type="button" role="menuitem" data-menu="saved"><i data-icon="star"></i><span>Saved translations</span></button>
@@ -438,14 +446,14 @@
     </div>
   </dialog>
 
-  <div class="snackbar" id="snackbar" role="status" aria-live="polite"><span id="snackbar-text"></span><button class="text-btn" id="snackbar-action" type="button" hidden></button></div>
+  <div class="snackbar" id="snackbar"><span id="snackbar-text" role="status"></span><button class="text-btn" id="snackbar-action" type="button" hidden></button><button class="icon-btn snackbar-close" id="snackbar-close" type="button" aria-label="Dismiss message" hidden><i data-icon="close"></i></button></div>
 
   <noscript><p class="boot-msg">OpenTranslate needs JavaScript.</p></noscript>
   <!-- Below the app: visible only after scrolling past it. Links come from change-me.md -->
   <footer class="site-footer" id="site-footer" hidden>
-    <a id="imprint-link" href="#" rel="noopener">Impressum</a>
+    <a id="imprint-link" href="#" rel="noopener" lang="de">Impressum</a>
     <span aria-hidden="true">·</span>
-    <a id="privacy-link" href="#" rel="noopener">Datenschutzerklärung</a>
+    <a id="privacy-link" href="#" rel="noopener" lang="de">Datenschutzerklärung</a>
   </footer>
 
   <div class="boot-msg" id="boot-msg" hidden>

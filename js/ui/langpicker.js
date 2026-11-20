@@ -93,7 +93,7 @@ let offlineSet = null;     // app codes that can be downloaded here, or null whe
 
 let avail = null;
 function item(code, selected, sub = '') {
-  if (offlineSet?.has(code)) return `<div class="lang-row" role="none">${itemButton(code, selected, sub)}${dlButton(code)}</div>`;
+  if (offlineSet?.has(code)) return `<div class="lang-row">${itemButton(code, selected, sub)}${dlButton(code, true)}</div>`;
   return itemButton(code, selected, sub);
 }
 function itemButton(code, selected, sub = '') {
@@ -101,7 +101,7 @@ function itemButton(code, selected, sub = '') {
   const off = code !== 'auto' && avail && !avail.has(code);
   if (off) sub = 'Not available';
   const trail = isSel ? icon('check', 'trail') : code === 'auto' ? icon('sparkle', 'trail') : '';
-  return `<button type="button" class="lang-item${off ? ' unavailable' : ''}" role="option" aria-selected="${isSel}"${off ? ' aria-disabled="true"' : ''} data-code="${code}" lang="${code === 'auto' ? 'en' : code}">
+  return `<button type="button" class="lang-item${off ? ' unavailable' : ''}" ${isSel ? 'aria-current="true"' : ''}${off ? ' aria-disabled="true"' : ''} data-code="${code}" lang="${code === 'auto' ? 'en' : code}">
     <span class="name">${escapeHtml(langName(code))}</span>${sub ? `<span class="sub">${escapeHtml(sub)}</span>` : ''}${trail}
   </button>`;
 }
@@ -135,8 +135,8 @@ function render() {
     }
     const known = new Set(langs.map((l) => l.code));
     const recents = recentLangs.get(side).filter((c) => known.has(c));
-    if (recents.length) html += `<div class="lang-section" role="presentation">Recent languages</div>` + recents.map((c) => item(c, selected)).join('');
-    html += `<div class="lang-section" role="presentation">All languages</div>` + langs.map((l) => item(l.code, selected)).join('');
+    if (recents.length) html += `<h3 class="lang-section">Recent languages</h3>` + recents.map((c) => item(c, selected)).join('');
+    html += `<h3 class="lang-section">All languages</h3>` + langs.map((l) => item(l.code, selected)).join('');
   }
   list.innerHTML = html;
 }
@@ -167,7 +167,7 @@ export function pickLanguage({ side = 'target', selected, includeAuto = false, h
     render();
     openDialog(dlg);
     requestAnimationFrame(() => {
-      const sel = list.querySelector('[aria-selected="true"]');
+      const sel = list.querySelector('[aria-current="true"]');
       if (coarse) sel?.focus({ preventScroll: true });
       else search.focus();
       sel?.scrollIntoView({ block: 'center' });
