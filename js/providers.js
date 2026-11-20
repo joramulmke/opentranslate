@@ -454,6 +454,38 @@ export class OpenAICompatibleProvider {
     return { text: out.trim() };
   }
 
+  /**
+   * Read handwriting / text in an image with a vision-capable model.
+   * @returns {Promise<string[]>} best guess first, then alternatives
+   */
+  async recognizeImage(dataUrl, langHint) {
+    const hint = langLabel(langHint);
+    const prompt = [
+      'The image shows handwriting drawn on a touch pad (dark ink on white).',
+      hint ? `It is most likely ${hint}.` : '',
+      'Transcribe exactly what is written, keeping the original language and script; do not translate or correct it.',
+      'Reply with JSON only: {"candidates": ["best reading", "alternative", "alternative"]} with 1 to 4 distinct readings.',
+    ].filter(Boolean).join(' ');
+    let data;
+    try {
+      data = await this._req('/chat/completions', {
+        model: this.model, temperature: 0, max_tokens: 200,
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+      });
+    } catch (e) {
+      if (e.code === 'SERVER' && /image|vision|multimodal|content.*type|not support/i.test(e.message)) {
+        throw new ProviderError('UNSUPPORTED_PAIR', `“${this.model}” can't read images. Choose a vision-capable model for handwriting.`);
+      }
+      throw e;
+    }
+    const raw = String(data?.choices?.[0]?.message?.content || '').replace(/^\s*<think>[\s\S]*?<\/think>\s*/i, '').trim();
+    const json = raw.match(/\{[\s\S]*\}/);
+    let list = [];
+    if (json) { try { list = JSON.parse(json[0]).candidates || []; } catch { /* fall through */ } }
+    if (!list.length && raw) list = [raw.replace(/^["'`]+|["'`]+$/g, '')];
+    return [...new Set(list.map((t) => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 4);
+  }
+
   async listModels() {
     const data = await this._req('/models', null, { timeout: 15000 });
     const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];

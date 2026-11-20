@@ -56,10 +56,25 @@
       </div>
     </header>
 
+    <nav class="navbar" aria-label="Modes">
+      <div role="tablist" aria-orientation="horizontal" class="nav-list">
+        <button role="tab" id="tab-text" class="nav-item" data-tab="text" aria-controls="view-text" aria-selected="true">
+          <span class="nav-ind"><i data-icon="translate"></i></span><span class="nav-label">Text</span></button>
+        <button role="tab" id="tab-camera" class="nav-item" data-tab="camera" aria-controls="view-camera" aria-selected="false" tabindex="-1">
+          <span class="nav-ind"><i data-icon="camera"></i></span><span class="nav-label">Camera</span></button>
+        <button role="tab" id="tab-conversation" class="nav-item" data-tab="conversation" aria-controls="view-conversation" aria-selected="false" tabindex="-1">
+          <span class="nav-ind"><i data-icon="forum"></i></span><span class="nav-label">Conversation</span></button>
+        <button role="tab" id="tab-handwriting" class="nav-item" data-tab="handwriting" aria-controls="view-handwriting" aria-selected="false" tabindex="-1">
+          <span class="nav-ind"><i data-icon="gesture"></i></span><span class="nav-label">Handwriting</span></button>
+      </div>
+    </nav>
+
     <main id="main" class="main" tabindex="-1">
       <!-- ============ TEXT ============ -->
       <section class="view view-text" id="view-text" role="tabpanel" aria-labelledby="tab-text">
         <!-- On phones this is the light sheet with the drag handle; 720px+ shows two side-by-side panes. -->
+        <div class="langbar-slot" data-langbar></div>
+
         <div class="panes" id="text-panes">
           <div class="card input-card" id="input-card">
             <div class="pane-label" id="src-label">Detect language</div>
@@ -109,8 +124,6 @@
           <div class="drag-handle sheet-handle" aria-hidden="true"></div>
         </div>
 
-        <div class="langbar-slot" data-langbar></div>
-
         <!-- 1200px+ only: round History · Saved buttons under the panes -->
         <div class="web-actions" role="group" aria-label="History and saved translations">
           <button class="round-btn" id="web-history" type="button"><span class="round-circle"><i data-icon="history"></i></span><span class="round-label">History</span></button>
@@ -139,10 +152,11 @@
               <div class="shot-overlays" id="shot-overlays"></div>
             </div>
           </div>
-          <div class="cam-empty" id="cam-empty" hidden>
-            <i data-icon="videocamOff"></i>
+          <div class="cam-empty" id="cam-empty" role="region" aria-labelledby="cam-empty-title" hidden>
+            <span class="cam-empty-icon" id="cam-empty-icon" aria-hidden="true"><i data-icon="videocamOff"></i></span>
             <h2 id="cam-empty-title">Camera unavailable</h2>
             <p id="cam-empty-msg"></p>
+            <ol class="perm-steps" id="cam-empty-steps" hidden></ol>
             <div class="row-gap">
               <button class="btn btn-tonal" id="cam-retry" type="button">Try again</button>
               <button class="btn btn-filled" id="cam-import-2" type="button">Import a photo</button>
@@ -271,18 +285,7 @@
     </main>
 
     <!-- Modes: bottom bar (720-1023px), rail (1024-1199px), outlined chips under the top bar (1200px+) -->
-    <nav class="navbar" aria-label="Modes">
-      <div role="tablist" aria-orientation="horizontal" class="nav-list">
-        <button role="tab" id="tab-text" class="nav-item" data-tab="text" aria-controls="view-text" aria-selected="true">
-          <span class="nav-ind"><i data-icon="translate"></i></span><span class="nav-label">Text</span></button>
-        <button role="tab" id="tab-camera" class="nav-item" data-tab="camera" aria-controls="view-camera" aria-selected="false" tabindex="-1">
-          <span class="nav-ind"><i data-icon="camera"></i></span><span class="nav-label">Camera</span></button>
-        <button role="tab" id="tab-conversation" class="nav-item" data-tab="conversation" aria-controls="view-conversation" aria-selected="false" tabindex="-1">
-          <span class="nav-ind"><i data-icon="forum"></i></span><span class="nav-label">Conversation</span></button>
-        <button role="tab" id="tab-handwriting" class="nav-item" data-tab="handwriting" aria-controls="view-handwriting" aria-selected="false" tabindex="-1">
-          <span class="nav-ind"><i data-icon="gesture"></i></span><span class="nav-label">Handwriting</span></button>
-      </div>
-    </nav>
+
   </div>
 
   <!-- Language picker (full-screen on phones) -->
@@ -352,6 +355,11 @@
         <legend>Behaviour</legend>
         <label class="switch-row"><span>Translate as you type</span><input type="checkbox" id="set-live" role="switch"></label>
         <label class="switch-row"><span>Read conversation translations aloud</span><input type="checkbox" id="set-speak" role="switch"></label>
+        <div class="field">
+          <label for="set-hwr">Handwriting recognition</label>
+          <select id="set-hwr" aria-describedby="set-hwr-help"></select>
+          <p class="field-help" id="set-hwr-help">Automatic uses AI vision in Advanced mode, otherwise the on-device model (asks before its one-time ~130 MB download), otherwise Basic.</p>
+        </div>
       </fieldset>
       <fieldset class="settings-group">
         <legend>Theme</legend>
@@ -371,7 +379,7 @@
       <button type="button" role="menuitemradio" aria-checked="true" data-mode="classic">
         <span class="mode-copy"><strong>Classic</strong><small>Fast, works offline with the demo or your LibreTranslate server</small></span><i data-icon="check" class="mode-check"></i></button>
       <button type="button" role="menuitemradio" aria-checked="false" data-mode="advanced">
-        <span class="mode-copy"><strong>Advanced</strong><small>AI model through your OpenAI-compatible API: more fluent and context-aware</small></span><i data-icon="check" class="mode-check"></i></button>
+        <span class="mode-copy"><strong>Advanced</strong><small>AI model through your OpenAI-compatible API: more fluent. Your text is sent to that service; your key stays in this browser.</small></span><i data-icon="check" class="mode-check"></i></button>
     </div>
   </dialog>
 
@@ -395,6 +403,21 @@
     <div class="settings-form">
       <label class="switch-row"><span>Read translations aloud</span><input type="checkbox" id="convo-speak" role="switch"></label>
       <div class="row-gap"><button class="btn btn-tonal" type="button" id="convo-clear-all">Clear conversation</button></div>
+    </div>
+  </dialog>
+
+  <!-- Camera / microphone permission explainer -->
+  <dialog class="sheet bottom perm-sheet" id="perm-dialog" aria-labelledby="perm-title" aria-describedby="perm-body">
+    <div class="drag-handle" aria-hidden="true"></div>
+    <div class="perm-content">
+      <div class="perm-icon" id="perm-icon" aria-hidden="true"></div>
+      <h2 id="perm-title">Allow access</h2>
+      <p id="perm-body"></p>
+      <ol class="perm-steps" id="perm-steps" hidden></ol>
+      <div class="row-gap perm-actions">
+        <button class="btn btn-text" id="perm-cancel" type="button">Not now</button>
+        <button class="btn btn-filled" id="perm-allow" type="button">Allow</button>
+      </div>
     </div>
   </dialog>
 

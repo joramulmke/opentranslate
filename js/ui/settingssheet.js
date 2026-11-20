@@ -7,6 +7,7 @@ import { initProvider } from '../state.js';
 import { setupDialog, openDialog, closeDialog } from './sheet.js';
 import { escapeHtml } from './langpicker.js';
 import { toast } from './snackbar.js';
+import { ENGINES } from '../features/hwr.js';
 
 const $ = (id) => document.getElementById(id);
 let dlg, form;
@@ -40,6 +41,9 @@ export function initSettingsSheet({ onThemeChange }) {
 
   $('set-live').addEventListener('change', (e) => settings.set({ liveTranslate: e.target.checked }));
   $('set-speak').addEventListener('change', (e) => settings.set({ speakConversation: e.target.checked }));
+  $('set-hwr').innerHTML = Object.entries(ENGINES).map(([v, l]) => `<option value="${v}">${escapeHtml(l)}</option>`).join('');
+  // choosing an engine explicitly also resets an earlier "Use basic" answer to the model download prompt
+  $('set-hwr').addEventListener('change', (e) => settings.set({ hwrEngine: e.target.value, ...(e.target.value === 'ondevice' ? { hwrModelOk: null } : {}) }));
   $('theme-options').addEventListener('change', (e) => {
     settings.set({ theme: e.target.value });
     onThemeChange(e.target.value);
@@ -84,6 +88,7 @@ export function openSettings(focus) {
   $('test-result-adv').hidden = true;
   $('set-live').checked = s.liveTranslate;
   $('set-speak').checked = s.speakConversation;
+  $('set-hwr').value = s.hwrEngine || 'auto';
   form.querySelectorAll('input[name="theme"]').forEach((r) => { r.checked = r.value === s.theme; });
   openDialog(dlg);
   if (focus === 'advanced') {

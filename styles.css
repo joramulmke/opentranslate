@@ -756,7 +756,7 @@ dialog.menu [role="menuitem"]:hover, dialog.menu [role="menuitem"]:focus-visible
 
   /* home: big placeholder, pen on the right, nothing else */
   .app[data-mode="home"] .view-text .pane-label,
-  .app[data-mode="home"] .src-footer,
+  .app[data-mode="home"] .src-footer > :not(.mode-select),
   .app[data-mode="home"] .paste-btn,
   .app[data-mode="home"] .out-divider,
   .app[data-mode="home"] .output-card { display: none; }
@@ -1146,3 +1146,36 @@ dialog.menu.mode-menu [role="menuitemradio"]:focus-visible { background: color-m
 .mode-copy small { font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
 .mode-check { color: var(--primary); visibility: hidden; }
 [aria-checked="true"] > .mode-check { visibility: visible; }
+
+/* ---------- permission explainer ---------- */
+.perm-content { display: grid; justify-items: center; gap: 12px; padding: 8px 24px 24px; text-align: center; }
+.perm-icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--primary-container); color: var(--on-primary-container); }
+.perm-icon .ic { width: 32px; height: 32px; }
+.perm-content h2 { font-size: 22px; line-height: 28px; }
+.perm-content p { margin: 0; color: var(--on-surface-variant); font-size: 14px; line-height: 20px; max-width: 40ch; }
+.perm-steps { margin: 0; padding-left: 20px; text-align: start; font-size: 14px; line-height: 20px; display: grid; gap: 6px; max-width: 44ch; }
+.cam-empty .perm-steps { color: #C4C7C5; }
+.perm-actions { justify-content: flex-end; width: 100%; margin-top: 8px; }
+.btn-text { background: transparent; color: var(--primary-strong); }
+.btn-text:hover { background: color-mix(in srgb, var(--primary-strong) 8%, transparent); }
+.cam-empty-icon { display: grid; place-items: center; }
+/* long "blocked" instructions must scroll instead of being cut off on short phones */
+.cam-empty { overflow-y: auto; justify-content: safe center; }
+.cam-empty .row-gap { justify-content: center; }
+.perm-steps li::marker { color: var(--primary); }
+.cam-empty .perm-steps li::marker { color: #ADC6FF; }
+
+/* phones: the Classic/Advanced switch stays reachable on the home sheet and while typing */
+@media (max-width: 719.98px) {
+  .app[data-mode="home"] .src-footer { justify-content: flex-end; padding: 0 16px 4px; min-height: 0; margin-top: auto; }
+  .mode-select { border: 1px solid var(--outline-variant); }
+  .mode-select.is-advanced { border-color: transparent; }
+}
+
+/* DOM order = language bar, panes, actions (keyboard order on wide screens);
+   phones show the language bar under the text sheet, as in the reference app */
+@media (max-width: 719.98px) {
+  .view-text .langbar-slot { order: 1; }
+  .view-text .web-actions, .view-text .home-actions { order: 2; }
+}

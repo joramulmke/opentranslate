@@ -10,6 +10,7 @@ import { pickLanguage, escapeHtml } from '../ui/langpicker.js';
 import { setupDialog, openDialog } from '../ui/sheet.js';
 import { isPhone, onLayoutChange } from '../ui/layout.js';
 import { speak, stopSpeaking, canDictate, dictate, dictationMessage } from './speech.js';
+import { ensureMicrophone } from './permissions.js';
 import { toast } from '../ui/snackbar.js';
 
 const $ = (id) => document.getElementById(id);
@@ -153,7 +154,7 @@ export function initConversation() {
     input.style.height = Math.min(input.scrollHeight, 120) + 'px';
   }
 
-  function listen(btn) {
+  async function listen(btn) {
     if (stopDictation) { stopDictation(); return; }
     if (!canDictate()) {
       toast(dictationMessage('UNSUPPORTED'), { duration: 6000 });
@@ -161,6 +162,7 @@ export function initConversation() {
       return;
     }
     if (!active) return;
+    if (!(await ensureMicrophone())) return;
     const lang = people[active].lang;
     btn.setAttribute('aria-pressed', 'true');
     const done = () => { stopDictation = null; btn.setAttribute('aria-pressed', 'false'); renderTurn(); };

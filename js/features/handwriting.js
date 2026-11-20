@@ -6,7 +6,7 @@ import { isRtl } from '../languages.js';
 import { createLangBar } from '../ui/langbar.js';
 import { toast } from '../ui/snackbar.js';
 import { escapeHtml } from '../ui/langpicker.js';
-import { recognize, ocrLangFor, describeOcrStatus } from './ocr.js';
+import { recognizeHandwriting, engineLabel } from './hwr.js';
 import { speak } from './speech.js';
 import { icon } from '../ui/icons.js';
 
@@ -161,23 +161,22 @@ export function initHandwriting({ sendToText }) {
     status('Recognizing…');
     const lang = state.source === 'auto' ? (state.detected?.language || 'en') : state.source;
     try {
-      const single = strokes.length <= 3;
-      const res = await recognize(snapshot(), {
-        lang: ocrLangFor(lang), psm: single ? '8' : '7',
-        onProgress: (m) => id === job && status(describeOcrStatus(m)),
+      const res = await recognizeHandwriting(snapshot(), {
+        lang, single: strokes.length <= 3,
+        onStatus: (t) => id === job && status(t),
       });
       if (id !== job) return;
       const cands = [];
       const add = (t) => { t = (t || '').replace(/\s+/g, ' ').trim(); if (t && !cands.includes(t)) cands.push(t); };
-      add(res.text);
-      if (res.words.length === 1) (res.words[0].choices || []).forEach((c) => add(c.text));
-      if (cands[0]) { add(cands[0].toLowerCase()); add(cands[0][0].toUpperCase() + cands[0].slice(1).toLowerCase()); }
-      status(cands.length ? 'Tap a suggestion to use it' : '');
+      res.candidates.forEach(add);
+      if (cands[0] && res.engine === 'tesseract') { add(cands[0].toLowerCase()); add(cands[0][0].toUpperCase() + cands[0].slice(1).toLowerCase()); }
+      if (res.note) toast(res.note, { duration: 6000 });
       if (!cands.length) {
         el.candidates.innerHTML = '';
-        status("Couldn't read that. Try larger, printed letters.");
+        status("Couldn't read that. Try writing larger.");
         return;
       }
+      status(`Tap a suggestion to use it · ${engineLabel[res.engine]}`);
       el.candidates.innerHTML = cands.slice(0, 4).map((c, i) =>
         `<button type="button" class="chip" role="option" aria-selected="${i === 0}" data-text="${escapeHtml(c)}" lang="${lang}">${escapeHtml(c)}</button>`).join('');
     } catch (e) {

@@ -11,6 +11,7 @@ import { icon } from './icons.js';
 import { toast } from './snackbar.js';
 import { isPhone } from './layout.js';
 import { speak, stopSpeaking, canDictate, dictate, dictationMessage } from '../features/speech.js';
+import { ensureMicrophone } from '../features/permissions.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX = 5000;
@@ -435,9 +436,10 @@ function setMicPressed(on) {
   }
 }
 
-function toggleMic() {
+async function toggleMic() {
   if (stopDictation) { stopDictation(); return; }
   if (!canDictate()) { toast(dictationMessage('UNSUPPORTED'), { duration: 6000 }); return; }
+  if (!(await ensureMicrophone())) return;
   const before = el.input.value ? el.input.value.replace(/\s*$/, ' ') : '';
   const lang = state.source === 'auto' ? (state.detected?.language || navigator.language) : state.source;
   setMicPressed(true);

@@ -4,6 +4,8 @@ import { createLangBar } from '../ui/langbar.js';
 import { toast } from '../ui/snackbar.js';
 import { recognize, ocrLangFor, describeOcrStatus } from './ocr.js';
 import { escapeHtml } from '../ui/langpicker.js';
+import { icon } from '../ui/icons.js';
+import { permissionState, onPermissionChange, blockedSteps, cameraCopy } from './permissions.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_OCR_SIDE = 1600;
@@ -45,11 +47,11 @@ export function initCamera({ sendToText }) {
     } catch (e) {
       const denied = e.name === 'NotAllowedError' || e.name === 'SecurityError';
       const missing = e.name === 'NotFoundError' || e.name === 'OverconstrainedError';
+      if (denied) return showBlockedState();
       showEmpty(
-        denied ? 'Camera permission needed' : missing ? 'No camera found' : 'Camera unavailable',
-        denied ? 'Allow camera access in your browser’s site settings, then try again. Or import a photo instead.'
-          : missing ? 'This device has no camera we can use. You can import a photo instead.'
-            : `The camera could not start (${e.name || e.message}). You can import a photo instead.`,
+        missing ? 'No camera found' : 'Camera unavailable',
+        missing ? 'This device has no camera we can use. You can import a photo instead.'
+          : `The camera could not start (${e.name || e.message}). You can import a photo instead.`,
       );
     }
   }
@@ -60,9 +62,27 @@ export function initCamera({ sendToText }) {
     el.video.srcObject = null;
   }
 
-  function showEmpty(title, msg) {
+  /** Explain before the browser asks; the button then triggers the real prompt. */
+  async function gate() {
+    const st = await permissionState('camera');
+    if (!visible || shot) return;
+    if (st === 'granted') return startStream();
+    if (st === 'denied') return showBlockedState();
+    showEmpty(cameraCopy.title, cameraCopy.body, { iconName: 'camera', retryLabel: 'Allow camera' });
+  }
+
+  function showBlockedState() {
+    showEmpty('Camera is blocked', 'Your browser is blocking the camera for this site. You can still import a photo. To turn the camera on:',
+      { iconName: 'videocamOff', retryLabel: 'Try again', steps: blockedSteps('camera') });
+  }
+
+  function showEmpty(title, msg, { iconName = 'videocamOff', retryLabel = 'Try again', steps = [] } = {}) {
     stopStream();
     el.empty.hidden = false;
+    $('cam-empty-icon').innerHTML = icon(iconName);
+    $('cam-empty-steps').innerHTML = steps.map((t) => `<li>${escapeHtml(t)}</li>`).join('');
+    $('cam-empty-steps').hidden = !steps.length;
+    el.retry.textContent = retryLabel;
     el.emptyTitle.textContent = title;
     el.emptyMsg.textContent = msg;
     el.shutter.disabled = true;
@@ -200,6 +220,8 @@ export function initCamera({ sendToText }) {
     }
   });
   el.retry.addEventListener('click', startStream);
+  // If the user unblocks the camera in site settings while the tab is open, start right away.
+  onPermissionChange('camera', (st) => { if (st === 'granted' && visible && !shot && !stream) startStream(); });
   el.retake.addEventListener('click', () => { ++job; shot = null; setMode(false); startStream(); });
   el.toggleOrig.addEventListener('click', () => {
     const on = el.toggleOrig.getAttribute('aria-pressed') !== 'true';
@@ -223,7 +245,7 @@ export function initCamera({ sendToText }) {
   });
 
   return {
-    onShow() { visible = true; if (!shot) { setMode(false); startStream(); } },
+    onShow() { visible = true; if (!shot) { setMode(false); gate(); } },
     onHide() { visible = false; stopStream(); },
   };
 }

@@ -27,7 +27,8 @@ Open **Settings** (gear icon).
 
 Switch between **Classic** and **Advanced** with the dropdown next to the character count.
 
-**API keys are stored only in your browser (`localStorage`) and sent only to the URL you enter.** They are
+**Privacy:** in Advanced mode your text (and, for handwriting, the drawing) is sent to the AI service you
+configure. **API keys are stored only in your browser (`localStorage`) and sent only to the URL you enter.** They are
 never part of this repository. Use keys with spending limits; anyone with access to that browser profile can read them.
 
 ### LibreTranslate server
@@ -39,7 +40,20 @@ python3 -m venv .venv && .venv/bin/pip install libretranslate
 .venv/bin/libretranslate --load-only en,es,fr,de
 ```
 
-Then set the server URL to `http://localhost:5000`.
+Then set the server URL (e.g. `http://localhost:5000`) in Settings → Classic translation → LibreTranslate.
+
+**Your own server:** the app is served over HTTPS, so the LibreTranslate server must be reachable over
+HTTPS too (e.g. behind a reverse proxy). LibreTranslate allows cross-origin browser requests by default; keep
+the `Access-Control-Allow-Origin` header if you add a proxy.
+
+**API keys** are only needed if the server runs with `--api-keys`. Create one on the server:
+
+```bash
+ltmanage keys add 120                     # 120 requests/minute; prints the key
+docker exec -it <container> ./venv/bin/ltmanage keys add 120   # inside the Docker image
+```
+
+Enter it in Settings → LibreTranslate → API key, then **Test connection**.
 
 ### Local AI models (Ollama / LM Studio)
 
@@ -54,8 +68,16 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
 - **Camera:** live preview or imported photo; OCR with [Tesseract.js](https://tesseract.projectnaptha.com/)
   (loaded from a CDN on first use); translated text drawn over the photo.
 - **Conversation:** two people, one language each, turns alternate; translations can be read aloud.
-- **Handwriting:** draw on a pad (undo, clear, stroke width), recognition suggestions via Tesseract,
-  edit, then translate. Works best with neat printed letters.
+- **Handwriting:** draw on a pad (undo, clear, stroke width), pick a suggestion, edit, then translate.
+  Three engines, best available first (Settings → Handwriting recognition):
+  1. **AI vision**: in Advanced mode, your model reads the drawing (any script, cursive). Needs a vision-capable
+     model; one API call per recognition.
+  2. **On-device model**: TrOCR handwriting model in the browser via
+     [transformers.js](https://github.com/huggingface/transformers.js); asks before a one-time ~130 MB download,
+     Latin-script languages only, private.
+  3. **Basic**: Tesseract; fallback for everything else, best with neat printed letters.
+- **Permissions:** camera and microphone are explained first; the browser prompt only appears after you tap
+  *Allow*. If access is blocked, the app shows browser-specific steps to re-enable it.
 - Light/dark theme (follows the system, or set it in Settings / the top bar), keyboard operation, ARIA labels,
   `lang`/`dir` on output text, offline app shell via service worker (translations are never cached).
 
@@ -75,7 +97,7 @@ js/store.js            localStorage: settings, history, phrasebook
 js/providers.js        provider interface + registry: Mock, LibreTranslate, OpenAI-compatible
 js/languages.js        bundled 50-language fallback, RTL and OCR language maps
 js/ui/*.js             text view, language bar/picker, mode menu, sheets, menus, icons, layout
-js/features/*.js       camera, conversation, handwriting, OCR, speech
+js/features/*.js       camera, conversation, handwriting (+ hwr.js engines), OCR, speech, permissions
 ```
 
 ### Adding a provider

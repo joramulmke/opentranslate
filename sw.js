@@ -27,6 +27,8 @@ const SHELL = [
   './js/ui/settingssheet.js',
   './js/features/speech.js',
   './js/features/ocr.js',
+  './js/features/permissions.js',
+  './js/features/hwr.js',
   './js/features/camera.js',
   './js/features/conversation.js',
   './js/features/handwriting.js',
