@@ -181,56 +181,42 @@
 
       <!-- ============ CONVERSATION ============ -->
       <section class="view view-convo" id="view-conversation" role="tabpanel" aria-labelledby="tab-conversation" hidden>
-        <!-- Phones: one shared log with a language pair on top and one mic below -->
+        <!-- Conversation screen (opened after the setup sheet): language pair on top, transcript canvas,
+             mode pill + big mic + keyboard at the bottom. Same flow at every width. -->
         <header class="convo-top">
           <button class="icon-btn view-back" type="button" data-back aria-label="Back"><i data-icon="back"></i></button>
           <div class="convo-pair" role="group" aria-label="Conversation languages">
-            <button class="pair-lang" type="button" data-person-lang="a"><span class="pill-label">English</span></button>
+            <button class="pair-lang" type="button" data-convo-lang="them"><span class="pill-label">Spanish</span></button>
             <button class="icon-btn pair-swap" id="convo-swap" type="button" aria-label="Swap languages"><i data-icon="swap"></i></button>
-            <button class="pair-lang" type="button" data-person-lang="b"><span class="pill-label">Spanish</span></button>
+            <button class="pair-lang" type="button" data-convo-lang="me"><span class="pill-label">English</span></button>
           </div>
-          <button class="icon-btn" id="convo-options" type="button" aria-label="Conversation settings" aria-haspopup="dialog"><i data-icon="tune"></i></button>
+          <button class="icon-btn" id="convo-options" type="button" aria-label="Conversation setup" aria-haspopup="dialog"><i data-icon="tune"></i></button>
         </header>
-        <div class="convo-sheet">
-          <ol class="convo-shared" id="convo-shared" aria-label="Conversation" aria-live="polite"></ol>
-        </div>
-        <div class="convo-bottom">
-          <p class="convo-status" id="convo-status" role="status">Tap mic to start</p>
-          <div class="convo-bottom-row">
-            <button class="turn-pill" id="convo-turn" type="button"><i data-icon="voiceOver"></i><span id="convo-turn-label">English</span></button>
-            <button class="mic-stadium" id="convo-bigmic" type="button" aria-label="Speak" aria-pressed="false"><i data-icon="mic"></i></button>
-            <button class="icon-btn" id="convo-type" type="button" aria-label="Type instead" aria-pressed="false"><i data-icon="keyboard"></i></button>
+        <div class="convo-sheet" id="convo-sheet">
+          <ol class="convo-shared" id="convo-shared" aria-label="Transcript" aria-live="polite" aria-relevant="additions text"></ol>
+          <!-- face-to-face: their half is rotated to face the person opposite -->
+          <div class="convo-split" id="convo-split" hidden>
+            <ol class="split-half split-them" id="split-them" aria-hidden="true"></ol>
+            <ol class="split-half split-me" id="split-me" aria-label="Transcript" aria-live="polite"></ol>
           </div>
-        </div>
-
-        <div class="convo-pane convo-b" id="convo-b" data-person="b">
-          <div class="convo-head">
-            <button class="pill pill-small" type="button" data-person-lang="b"><span class="pill-label">Spanish</span></button>
-            <button class="icon-btn" id="convo-rotate" type="button" aria-label="Face-to-face mode: flip this side" aria-pressed="false" title="Face-to-face"><i data-icon="rotate"></i></button>
-          </div>
-          <ol class="convo-log" aria-label="Conversation in person 2's language" aria-live="polite"></ol>
-        </div>
-        <div class="convo-pane convo-a" id="convo-a" data-person="a">
-          <div class="convo-head">
-            <button class="pill pill-small" type="button" data-person-lang="a"><span class="pill-label">English</span></button>
-            <button class="text-btn" id="convo-clear" type="button">Clear</button>
-          </div>
-          <ol class="convo-log" aria-label="Conversation in person 1's language" aria-live="polite"></ol>
         </div>
         <form class="convo-composer" id="convo-composer" hidden>
           <label class="visually-hidden" for="convo-input" id="convo-input-label">Message</label>
-          <button class="icon-btn" id="convo-mic" type="button" aria-label="Dictate" aria-pressed="false"><i data-icon="mic"></i></button>
-          <textarea id="convo-input" rows="1" placeholder="Type or paste…"></textarea>
-          <button class="icon-btn filled" id="convo-send" type="submit" aria-label="Translate and send"><i data-icon="send"></i></button>
+          <textarea id="convo-input" rows="1" placeholder="Type…"></textarea>
+          <button class="icon-btn filled" id="convo-send" type="submit" aria-label="Translate"><i data-icon="send"></i></button>
         </form>
-        <div class="convo-controls">
-          <button class="speak-btn speak-a" id="speak-a" type="button" aria-pressed="false">
-            <span class="speak-circle"><i data-icon="mic"></i></span><span class="speak-lang">English</span>
-          </button>
-          <div class="convo-mid" aria-hidden="true"><i data-icon="forum"></i></div>
-          <button class="speak-btn speak-b" id="speak-b" type="button" aria-pressed="false">
-            <span class="speak-circle"><i data-icon="mic"></i></span><span class="speak-lang">Spanish</span>
-          </button>
+        <div class="convo-bottom">
+          <div class="turn-toggle" id="turn-toggle" role="group" aria-label="Who is speaking">
+            <button type="button" class="turn-btn" data-turn="them" aria-pressed="false"></button>
+            <button type="button" class="turn-btn" data-turn="me" aria-pressed="true"></button>
+          </div>
+          <p class="convo-interim" id="convo-interim" aria-hidden="true"></p>
+          <p class="convo-status" id="convo-status" role="status">Tap mic to start</p>
+          <div class="convo-bottom-row">
+            <button class="mode-pill" id="convo-mode" type="button" aria-haspopup="dialog"><i data-icon="voiceOver"></i><span id="convo-mode-label">Conversation</span></button>
+            <button class="mic-stadium" id="convo-bigmic" type="button" aria-label="Speak" aria-pressed="false"><i data-icon="mic"></i></button>
+            <button class="icon-btn" id="convo-type" type="button" aria-label="Type instead" aria-pressed="false" aria-controls="convo-composer"><i data-icon="keyboard"></i></button>
+          </div>
         </div>
       </section>
 
@@ -330,6 +316,7 @@
     </div>
     <form class="settings-form" id="settings-form" novalidate>
       <fieldset class="settings-group">
+        <p class="setup-hint" id="setup-hint" hidden><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server below, or an AI model under Advanced translation, for real translations.</p>
         <legend id="classic-legend">Classic translation</legend>
         <div id="provider-options" class="radio-list"></div>
         <p class="field-help" id="provider-desc"></p>
@@ -392,17 +379,38 @@
     </div>
   </dialog>
 
-  <!-- Conversation options (phones) -->
-  <dialog class="sheet bottom" id="convo-dialog" aria-labelledby="convo-dialog-title">
+  <!-- Conversation setup (opens first; reopened from the options icon or the mode pill) -->
+  <dialog class="sheet bottom convo-setup" id="convo-setup" aria-labelledby="setup-title">
     <div class="drag-handle" aria-hidden="true"></div>
-    <div class="sheet-head">
-      <h2 id="convo-dialog-title">Conversation</h2>
-      <span class="spacer"></span>
+    <div class="setup-head">
       <button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="close"></i></button>
     </div>
-    <div class="settings-form">
-      <label class="switch-row"><span>Read translations aloud</span><input type="checkbox" id="convo-speak" role="switch"></label>
-      <div class="row-gap"><button class="btn btn-tonal" type="button" id="convo-clear-all">Clear conversation</button></div>
+    <h2 class="setup-title" id="setup-title">Conversation</h2>
+    <div class="setup-langs">
+      <div class="setup-lang">
+        <button class="pill setup-pill" type="button" data-setup-lang="them" aria-describedby="cap-them"><span class="pill-label">Spanish</span></button>
+        <span class="setup-cap" id="cap-them"><i data-icon="voiceOver"></i>Their language</span>
+      </div>
+      <button class="icon-btn setup-swap" id="setup-swap" type="button" aria-label="Swap their language and your language"><i data-icon="swap"></i></button>
+      <div class="setup-lang">
+        <button class="pill setup-pill" type="button" data-setup-lang="me" aria-describedby="cap-me"><span class="pill-label">English</span></button>
+        <span class="setup-cap" id="cap-me"><i data-icon="voiceOver"></i>Your language</span>
+      </div>
+    </div>
+    <div class="setup-modes" id="setup-modes" role="radiogroup" aria-label="Mode">
+      <button type="button" class="setup-mode" role="radio" aria-checked="false" data-mode="listening">
+        <i data-icon="headphones"></i><span class="setup-mode-copy"><strong>Listening</strong><small>Live captions of what they say, translated into your language</small></span><i data-icon="check" class="setup-check"></i></button>
+      <button type="button" class="setup-mode" role="radio" aria-checked="true" data-mode="conversation">
+        <i data-icon="voiceOver"></i><span class="setup-mode-copy"><strong>Conversation</strong><small>Take turns speaking. Translations are read out loud.</small></span><i data-icon="check" class="setup-check"></i></button>
+      <button type="button" class="setup-mode" role="radio" aria-checked="false" data-mode="text">
+        <i data-icon="notes"></i><span class="setup-mode-copy"><strong>Text only</strong><small>Take turns. Translations are shown; nothing is read out loud.</small></span><i data-icon="check" class="setup-check"></i></button>
+    </div>
+    <div class="setup-extras">
+      <label class="switch-row"><span>Face-to-face split screen<small>Their side is shown upside down for the person opposite</small></span><input type="checkbox" id="setup-split" role="switch"></label>
+      <button class="text-btn" type="button" id="setup-clear" hidden>Clear transcript</button>
+    </div>
+    <div class="setup-foot">
+      <button class="btn btn-filled setup-start" id="setup-start" type="button"><i data-icon="mic"></i><span>Start</span></button>
     </div>
   </dialog>
 
@@ -424,6 +432,13 @@
   <div class="snackbar" id="snackbar" role="status" aria-live="polite"><span id="snackbar-text"></span><button class="text-btn" id="snackbar-action" type="button" hidden></button></div>
 
   <noscript><p class="boot-msg">OpenTranslate needs JavaScript.</p></noscript>
+  <!-- Below the app: visible only after scrolling past it. Links come from change-me.md -->
+  <footer class="site-footer" id="site-footer" hidden>
+    <a id="imprint-link" href="#" rel="noopener">Impressum</a>
+    <span aria-hidden="true">·</span>
+    <a id="privacy-link" href="#" rel="noopener">Datenschutzerklärung</a>
+  </footer>
+
   <div class="boot-msg" id="boot-msg" hidden>
     <strong>Can't start from a file:// URL.</strong>
     Browsers block ES modules on file:// pages. Serve the folder instead:<br>

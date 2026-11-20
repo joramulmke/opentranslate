@@ -303,6 +303,12 @@ export class LibreTranslateProvider {
     return list.map(({ code, name }) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /** Target codes the server offers for this source (after /languages has loaded), or null if unknown. */
+  targetsFor(source) {
+    const src = this._langs?.find((l) => l.code === source);
+    return Array.isArray(src?.targets) ? src.targets : null;
+  }
+
   async detect(text) {
     const data = await this._req('/detect', { q: text });
     const best = Array.isArray(data) ? data[0] : null;
@@ -368,6 +374,8 @@ registerProvider({
     { key: 'apiKey', label: 'API key', type: 'password', placeholder: 'sk-…', help: 'Leave empty for local servers.' },
     { key: 'model', label: 'Model', type: 'text', required: true, placeholder: 'e.g. gpt-4o-mini, llama3.1',
       suggest: true, help: '“Test connection” fills in the models your server offers.' },
+    { key: 'sttModel', label: 'Speech-to-text model', type: 'text', placeholder: 'e.g. whisper-1 (OpenAI), whisper-large-v3-turbo (Groq)',
+      suggest: true, help: 'Optional. Used for voice input where the browser has no speech service (Brave, Firefox). Empty = on-device model.' },
   ],
   create(cfg) { return new OpenAICompatibleProvider(cfg); },
 });
@@ -380,23 +388,25 @@ const langLabel = (code) => {
 };
 
 export class OpenAICompatibleProvider {
-  constructor({ baseUrl, apiKey, model }) {
+  constructor({ baseUrl, apiKey, model, sttModel }) {
     this.name = 'OpenAI-compatible';
     this.isAdvanced = true;
     this.base = String(baseUrl).trim().replace(/\/+$/, '');
     this.apiKey = String(apiKey || '').trim();
     this.model = String(model || '').trim();
+    this.sttModel = String(sttModel || '').trim();
   }
 
   async _req(path, body, { timeout = 60000 } = {}) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeout);
     const headers = { Accept: 'application/json' };
-    if (body) headers['Content-Type'] = 'application/json';
+    const form = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (body && !form) headers['Content-Type'] = 'application/json';
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
     let res;
     try {
-      res = await fetch(this.base + path, { method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined, signal: ctrl.signal });
+      res = await fetch(this.base + path, { method: body ? 'POST' : 'GET', headers, body: body ? (form ? body : JSON.stringify(body)) : undefined, signal: ctrl.signal });
     } catch (e) {
       const local = /localhost|127\.0\.0\.1/.test(this.base);
       const why = e.name === 'AbortError' ? 'The model took too long to answer.'
@@ -484,6 +494,19 @@ export class OpenAICompatibleProvider {
     if (json) { try { list = JSON.parse(json[0]).candidates || []; } catch { /* fall through */ } }
     if (!list.length && raw) list = [raw.replace(/^["'`]+|["'`]+$/g, '')];
     return [...new Set(list.map((t) => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 4);
+  }
+
+  /** Speech to text via /audio/transcriptions (Whisper-style). Needs sttModel. */
+  async transcribe(blob, lang) {
+    if (!this.sttModel) throw new ProviderError('NO_PROVIDER', 'No speech-to-text model set for Advanced mode.');
+    const ext = /mp4|m4a|aac/.test(blob.type) ? 'm4a' : /ogg/.test(blob.type) ? 'ogg' : /wav/.test(blob.type) ? 'wav' : 'webm';
+    const fd = new FormData();
+    fd.append('file', blob, `speech.${ext}`);
+    fd.append('model', this.sttModel);
+    fd.append('response_format', 'json');
+    if (lang && lang !== 'auto') fd.append('language', String(lang).split('-')[0]);
+    const data = await this._req('/audio/transcriptions', fd, { timeout: 60000 });
+    return String(data?.text || '').trim();
   }
 
   async listModels() {

@@ -4,6 +4,7 @@ import { recentLangs } from '../store.js';
 import { icon } from './icons.js';
 import { setupDialog, openDialog, closeDialog } from './sheet.js';
 import { isWeb } from './layout.js';
+import { STATIC_LANGUAGES } from '../languages.js';
 
 let dlg, list, search, title, searchBtn;
 let current = null; // { side, selected, includeAuto, resolve, returnFocus }
@@ -27,13 +28,15 @@ function init() {
   search.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); list.querySelector('.lang-item')?.focus(); }
     if (e.key === 'Enter') {
-      const first = list.querySelector('.lang-item');
+      const first = list.querySelector('.lang-item:not([aria-disabled="true"])');
       if (first) { e.preventDefault(); pick(first.dataset.code); }
     }
   });
   list.addEventListener('click', (e) => {
     const b = e.target.closest('.lang-item');
-    if (b) pick(b.dataset.code);
+    if (!b) return;
+    if (b.getAttribute('aria-disabled') === 'true') explain(b.dataset.code);
+    else pick(b.dataset.code);
   });
   list.addEventListener('keydown', (e) => {
     const items = [...list.querySelectorAll('.lang-item')];
@@ -48,10 +51,42 @@ function init() {
 
 function pick(code) { closeDialog(dlg, code); }
 
+/** Codes the active setup can use on this side, or null = everything. */
+function availableCodes(side) {
+  const codes = new Set(state.languages.map((l) => l.code));
+  if (side === 'target' && state.source !== 'auto' && typeof state.provider?.targetsFor === 'function') {
+    const t = state.provider.targetsFor(state.source);
+    if (t) return new Set(t.filter((c) => codes.has(c)));
+  }
+  return codes;
+}
+
+function explain(code) {
+  const name = langName(code);
+  const p = state.provider;
+  let why;
+  if (state.mode !== 'advanced' && p && !p.isMock && current.side === 'target' && state.source !== 'auto' && p.targetsFor?.(state.source) && state.languages.some((l) => l.code === code)) {
+    why = `Your translation server can't translate ${langName(state.source)} into ${name}. Pick another language, or switch to Advanced mode.`;
+  } else if (state.mode === 'advanced') {
+    why = `${name} isn't available right now.`;
+  } else if (!p || p.isMock) {
+    why = `The offline demo doesn't include ${name}. Add a LibreTranslate server or an AI model in Settings to use it.`;
+  } else {
+    why = `${name} isn't installed on your LibreTranslate server. Install its language model on the server, or switch to Advanced mode (AI) to use it.`;
+  }
+  let note = list.querySelector('.lang-note');
+  if (!note) { note = document.createElement('p'); note.className = 'lang-note'; note.setAttribute('role', 'status'); list.prepend(note); }
+  note.textContent = why;
+  note.scrollIntoView({ block: 'nearest' });
+}
+
+let avail = null;
 function item(code, selected, sub = '') {
   const isSel = code === selected;
+  const off = code !== 'auto' && avail && !avail.has(code);
+  if (off) sub = 'Not available';
   const trail = isSel ? icon('check', 'trail') : code === 'auto' ? icon('sparkle', 'trail') : '';
-  return `<button type="button" class="lang-item" role="option" aria-selected="${isSel}" data-code="${code}" lang="${code === 'auto' ? 'en' : code}">
+  return `<button type="button" class="lang-item${off ? ' unavailable' : ''}" role="option" aria-selected="${isSel}"${off ? ' aria-disabled="true"' : ''} data-code="${code}" lang="${code === 'auto' ? 'en' : code}">
     <span class="name">${escapeHtml(langName(code))}</span>${sub ? `<span class="sub">${escapeHtml(sub)}</span>` : ''}${trail}
   </button>`;
 }
@@ -68,7 +103,9 @@ function setSearching(on, focus = false) {
 function render() {
   const { side, selected, includeAuto } = current;
   const q = search.value.trim().toLowerCase();
-  const langs = [...state.languages].sort((a, b) => a.name.localeCompare(b.name));
+  avail = availableCodes(side);
+  const byCode = new Map([...STATIC_LANGUAGES, ...state.languages].map((l) => [l.code, l]));
+  const langs = [...byCode.values()].sort((a, b) => a.name.localeCompare(b.name));
   let html = '';
   if (q) {
     const hits = langs.filter((l) => l.name.toLowerCase().includes(q) || l.code.toLowerCase() === q);

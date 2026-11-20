@@ -444,11 +444,17 @@ async function toggleMic() {
   const lang = state.source === 'auto' ? (state.detected?.language || navigator.language) : state.source;
   setMicPressed(true);
   const done = () => { stopDictation = null; setMicPressed(false); };
+  const placeholder = el.input.placeholder;
+  const restore = () => { el.input.placeholder = placeholder; };
   stopDictation = dictate(lang, {
-    onText: (t) => { el.input.value = before + t; onInput(); },
-    onEnd: () => { done(); if (el.input.value.trim()) runTranslate({ commit: true }); },
+    autoLang: state.source === 'auto',   // recorded audio: let the model detect the language
+    onState: (st) => {
+      el.input.placeholder = st === 'listening' ? 'Listening…' : st === 'transcribing' ? 'Transcribing…' : st;
+    },
+    onText: (t) => { restore(); el.input.value = before + t; onInput(); },
+    onEnd: () => { done(); restore(); if (el.input.value.trim()) runTranslate({ commit: true }); },
     onError: (e) => {
-      done();
+      done(); restore();
       const m = dictationMessage(e);
       if (m) toast(m, { duration: 6000 });
     },

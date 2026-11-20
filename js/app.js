@@ -8,6 +8,8 @@ import * as textView from './ui/textview.js';
 import { initHistorySheet, openHistory } from './ui/historysheet.js';
 import { initSettingsSheet, openSettings } from './ui/settingssheet.js';
 import { initModeMenu } from './ui/modemenu.js';
+import { initSetupBadge } from './ui/setupbadge.js';
+import { initSiteFooter } from './ui/sitefooter.js';
 import { initMenu, openMenu } from './ui/menu.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
@@ -69,7 +71,7 @@ function navigate(tab, { replace = false, focus = false } = {}) {
     if (replace || !prev) history.replaceState({ ot: tab, i: navIndex }, '', hash);
     else { navIndex += 1; history.pushState({ ot: tab, i: navIndex }, '', hash); }
   }
-  hooks[tab]?.onShow?.();
+  hooks[tab]?.onShow?.({ viaArrowKeys: focus });   // focus === keyboard tab navigation
   if (focus) document.getElementById(`tab-${tab}`).focus();
   else if (prev && isPhone()) focusAfterPhoneNav(tab, prev);
 }
@@ -134,7 +136,7 @@ function boot() {
   initSettingsSheet({ onThemeChange: applyTheme });
 
   hooks.camera = initCamera({ sendToText });
-  hooks.conversation = initConversation();
+  hooks.conversation = initConversation({ leave: () => goBack() });
   hooks.handwriting = initHandwriting({ sendToText });
 
   // top bar
@@ -170,6 +172,8 @@ function boot() {
   $('home-camera').addEventListener('click', () => navigate('camera'));
 
   initModeMenu({ openSettings });
+  initSetupBadge();
+  initSiteFooter();
   initMenu('more-menu', {
     history: () => openHistory('history'),
     saved: () => openHistory('saved'),

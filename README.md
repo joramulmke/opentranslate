@@ -63,8 +63,15 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
 ## Features
 
 - **Text:** auto-detect, live translation while typing, swap, copy, read aloud (`speechSynthesis`),
-  voice input (Web Speech API: Chrome, Edge, Safari; not Firefox or Brave), history (last 100) and
-  saved phrasebook, all stored in `localStorage`.
+  history (last 100) and saved phrasebook, all stored in `localStorage`.
+- **Voice input** works in every browser that can record audio:
+  1. the browser's speech service with live text (Chrome, Edge, Safari);
+  2. where there is none (Brave, Firefox) or it fails, the app records the microphone itself (stops after
+     ~1.5 s of silence) and transcribes with your **Advanced API's Whisper endpoint** (`/audio/transcriptions`,
+     set *Speech-to-text model*, e.g. `whisper-1`, `whisper-large-v3-turbo`) in Advanced mode, otherwise with
+     **on-device Whisper** (`whisper-base`, asks before a one-time ~80 MB download, detects the language).
+- **Languages** your current setup can't translate stay visible but greyed out; tapping one explains why
+  (e.g. not installed on your LibreTranslate server).
 - **Camera:** live preview or imported photo; OCR with [Tesseract.js](https://tesseract.projectnaptha.com/)
   (loaded from a CDN on first use); translated text drawn over the photo.
 - **Conversation:** two people, one language each, turns alternate; translations can be read aloud.
@@ -80,6 +87,20 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
   *Allow*. If access is blocked, the app shows browser-specific steps to re-enable it.
 - Light/dark theme (follows the system, or set it in Settings / the top bar), keyboard operation, ARIA labels,
   `lang`/`dir` on output text, offline app shell via service worker (translations are never cached).
+
+## Site settings (`change-me.md`)
+
+Deployment-specific values live in [`change-me.md`](change-me.md) (`key = value`), read by the app at runtime:
+
+| Key | Used for |
+| --- | --- |
+| `privacy_policy_link` | "Datenschutzerklärung" link in the footer (and "Impressum" unless `imprint_link` is set) |
+| `imprint_link` | optional separate "Impressum" link |
+
+The footer sits below the full-height app, so it appears when you scroll down.
+
+While only the offline demo is set up, the settings and menu buttons show a red **!** and Settings explains
+how to add a real provider.
 
 ## Layouts
 
@@ -97,7 +118,7 @@ js/store.js            localStorage: settings, history, phrasebook
 js/providers.js        provider interface + registry: Mock, LibreTranslate, OpenAI-compatible
 js/languages.js        bundled 50-language fallback, RTL and OCR language maps
 js/ui/*.js             text view, language bar/picker, mode menu, sheets, menus, icons, layout
-js/features/*.js       camera, conversation, handwriting (+ hwr.js engines), OCR, speech, permissions
+js/features/*.js       camera, conversation, handwriting (+ hwr.js engines), OCR, speech (+ stt.js), permissions
 ```
 
 ### Adding a provider
@@ -116,6 +137,11 @@ Settings renders the fields automatically; no UI changes needed.
 
 Pushing to `main` deploys the repository root via the shared SFTP workflow.
 The workflow bumps `CACHE_NAME` in `sw.js` so installed apps pick up new versions.
+
+`.htaccess` relaxes the host's site-wide security headers **for this folder only**: provider requests to any
+HTTPS URL (and `localhost` for local AI servers), scripts/workers from `cdn.jsdelivr.net` plus WebAssembly for
+OCR and the on-device models, and camera/microphone access. Without it, providers fail with "Can't reach" and
+camera/mic are disabled.
 
 ## Status
 

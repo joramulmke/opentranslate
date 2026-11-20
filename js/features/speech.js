@@ -1,3 +1,4 @@
+import { canRecord, record, transcribe } from './stt.js';
 // Text-to-speech (speechSynthesis) and dictation (SpeechRecognition, where the browser has it).
 
 let voices = [];
@@ -51,21 +52,23 @@ export const isSpeaking = () => !!currentUtterance;
 
 /* ---------------- dictation ---------------- */
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-// Brave exposes the API but blocks the online speech service behind it, so every attempt fails with "network".
+// Brave exposes SpeechRecognition but leaves out the (Google) speech service behind it: every attempt
+// fails with "network". The microphone itself works, so there we record and transcribe ourselves.
 const isBrave = () => !!navigator.brave;
-export const canDictate = () => !!Recognition && !isBrave();
+let browserServiceBroken = false;
+const useBrowserService = () => !!Recognition && !isBrave() && !browserServiceBroken;
+
+export const canDictate = () => useBrowserService() || canRecord();
 
 /** Why voice input isn't available / stopped, in words a user can act on. Empty string = say nothing. */
 export function dictationMessage(errOrCode) {
   const code = typeof errOrCode === 'string' ? errOrCode : errOrCode?.message;
-  const browserHint = 'Use Chrome, Edge or Safari for voice input, or type instead.';
   switch (code) {
-    case 'UNSUPPORTED': case 'NO_SR': return isBrave()
-      ? `Brave blocks the online speech service voice input needs. ${browserHint}`
-      : `This browser has no speech recognition. ${browserHint}`;
-    case 'network': return `Voice input needs the browser's online speech service, which isn't reachable here. ${browserHint}`;
-    case 'not-allowed': case 'service-not-allowed': return 'Microphone access is blocked. Allow it in the browser’s site settings.';
-    case 'audio-capture': return 'No microphone found.';
+    case 'UNSUPPORTED': case 'NO_SR': return 'This browser can’t record audio. Type instead.';
+    case 'NO_ENGINE': return 'Voice input needs the on-device speech model or a speech model in Advanced settings.';
+    case 'network': return "The browser's speech service isn't reachable. Try again.";
+    case 'not-allowed': case 'service-not-allowed': case 'NotAllowedError': return 'Microphone access is blocked. Allow it in the browser’s site settings.';
+    case 'audio-capture': case 'NotFoundError': return 'No microphone found.';
     case 'no-speech': return "Didn't catch that. Tap the mic and try again.";
     case 'language-not-supported': return 'Voice input does not support this language in this browser.';
     case 'aborted': return '';
@@ -75,15 +78,34 @@ export function dictationMessage(errOrCode) {
 
 /**
  * Start dictation. Returns a stop() function.
- * onText(text, isFinal) gets the running transcript.
+ * onText(text, isFinal) gets the running transcript; onState('listening'|'transcribing'|status text) reports progress.
  */
-export function dictate(lang, { onText, onEnd, onError } = {}) {
-  if (!Recognition) { onError?.(new Error('NO_SR')); return () => {}; }
+export function dictate(lang, cbs = {}) {
+  let stop = () => {};
+  if (useBrowserService()) {
+    stop = browserDictate(lang, {
+      ...cbs,
+      onError: (e) => {
+        // e.g. Chromium builds without Google's speech key: switch to recording, for this and later attempts
+        if (e.message === 'network' && canRecord()) { browserServiceBroken = true; stop = recordDictate(lang, cbs); return; }
+        cbs.onError?.(e);
+      },
+    });
+  } else if (canRecord()) {
+    stop = recordDictate(lang, cbs);
+  } else {
+    cbs.onError?.(new Error('UNSUPPORTED'));
+  }
+  return () => stop();
+}
+
+function browserDictate(lang, { onText, onEnd, onError, onState } = {}) {
   const r = new Recognition();
   r.lang = lang && lang !== 'auto' ? (lang === 'zh' ? 'zh-CN' : lang) : navigator.language || 'en-US';
   r.interimResults = true;
   r.continuous = false;
   let finalText = '';
+  let failed = false;
   r.onresult = (ev) => {
     let interim = '';
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
@@ -93,8 +115,29 @@ export function dictate(lang, { onText, onEnd, onError } = {}) {
     }
     onText?.((finalText + interim).trim(), !interim);
   };
-  r.onerror = (ev) => onError?.(new Error(ev.error || 'SR_ERROR'));
-  r.onend = () => onEnd?.(finalText.trim());
-  try { r.start(); } catch (e) { onError?.(e); }
+  r.onerror = (ev) => { failed = true; onError?.(new Error(ev.error || 'SR_ERROR')); };
+  r.onend = () => { if (!failed) onEnd?.(finalText.trim()); };
+  onState?.('listening');
+  try { r.start(); } catch (e) { failed = true; onError?.(e); }
   return () => { try { r.stop(); } catch { /* already stopped */ } };
+}
+
+function recordDictate(lang, { onText, onEnd, onError, onState, autoLang } = {}) {
+  let rec;
+  try { rec = record(); } catch (e) { onError?.(e); return () => {}; }
+  onState?.('listening');
+  (async () => {
+    try {
+      const { blob, heard } = await rec.done;
+      if (!heard) { onError?.(new Error('no-speech')); return; }
+      onState?.('transcribing');
+      const { text } = await transcribe(blob, autoLang ? undefined : lang, { onStatus: (t) => onState?.(t) });
+      if (!text) { onError?.(new Error('no-speech')); return; }
+      onText?.(text, true);
+      onEnd?.(text);
+    } catch (e) {
+      onError?.(new Error(e?.name === 'NotAllowedError' || e?.name === 'NotFoundError' ? e.name : (e?.message || 'SR_ERROR')));
+    }
+  })();
+  return () => rec.stop();
 }

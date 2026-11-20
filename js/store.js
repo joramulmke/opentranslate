@@ -18,7 +18,8 @@ const DEFAULT_SETTINGS = {
   theme: 'system',             // system | light | dark
   speakConversation: true,
   hwrEngine: 'auto',           // auto | vision | ondevice | tesseract
-  hwrModelOk: null,            // null = not asked yet, true/false = answer to the model download prompt
+  hwrModelOk: null,
+  sttModelOk: null,            // answer to the on-device speech model download prompt            // null = not asked yet, true/false = answer to the model download prompt
 };
 
 const listeners = new Set();

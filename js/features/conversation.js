@@ -1,251 +1,385 @@
-// Conversation: two people, one language each.
-// Phones: one shared log, a language pair on top and one mic; turns alternate after each message
-//         (optional face-to-face split screen in the options sheet).
-// 720px+: two side-by-side panes with a speak button per person.
-// Typing (composer) works everywhere, so the view is usable without speech recognition.
+// Conversation: setup sheet first, then the conversation screen (same flow at every width).
+//  Setup:  their language ⇄ your language, mode (Listening · Conversation · Text only),
+//          optional face-to-face split screen, Start.
+//  Screen: language pair on top, transcript (translation large, original small, newest last),
+//          mode pill + big mic + keyboard at the bottom.
+//  Modes:  listening    = only their language is captured, translated into yours, captions only
+//          conversation = take turns (alternates automatically), translations read aloud
+//          text         = take turns, nothing read aloud
 import { translate, describeError, langName } from '../state.js';
 import { settings } from '../store.js';
 import { isRtl } from '../languages.js';
 import { pickLanguage, escapeHtml } from '../ui/langpicker.js';
-import { setupDialog, openDialog } from '../ui/sheet.js';
-import { isPhone, onLayoutChange } from '../ui/layout.js';
+import { setupDialog, openDialog, closeDialog } from '../ui/sheet.js';
+import { icon } from '../ui/icons.js';
 import { speak, stopSpeaking, canDictate, dictate, dictationMessage } from './speech.js';
 import { ensureMicrophone } from './permissions.js';
 import { toast } from '../ui/snackbar.js';
 
 const $ = (id) => document.getElementById(id);
 const KEY = 'ot.conversation.v1';
+const MODES = {
+  listening: { label: 'Listening', icon: 'headphones' },
+  conversation: { label: 'Conversation', icon: 'voiceOver' },
+  text: { label: 'Text only', icon: 'notes' },
+};
+const other = (w) => (w === 'them' ? 'me' : 'them');
+const MAX_QUIET_RESTARTS = 2;   // Listening: how often silence may restart the mic before pausing
 
-export function initConversation() {
+export function initConversation({ leave = () => {} } = {}) {
   const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } })();
-  const people = {
-    a: { lang: saved.a || 'en', pane: $('convo-a'), btn: $('speak-a') },
-    b: { lang: saved.b || 'es', pane: $('convo-b'), btn: $('speak-b') },
+  const langs = {
+    them: saved.them || saved.b || 'es',   // older saves used a (person 1, you) / b (person 2)
+    me: saved.me || saved.a || 'en',
   };
-  const other = (p) => (p === 'a' ? 'b' : 'a');
+  let mode = MODES[saved.mode] ? saved.mode : 'conversation';
+  let split = !!saved.split;
+  let turn = 'me';
+  let utterances = [];
+  let stopDictation = null;
+  let userStopped = false;
+  let quiet = 0;
+  let typing = false;
+  let visible = false;
+
   const view = $('view-conversation');
-  const composer = $('convo-composer');
-  const input = $('convo-input');
-  const mic = $('convo-mic');
+  const sheetEl = $('convo-sheet');
   const shared = $('convo-shared');
+  const splitBox = $('convo-split');
+  const splitThem = $('split-them');
+  const splitMe = $('split-me');
   const status = $('convo-status');
-  const turnBtn = $('convo-turn');
+  const interim = $('convo-interim');
   const bigMic = $('convo-bigmic');
   const typeBtn = $('convo-type');
-  const optsDlg = setupDialog($('convo-dialog'));
-  const speakSwitch = $('convo-speak');
-  let split = !!saved.split;
-  let active = null;          // whose turn it is (phones: never null)
-  let typing = false;         // phones: composer open
-  let stopDictation = null;
-  let messages = [];
+  const modeBtn = $('convo-mode');
+  const turnBox = $('turn-toggle');
+  const composer = $('convo-composer');
+  const input = $('convo-input');
+  const setup = setupDialog($('convo-setup'), { onClose: onSetupClosed });
+  const modeRadios = [...setup.querySelectorAll('[role="radio"]')];
+  const splitSwitch = $('setup-split');
+  const clearBtn = $('setup-clear');
+  let setupIsEntry = false;   // opened on entering the view: closing it without Start leaves the view
 
   const persist = () => {
-    try { localStorage.setItem(KEY, JSON.stringify({ a: people.a.lang, b: people.b.lang, split })); } catch { /* */ }
+    try { localStorage.setItem(KEY, JSON.stringify({ them: langs.them, me: langs.me, mode, split })); } catch { /* */ }
   };
-  const phoneShared = () => isPhone() && !split;
+  const speakerNow = () => (mode === 'listening' ? 'them' : turn);
+  const splitOn = () => split && mode !== 'listening';
+  const dirOf = (code) => (isRtl(code) ? 'rtl' : 'auto');
 
-  function renderLangs() {
-    for (const k of ['a', 'b']) {
-      const p = people[k];
-      const name = langName(p.lang);
-      document.querySelectorAll(`[data-person-lang="${k}"]`).forEach((b) => {
-        b.querySelector('.pill-label').textContent = name;
-        b.setAttribute('aria-label', `Person ${k === 'a' ? 1 : 2} language: ${name}. Change`);
-      });
-      p.btn.querySelector('.speak-lang').textContent = name;
-      p.btn.setAttribute('aria-label', `${name} speaker (person ${k === 'a' ? 1 : 2}). Tap to speak or type`);
-      const log = p.pane.querySelector('.convo-log');
-      log.dataset.empty = k === 'a'
-        ? `Tap ${name} below, then type, paste or speak.`
-        : `Tap ${langName(people.b.lang)} to answer.`;
-      log.lang = p.lang;
-    }
-    shared.dataset.empty = `Take turns: ${langName(people.a.lang)} speaks first, then ${langName(people.b.lang)}.`;
-    renderTurn();
+  /* ---------------- setup sheet ---------------- */
+
+  function openSetup({ entry = false } = {}) {
+    setupIsEntry = entry;
+    // Conversation vs Text only mirrors the "read conversation translations aloud" setting
+    if (mode !== 'listening') mode = settings.get().speakConversation === false ? 'text' : 'conversation';
+    splitSwitch.checked = split;
+    clearBtn.hidden = !utterances.length;
+    renderSetup();
+    setup.returnValue = '';
+    openDialog(setup);
+    requestAnimationFrame(() => $('setup-start').focus());
   }
 
-  /** Phone bottom row: whose turn it is, status line, mic state. */
-  function renderTurn() {
-    const k = active || 'a';
-    const name = langName(people[k].lang);
-    $('convo-turn-label').textContent = name;
-    turnBtn.setAttribute('aria-label', `Speaking now: ${name}. Switch to ${langName(people[other(k)].lang)}`);
-    bigMic.setAttribute('aria-label', stopDictation ? 'Stop listening' : `Speak ${name}`);
+  function renderSetup() {
+    for (const w of ['them', 'me']) {
+      const b = setup.querySelector(`[data-setup-lang="${w}"]`);
+      b.querySelector('.pill-label').textContent = langName(langs[w]);
+      b.setAttribute('aria-label', `${w === 'them' ? 'Their' : 'Your'} language: ${langName(langs[w])}. Change`);
+    }
+    modeRadios.forEach((r) => {
+      const on = r.dataset.mode === mode;
+      r.setAttribute('aria-checked', String(on));
+      r.tabIndex = on ? 0 : -1;
+    });
+  }
+
+  function chooseMode(m) {
+    mode = m;
+    if (m !== 'listening') settings.set({ speakConversation: m === 'conversation' });
+    persist();
+    renderSetup();
+    renderScreen();
+  }
+
+  function onSetupClosed() {
+    const started = setup.returnValue === 'start';
+    const entry = setupIsEntry;
+    setupIsEntry = false;
+    if (!visible) return;
+    if (started) {
+      persist();
+      renderScreen();
+      bigMic.focus();
+    } else if (entry) {
+      leave();          // like the reference: closing the first sheet returns to where you came from
+    } else {
+      $('convo-options').focus();
+    }
+  }
+
+  setup.querySelectorAll('[data-setup-lang]').forEach((b) => b.addEventListener('click', () => changeLang(b.dataset.setupLang, b)));
+  $('setup-swap').addEventListener('click', swapLangs);
+  $('setup-start').addEventListener('click', () => closeDialog(setup, 'start'));
+  splitSwitch.addEventListener('change', () => { split = splitSwitch.checked; persist(); renderScreen(); });
+  clearBtn.addEventListener('click', () => {
+    utterances = []; stopSpeaking(); renderTranscript(); clearBtn.hidden = true;
+    toast('Transcript cleared');
+    $('setup-start').focus();
+  });
+  const modesBox = $('setup-modes');
+  modesBox.addEventListener('click', (e) => { const r = e.target.closest('[role="radio"]'); if (r) chooseMode(r.dataset.mode); });
+  modesBox.addEventListener('keydown', (e) => {
+    const i = modeRadios.findIndex((r) => r.dataset.mode === mode);
+    const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const next = modeRadios[(i + step + modeRadios.length) % modeRadios.length];
+    chooseMode(next.dataset.mode);
+    next.focus();
+  });
+
+  async function changeLang(who, returnTo) {
+    const code = await pickLanguage({ side: 'target', selected: langs[who], heading: who === 'them' ? 'Their language' : 'Your language' });
+    if (code) {
+      if (code === langs[other(who)]) langs[other(who)] = langs[who];   // picking the other side's language swaps
+      langs[who] = code;
+      persist();
+      renderSetup();
+      renderScreen();
+    }
+    returnTo?.focus();
+  }
+
+  function swapLangs() {
+    [langs.them, langs.me] = [langs.me, langs.them];
+    persist();
+    renderSetup();
+    renderScreen();
+  }
+
+  /* ---------------- conversation screen ---------------- */
+
+  function renderScreen() {
+    for (const w of ['them', 'me']) {
+      const b = view.querySelector(`[data-convo-lang="${w}"]`);
+      b.querySelector('.pill-label').textContent = langName(langs[w]);
+      b.setAttribute('aria-label', `${w === 'them' ? 'Their' : 'Your'} language: ${langName(langs[w])}. Change`);
+      b.lang = 'en';
+      const t = turnBox.querySelector(`[data-turn="${w}"]`);
+      t.textContent = langName(langs[w]);
+      t.setAttribute('aria-pressed', String(turn === w));
+      t.setAttribute('aria-label', `${w === 'them' ? 'Their' : 'Your'} turn: ${langName(langs[w])}`);
+    }
+    const m = MODES[mode];
+    modeBtn.innerHTML = `${icon(m.icon)}<span id="convo-mode-label">${m.label}</span>`;
+    modeBtn.setAttribute('aria-label', `Mode: ${m.label}. Change setup`);
+    turnBox.hidden = mode === 'listening';
+    view.classList.toggle('is-split', splitOn());
+    shared.hidden = splitOn();
+    splitBox.hidden = !splitOn();
+    renderMic();
+    renderComposer();
+  }
+
+  function idleStatus() {
+    const name = langName(langs[speakerNow()]);
+    if (!canDictate()) return `Voice input isn't available here. Tap the keyboard to type in ${name}.`;
+    if (mode === 'listening') return `Tap mic to start listening to ${name}`;
+    return `Tap mic to start · ${name}`;
+  }
+
+  function renderMic() {
+    const name = langName(langs[speakerNow()]);
     bigMic.setAttribute('aria-pressed', String(!!stopDictation));
+    bigMic.setAttribute('aria-label', stopDictation ? 'Stop listening' : (mode === 'listening' ? `Listen to ${name}` : `Speak ${name}`));
+    if (!stopDictation) status.textContent = idleStatus();
+  }
+
+  function renderComposer({ focus = false } = {}) {
+    composer.hidden = !typing;
     typeBtn.setAttribute('aria-pressed', String(typing));
-    if (!stopDictation) status.textContent = canDictate() ? `Tap mic to start (${name})` : `Tap the keyboard to type in ${name}`;
-  }
-
-  function syncComposer({ focus = true } = {}) {
-    composer.hidden = phoneShared() ? !typing : !active;
-    if (composer.hidden || !active) return;
-    const name = langName(people[active].lang);
+    typeBtn.setAttribute('aria-label', typing ? 'Close keyboard' : 'Type instead');
+    const code = langs[speakerNow()];
+    const name = langName(code);
     input.placeholder = `Type in ${name}…`;
-    input.lang = people[active].lang;
-    input.dir = isRtl(people[active].lang) ? 'rtl' : 'auto';
+    input.lang = code;
+    input.dir = dirOf(code);
     $('convo-input-label').textContent = `Message in ${name}`;
-    if (focus) input.focus();
+    if (focus && typing) input.focus();
   }
 
-  function setActive(k, { toggle = true, focus = true } = {}) {
-    stopDictation?.();
-    active = toggle && active === k ? null : k;
-    if (phoneShared() && !active) active = k;           // phones always have a current speaker
-    for (const key of ['a', 'b']) people[key].btn.setAttribute('aria-pressed', String(active === key && !phoneShared()));
-    syncComposer({ focus });
-    renderTurn();
-  }
+  /* ---------------- transcript ---------------- */
 
-  function render() {
-    for (const k of ['a', 'b']) {
-      const log = people[k].pane.querySelector('.convo-log');
-      log.innerHTML = messages.map((m) => {
-        const mine = m.from === k;
-        const big = mine ? m.text : (m.translated ?? '…');
-        const small = mine ? (m.translated ?? '') : m.text;
-        const bigLang = mine ? people[m.from].lang : m.toLang;
-        const smallLang = mine ? m.toLang : people[m.from].lang;
-        return `<li class="msg ${mine ? 'mine' : 'theirs'} ${m.translated == null && !m.error ? 'pending' : ''}">
-          <span class="big" lang="${bigLang}" dir="${isRtl(bigLang) ? 'rtl' : 'auto'}">${escapeHtml(big)}</span>
-          ${small ? `<span class="small" lang="${smallLang}">${escapeHtml(small)}</span>` : ''}
-          ${m.error && !mine ? `<span class="err">${escapeHtml(m.error)}</span>` : ''}
-        </li>`;
-      }).join('');
-      log.scrollTop = log.scrollHeight;
+  function liFor(u, list) {
+    // list: 'shared' (translation large, original small), or a split half showing one language
+    const li = document.createElement('li');
+    li.className = `utt from-${u.from}`;
+    if (list === 'shared') {
+      li.innerHTML = `<span class="visually-hidden">${escapeHtml(langName(u.fromLang))} to ${escapeHtml(langName(u.toLang))}:</span>
+        <p class="utt-trans" lang="${u.toLang}" dir="${dirOf(u.toLang)}"></p>
+        <p class="utt-orig" lang="${u.fromLang}" dir="${dirOf(u.fromLang)}">${escapeHtml(u.text)}</p>
+        <p class="utt-err" hidden></p>`;
+    } else {
+      // split halves: each person reads their own language; own words stay small
+      const own = u.from === list;
+      const code = own ? u.fromLang : u.toLang;
+      li.classList.add(own ? 'own' : 'heard');
+      li.innerHTML = `<p class="utt-trans" lang="${code}" dir="${dirOf(code)}"></p><p class="utt-err" hidden></p>`;
     }
-    shared.innerHTML = messages.map((m) => {
-      const fromLang = m.fromLang;
-      return `<li class="cmsg from-${m.from} ${m.translated == null && !m.error ? 'pending' : ''}">
-        <span class="orig" lang="${fromLang}" dir="${isRtl(fromLang) ? 'rtl' : 'auto'}">${escapeHtml(m.text)}</span>
-        <span class="trans" lang="${m.toLang}" dir="${isRtl(m.toLang) ? 'rtl' : 'auto'}">${escapeHtml(m.translated ?? '…')}</span>
-        ${m.error ? `<span class="err">${escapeHtml(m.error)}</span>` : ''}
-      </li>`;
-    }).join('');
-    shared.parentElement.scrollTop = shared.parentElement.scrollHeight;
+    return li;
   }
 
-  async function send(text) {
-    if (!active || !text.trim()) return;
-    const from = active;
+  function fillLi(li, u, list) {
+    const pending = u.translated == null && !u.error;
+    li.classList.toggle('pending', pending);
+    li.setAttribute('aria-busy', String(pending));
+    const own = list !== 'shared' && u.from === list;
+    li.querySelector('.utt-trans').textContent = own ? u.text : (u.translated ?? (u.error ? '' : '…'));
+    const err = li.querySelector('.utt-err');
+    err.hidden = !u.error || own;
+    err.textContent = u.error || '';
+  }
+
+  function renderUtterance(u) {
+    if (!u.els) {
+      u.els = { shared: liFor(u, 'shared'), them: liFor(u, 'them'), me: liFor(u, 'me') };
+      shared.append(u.els.shared); splitThem.append(u.els.them); splitMe.append(u.els.me);
+    }
+    fillLi(u.els.shared, u, 'shared'); fillLi(u.els.them, u, 'them'); fillLi(u.els.me, u, 'me');
+    scrollDown();
+  }
+
+  function renderTranscript() {
+    shared.replaceChildren(); splitThem.replaceChildren(); splitMe.replaceChildren();
+    utterances.forEach((u) => { u.els = null; renderUtterance(u); });
+    scrollDown();
+  }
+
+  function scrollDown() {
+    requestAnimationFrame(() => {
+      sheetEl.scrollTop = sheetEl.scrollHeight;
+      splitThem.scrollTop = splitThem.scrollHeight;
+      splitMe.scrollTop = splitMe.scrollHeight;
+    });
+  }
+
+  async function addUtterance(from, text) {
+    text = text.trim();
+    if (!text) return;
     const to = other(from);
-    const m = { from, fromLang: people[from].lang, text: text.trim(), toLang: people[to].lang, translated: null, error: null };
-    messages.push(m);
-    input.value = '';
-    autosize();
-    render();
-    if (phoneShared()) status.textContent = 'Translating…';
+    const u = { from, fromLang: langs[from], toLang: langs[to], text, translated: null, error: null, els: null };
+    utterances.push(u);
+    renderUtterance(u);
+    if (mode !== 'listening') { turn = to; renderScreen(); }   // alternate turns automatically
     try {
-      const res = await translate(m.text, people[from].lang, people[to].lang);
-      m.translated = res.text;
-      render();
-      if (settings.get().speakConversation) speak(res.text, people[to].lang).catch(() => {});
+      const res = await translate(u.text, u.fromLang, u.toLang);
+      u.translated = res.text;
+      renderUtterance(u);
+      if (mode === 'conversation') speak(res.text, u.toLang).catch(() => {});
     } catch (e) {
       const { title, message } = describeError(e);
-      m.error = `${title}. ${message}`;
-      render();
+      u.error = `${title}. ${message}`;
+      renderUtterance(u);
     }
-    // alternate turns like a real conversation
-    setActive(to, { toggle: false, focus: !phoneShared() || typing });
   }
 
-  function autosize() {
-    input.style.height = 'auto';
-    input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-  }
+  /* ---------------- voice ---------------- */
 
-  async function listen(btn) {
-    if (stopDictation) { stopDictation(); return; }
+  async function toggleMic() {
+    if (stopDictation) { userStopped = true; stopDictation(); return; }
     if (!canDictate()) {
       toast(dictationMessage('UNSUPPORTED'), { duration: 6000 });
-      if (phoneShared()) { typing = true; syncComposer(); renderTurn(); }
+      typing = true; renderComposer({ focus: true });
       return;
     }
-    if (!active) return;
     if (!(await ensureMicrophone())) return;
-    const lang = people[active].lang;
-    btn.setAttribute('aria-pressed', 'true');
-    const done = () => { stopDictation = null; btn.setAttribute('aria-pressed', 'false'); renderTurn(); };
-    stopDictation = dictate(lang, {
-      onText: (t) => {
-        if (phoneShared() && !typing) status.textContent = t || `Listening (${langName(lang)})…`;
-        else { input.value = t; autosize(); }
+    stopSpeaking();
+    userStopped = false;
+    quiet = 0;
+    listenOnce();
+  }
+
+  function listenOnce() {
+    const who = speakerNow();
+    const code = langs[who];
+    const name = langName(code);
+    const finish = () => { stopDictation = null; interim.textContent = ''; renderMic(); };
+    stopDictation = dictate(code, {
+      onState: (st) => {
+        status.textContent = st === 'listening' ? `Listening · ${name}…` : st === 'transcribing' ? 'Transcribing…' : st;
       },
-      onEnd: (finalText) => { done(); if (finalText) send(finalText); },
-      onError: (e) => { done(); const m = dictationMessage(e); if (m) toast(m, { duration: 6000 }); },
+      onText: (t) => { interim.textContent = t; interim.lang = code; interim.dir = dirOf(code); },
+      onEnd: (finalText) => {
+        finish();
+        if (finalText) { quiet = 0; addUtterance(who, finalText); }
+        // Listening keeps captioning until the user stops it or leaves the screen
+        if (mode === 'listening' && !userStopped && visible) listenOnce();
+      },
+      onError: (e) => {
+        finish();
+        const silent = e?.message === 'no-speech';
+        if (silent && mode === 'listening' && !userStopped && visible && quiet++ < MAX_QUIET_RESTARTS) { listenOnce(); return; }
+        const m = dictationMessage(e);
+        if (m) toast(m, { duration: 6000 });
+        if (silent && mode === 'listening') status.textContent = 'Paused. Tap mic to keep listening.';
+      },
     });
-    if (phoneShared()) { renderTurn(); status.textContent = `Listening (${langName(lang)})…`; }
+    renderMic();
   }
 
-  /* ---- wide layout + split screen ---- */
-  people.a.btn.addEventListener('click', () => setActive('a'));
-  people.b.btn.addEventListener('click', () => setActive('b'));
-  mic.addEventListener('click', () => listen(mic));
+  /* ---------------- wiring ---------------- */
 
-  /* ---- phone shared layout ---- */
-  turnBtn.addEventListener('click', () => setActive(other(active || 'a'), { toggle: false, focus: typing }));
-  bigMic.addEventListener('click', () => listen(bigMic));
-  typeBtn.addEventListener('click', () => { typing = !typing; syncComposer(); renderTurn(); if (!typing) typeBtn.focus(); });
-  $('convo-swap').addEventListener('click', () => {
-    [people.a.lang, people.b.lang] = [people.b.lang, people.a.lang];
-    persist(); renderLangs(); syncComposer({ focus: false });
+  bigMic.addEventListener('click', toggleMic);
+  typeBtn.addEventListener('click', () => {
+    typing = !typing;
+    renderComposer({ focus: true });
+    if (!typing) typeBtn.focus();
   });
-  $('convo-options').addEventListener('click', () => {
-    speakSwitch.checked = !!settings.get().speakConversation;
-    splitSwitch.checked = split;
-    openDialog(optsDlg);
+  modeBtn.addEventListener('click', () => openSetup());
+  $('convo-options').addEventListener('click', () => openSetup());
+  $('convo-swap').addEventListener('click', swapLangs);
+  view.querySelectorAll('[data-convo-lang]').forEach((b) => b.addEventListener('click', () => changeLang(b.dataset.convoLang, b)));
+  turnBox.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-turn]');
+    if (!b || mode === 'listening') return;
+    stopDictation?.();
+    turn = b.dataset.turn;
+    renderScreen();
   });
-  speakSwitch.addEventListener('change', () => settings.set({ speakConversation: speakSwitch.checked }));
-  $('convo-clear-all').addEventListener('click', () => { clearAll(); toast('Conversation cleared'); });
-
-  // face-to-face split screen (keeps the earlier phone layout available)
-  const splitRow = document.createElement('label');
-  splitRow.className = 'switch-row';
-  splitRow.innerHTML = '<span>Face-to-face split screen</span><input type="checkbox" role="switch">';
-  speakSwitch.closest('.switch-row').after(splitRow);
-  const splitSwitch = splitRow.querySelector('input');
-  splitSwitch.addEventListener('change', () => { split = splitSwitch.checked; persist(); applyLayout(); });
-
-  function applyLayout() {
-    view.classList.toggle('split', split);
-    if (phoneShared() && !active) active = 'a';
-    for (const key of ['a', 'b']) people[key].btn.setAttribute('aria-pressed', String(active === key && !phoneShared()));
-    syncComposer({ focus: false });
-    renderTurn();
-  }
-  onLayoutChange(applyLayout);
-
-  function clearAll() { messages = []; stopSpeaking(); render(); }
-
-  document.querySelectorAll('[data-person-lang]').forEach((b) => b.addEventListener('click', async () => {
-    const k = b.dataset.personLang;
-    const code = await pickLanguage({ side: 'target', selected: people[k].lang, heading: `Person ${k === 'a' ? 1 : 2} speaks` });
-    if (!code) return;
-    people[k].lang = code;
-    persist();
-    renderLangs();
-    if (active === k) syncComposer({ focus: false }); // refresh placeholder
-  }));
-  composer.addEventListener('submit', (e) => { e.preventDefault(); send(input.value); });
+  composer.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const t = input.value;
+    input.value = '';
+    autosize();
+    addUtterance(speakerNow(), t).then(() => renderComposer());
+    renderComposer({ focus: true });
+  });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input.value); }
-    if (e.key === 'Escape') {
-      if (phoneShared()) { typing = false; syncComposer(); renderTurn(); typeBtn.focus(); } else setActive(active);
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); composer.requestSubmit(); }
+    if (e.key === 'Escape') { e.preventDefault(); typing = false; renderComposer(); typeBtn.focus(); }
   });
+  const autosize = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; };
   input.addEventListener('input', autosize);
-  $('convo-clear').addEventListener('click', clearAll);
-  $('convo-rotate').addEventListener('click', (e) => {
-    const on = people.b.pane.classList.toggle('flipped');
-    e.currentTarget.setAttribute('aria-pressed', String(on));
-  });
 
-  renderLangs();
-  render();
-  applyLayout();
+  renderScreen();
 
   return {
-    onShow() { renderLangs(); applyLayout(); },
-    onHide() { stopDictation?.(); stopSpeaking(); },
+    onShow({ viaArrowKeys = false } = {}) {
+      visible = true;
+      renderScreen();
+      // every deliberate entry starts with the setup sheet; just arrowing across the mode tabs doesn't
+      // pop it up (the mode pill / options button opens it from the conversation screen)
+      if (!viaArrowKeys) openSetup({ entry: true });
+    },
+    onHide() {
+      visible = false;
+      userStopped = true;
+      stopDictation?.();
+      stopSpeaking();
+      if (setup.open) setup.close();
+    },
   };
 }

@@ -1,10 +1,11 @@
 // Service worker: precache the app shell; never cache API responses or CDN OCR assets.
-const CACHE_NAME = 'ot-shell-v4';
+const CACHE_NAME = 'ot-shell-v5';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './manifest.webmanifest',
+  './change-me.md',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -18,6 +19,8 @@ const SHELL = [
   './js/ui/layout.js',
   './js/ui/menu.js',
   './js/ui/modemenu.js',
+  './js/ui/setupbadge.js',
+  './js/ui/sitefooter.js',
   './js/ui/langbar.js',
   './js/ui/langpicker.js',
   './js/ui/sheet.js',
@@ -29,6 +32,7 @@ const SHELL = [
   './js/features/ocr.js',
   './js/features/permissions.js',
   './js/features/hwr.js',
+  './js/features/stt.js',
   './js/features/camera.js',
   './js/features/conversation.js',
   './js/features/handwriting.js',
