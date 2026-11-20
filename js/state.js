@@ -62,6 +62,7 @@ export function setMode(mode) {
   mode = mode === 'advanced' ? 'advanced' : 'classic';
   settings.set({ mode });
   set({ mode, ...active(mode) });
+  loadLanguages();
 }
 
 export const advancedReady = () => !!state.advanced;
@@ -69,8 +70,8 @@ export const advancedReady = () => !!state.advanced;
 let langReq = 0;
 export async function loadLanguages() {
   const id = ++langReq;
-  // The language list always comes from the Classic provider; LLMs can handle any of them.
-  const src = state.classic;
+  // Classic: the server's own list. Advanced: AI models handle any language, so offer the full list.
+  const src = state.mode === 'advanced' && state.advanced ? state.advanced : state.classic;
   if (!src) { set({ languages: STATIC_LANGUAGES, languagesSource: 'static' }); return; }
   try {
     const list = await src.languages();

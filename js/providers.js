@@ -315,7 +315,7 @@ export class LibreTranslateProvider {
     if (source && source !== 'auto' && this._langs) {
       const src = this._langs.find((l) => l.code === source);
       if (src && Array.isArray(src.targets) && !src.targets.includes(target)) {
-        const tName = this._langs.find((l) => l.code === target)?.name || target;
+        const tName = this._langs.find((l) => l.code === target)?.name || STATIC_LANGUAGES.find((l) => l.code === target)?.name || target;
         throw new ProviderError('UNSUPPORTED_PAIR', `This server can't translate ${src.name} to ${tName}.`);
       }
     }
