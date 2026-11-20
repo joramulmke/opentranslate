@@ -5,6 +5,8 @@
 #                                      APIs, local Ollama/LM Studio); handwriting model files come from huggingface.co
 #   script/worker-src cdn.jsdelivr.net + wasm-unsafe-eval - Tesseract.js (OCR), transformers.js (handwriting/speech models),
 #                                      franc (language detection) and the on-device engine (vendor/bergamot, WebAssembly);
+#                                      WebLLM (on-device AI; its model files come from huggingface.co, its engine
+#                                      WebAssembly from raw.githubusercontent.com via connect-src https:)
 #                                      offline language models are downloaded from Mozilla's CDN (connect-src https:)
 #   img/media blob: mediastream:     - camera preview and captured photos
 #   Permissions-Policy camera/microphone=(self) - camera translation, voice input

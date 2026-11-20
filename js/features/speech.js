@@ -1,4 +1,5 @@
 import { canRecord, record, transcribe } from './stt.js';
+import { toast } from '../ui/snackbar.js';
 // Text-to-speech (speechSynthesis) and dictation (SpeechRecognition, where the browser has it).
 
 let voices = [];
@@ -20,9 +21,22 @@ function voiceFor(lang) {
 
 let currentUtterance = null;
 
+// Pronunciation practice: playing the same text again shortly after it finished plays it slower;
+// the next replay is normal speed again.
+export const NORMAL_RATE = 0.95;
+export const SLOW_RATE = 0.6;
+const REPLAY_WINDOW = 10000;
+let lastPlay = null;   // { key, end, slow } of the last utterance that played to the end
+
+/** Will speak(text, lang) right now play slowly? (for button labels) */
+export function nextIsSlow(text, lang) {
+  return !!lastPlay && lastPlay.key === `${lang}\u0000${text}` && Date.now() - lastPlay.end < REPLAY_WINDOW && !lastPlay.slow;
+}
+
 /**
  * Speak text. Resolves when finished or stopped. Rejects with Error('NO_VOICE') if
  * the device has no voice for that language (the UI shows a message).
+ * onStart(slow) says whether this is the slow replay.
  */
 export function speak(text, lang, { onStart, onEnd } = {}) {
   return new Promise((resolve, reject) => {
@@ -34,9 +48,16 @@ export function speak(text, lang, { onStart, onEnd } = {}) {
     // Some engines have voices that load late; if we have a list and nothing matches, bail.
     if (!v && voices.length) return reject(new Error('NO_VOICE'));
     if (v) u.voice = v;
-    u.rate = 0.95;
-    u.onstart = () => onStart?.();
-    const finish = () => { if (currentUtterance === u) currentUtterance = null; onEnd?.(); resolve(); };
+    const slow = nextIsSlow(text, lang);
+    u.rate = slow ? SLOW_RATE : NORMAL_RATE;
+    u.onstart = () => { if (slow) toast('Playing slower. Play again for normal speed.'); onStart?.(slow); };
+    const finish = (e) => {
+      // only a play that reached the end counts (not one stopped by the person)
+      const completed = currentUtterance === u && e?.type === 'end';
+      if (currentUtterance === u) currentUtterance = null;
+      lastPlay = completed ? { key: `${lang}\u0000${text}`, end: Date.now(), slow } : null;
+      onEnd?.(); resolve();
+    };
     u.onend = finish;
     u.onerror = finish;
     currentUtterance = u;

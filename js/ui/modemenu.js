@@ -10,7 +10,7 @@ const $ = (id) => document.getElementById(id);
 
 const GROUPS = {
   classic: { title: 'Classic', hint: 'Fast. Your LibreTranslate server or languages downloaded to this device.' },
-  advanced: { title: 'Advanced', hint: 'AI model: more fluent. Your text goes to that service.' },
+  advanced: { title: 'Advanced', hint: 'AI model: more fluent. Your text goes to that service, unless it runs on this device.' },
 };
 
 export function initModeMenu({ openSettings }) {

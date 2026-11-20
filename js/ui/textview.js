@@ -10,7 +10,7 @@ import { pickLanguage } from './langpicker.js';
 import { icon } from './icons.js';
 import { toast } from './snackbar.js';
 import { isPhone } from './layout.js';
-import { speak, stopSpeaking, canDictate, dictate, dictationMessage } from '../features/speech.js';
+import { speak, stopSpeaking, nextIsSlow, canDictate, dictate, dictationMessage } from '../features/speech.js';
 import { ensureMicrophone } from '../features/permissions.js';
 import { downloadPacks, formatMB } from './offlineui.js';
 
@@ -288,13 +288,13 @@ function showError(err) {
     el.errActions.append(b);
   };
   if (code === 'NEEDS_DOWNLOAD') {
-    const { langs = [], size } = err.detail || {};
+    const { langs = [], size, download } = err.detail || {};
     action(`Download${size ? ` (${formatMB(size)})` : ''}`, (e) => {
       const btn = e.currentTarget;
       btn.disabled = true;
-      downloadPacks(langs, {
-        onProgress: (p) => { btn.textContent = `Downloading… ${Math.round(p * 100)}%`; },
-      }).then(() => runTranslate({ commit: true }), (er) => { btn.disabled = false; btn.textContent = 'Try again'; toast(er.message); });
+      const onProgress = (p) => { btn.textContent = `Downloading… ${Math.round(p * 100)}%`; };
+      // offline language packs, or another download the error brings along (the on-device AI model)
+      (download ? download(onProgress) : downloadPacks(langs, { onProgress })).then(() => runTranslate({ commit: true }), (er) => { btn.disabled = false; btn.textContent = 'Try again'; toast(er.message); });
     });
   }
   if (code === 'NO_PROVIDER' || code === 'AUTH' || code === 'BROWSER_BLOCKED') action('Open settings', openSettings);
@@ -325,6 +325,11 @@ function clearOutput() {
 
 function setOutputActions(on) {
   el.speakBtn.disabled = !on;
+  if (!el.speakBtn.dataset.speaking) {
+    const l = on && result && nextIsSlow(result.text, result.target) ? 'Listen again, slower' : 'Listen to translation';
+    el.speakBtn.setAttribute('aria-label', l);
+    el.speakBtn.title = l;
+  }
   el.copyBtn.disabled = !on;
   el.starBtn.disabled = !on;
 }
@@ -412,16 +417,24 @@ function speakSource() {
   });
 }
 
+let speakLabelTimer = null;
 function toggleSpeak() {
   if (!result) return;
   if (el.speakBtn.dataset.speaking) { stopSpeaking(); return; }
   const btn = el.speakBtn;
-  const setIcon = (on) => {
+  const { text, target } = result;
+  const setIcon = (on, slow) => {
     btn.innerHTML = icon(on ? 'stop' : 'volume');
-    btn.setAttribute('aria-label', on ? 'Stop listening' : 'Listen to translation');
+    // right after a play, the next one is slower (pronunciation practice): say so on the button
+    const again = !on && nextIsSlow(text, target);
+    const label = on ? (slow ? 'Stop listening (playing slower)' : 'Stop listening') : again ? 'Listen again, slower' : 'Listen to translation';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
     if (on) btn.dataset.speaking = '1'; else delete btn.dataset.speaking;
+    clearTimeout(speakLabelTimer);
+    if (again) speakLabelTimer = setTimeout(() => { if (!btn.dataset.speaking) setIcon(false); }, 10500);
   };
-  speak(result.text, result.target, { onStart: () => setIcon(true), onEnd: () => setIcon(false) })
+  speak(text, target, { onStart: (slow) => setIcon(true, slow), onEnd: () => setIcon(false) })
     .catch((e) => {
       setIcon(false);
       toast(e.message === 'NO_TTS' ? 'Read aloud is not supported in this browser' : `No ${langName(result.target)} voice on this device`);

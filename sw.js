@@ -37,6 +37,8 @@ const SHELL = [
   './js/features/conversation.js',
   './js/features/handwriting.js',
   './js/features/offline.js',
+  './js/features/localllm.js',
+  './js/features/llm-worker.js',
   './js/ui/offlineui.js',
   './vendor/bergamot/translator-worker.js',
   './vendor/bergamot/bergamot-translator-worker.js',

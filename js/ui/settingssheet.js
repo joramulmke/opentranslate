@@ -13,6 +13,7 @@ import { escapeHtml } from './langpicker.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
 import { ENGINES } from '../features/hwr.js';
+import { llmKey, llmTitle, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, LLM_MODELS } from '../features/localllm.js';
 
 const $ = (id) => document.getElementById(id);
 let dlg, form;
@@ -25,6 +26,13 @@ export function initSettingsSheet({ onThemeChange }) {
 
   $('btn-add-lt').addEventListener('click', () => openEditor({ type: 'libretranslate' }));
   $('btn-add-ai').addEventListener('click', () => openEditor({ type: 'openai' }));
+  $('btn-add-llm').addEventListener('click', () => openEditor({ type: 'webllm' }));
+  onLlmChange((what) => {
+    if (!dlg?.open) return;
+    if (what !== 'progress') { renderLists(); return; }
+    // progress: only the row's subtitle changes (re-rendering would move focus)
+    for (const e of settings.get().entries) if (e.type === 'webllm') { const sub = $(`svc-sub-${e.id}`); if (sub) sub.textContent = subtitle(e); }
+  });
   $('btn-svc-cancel').addEventListener('click', () => closeEditor());
   $('svc-fields').addEventListener('input', (e) => e.target.removeAttribute('aria-invalid'));
   $('btn-offline-done').addEventListener('click', () => closeManager());
@@ -56,6 +64,7 @@ export function initSettingsSheet({ onThemeChange }) {
       const act = btn.dataset.act;
       if (act === 'edit') openEditor({ id });
       if (act === 'manage') openManager();
+      if (act === 'llm-dl') llmDownloadToggle(entries.get(id));
       if (act === 'up' || act === 'down') {
         entries.move(id, act === 'up' ? -1 : 1, kindOf);
         initProvider(); renderLists();
@@ -123,6 +132,11 @@ export function openSettings(focus) {
   $('set-speak').checked = s.speakConversation;
   $('set-hwr').value = s.hwrEngine || 'auto';
   form.querySelectorAll('input[name="theme"]').forEach((r) => { r.checked = r.value === s.theme; });
+  checkGpu().then((g) => {
+    $('btn-add-llm').disabled = !g.ok;
+    $('llm-unavailable').hidden = g.ok;
+    $('llm-unavailable').textContent = g.ok ? '' : `On-device AI: ${g.reason}`;
+  });
   openDialog(dlg);
   if (focus === 'offline') openManager();
   if (focus === 'advanced') {
@@ -141,6 +155,13 @@ function subtitle(e) {
     const n = installedLanguages().length;
     return n ? `${n} language${n > 1 ? 's' : ''} + English · ${formatMB(usedBytes())} · works without internet` : 'No languages downloaded yet';
   }
+  if (e.type === 'webllm') {
+    const st = llmState(c.model);
+    const what = llmTitle(c.model);
+    if (st === 'downloading') return `${what} · Downloading… ${Math.round(llmProgress(c.model) * 100)}%`;
+    if (st === 'ready') return `${what} · Downloaded · runs on this device`;
+    return `${what} · Not downloaded (${formatMB(LLM_MODELS[llmKey(c.model)].sizeMB * 1e6)})`;
+  }
   let host = c.baseUrl || '';
   try { host = new URL(c.baseUrl).host; } catch { /* keep raw */ }
   if (e.type === 'openai') return [host, c.model].filter(Boolean).join(' · ');
@@ -151,6 +172,10 @@ const blocked = (e) => e.type === 'offline' && offlineUnusable();
 
 function renderLists() {
   const s = settings.get();
+  // keep focus on the same control (or its row) when the list is rebuilt
+  const had = document.activeElement?.closest?.('.svc-row');
+  const hadId = had?.dataset.id;
+  const hadAct = document.activeElement?.dataset?.act;
   const lead = { classic: null, advanced: null };
   for (const kind of ['classic', 'advanced']) {
     const list = s.entries.filter((e) => kindOf(e) === kind);
@@ -170,6 +195,7 @@ function renderLists() {
         <span class="svc-actions">
           ${isMock ? '' : `<button class="icon-btn sm" type="button" data-act="up" aria-label="Move ${name} up" ${i <= 0 ? 'disabled' : ''}>${icon('up')}</button>
           <button class="icon-btn sm" type="button" data-act="down" aria-label="Move ${name} down" ${i >= movable.length - 1 ? 'disabled' : ''}>${icon('down')}</button>`}
+          ${e.type === 'webllm' && llmState(e.config?.model) !== 'ready' ? llmButton(e) : ''}
           ${e.type === 'offline'
     ? (blocked(e)
       ? `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Why offline languages aren't available" aria-describedby="svc-sub-${e.id}">${icon('info')}</button>`
@@ -179,6 +205,33 @@ function renderLists() {
         </span></li>`;
     }).join('') : `<li class="svc-empty">${kind === 'advanced' ? 'No AI model yet. Add one to use Advanced translation.' : 'Nothing yet.'}</li>`;
   }
+  if (hadId && !document.activeElement?.closest?.('.svc-row')) {
+    const row = document.querySelector(`.svc-row[data-id="${hadId}"]`);
+    (row?.querySelector(`[data-act="${hadAct}"]:not(:disabled)`) || row?.querySelector('input:not(:disabled)'))?.focus();
+  }
+}
+
+function llmButton(e) {
+  const name = escapeHtml(e.label);
+  const size = formatMB(LLM_MODELS[llmKey(e.config?.model)].sizeMB * 1e6);
+  return llmState(e.config?.model) === 'downloading'
+    ? `<button class="icon-btn sm" type="button" data-act="llm-dl" aria-label="Cancel download of ${name}">${icon('close')}</button>`
+    : `<button class="icon-btn sm" type="button" data-act="llm-dl" aria-label="Download ${name} (${size})">${icon('download')}</button>`;
+}
+
+function startLlmDownload(e) {
+  const key = llmKey(e.config?.model);
+  toast(`Downloading ${e.label} (${formatMB(LLM_MODELS[key].sizeMB * 1e6)}). You can keep using the app.`);
+  downloadModel(key).then(
+    () => toast(`${e.label} is ready. It works without internet.`),
+    (err) => { if (!/cancel/i.test(err.message)) toast(err.message); },
+  );
+}
+
+function llmDownloadToggle(e) {
+  if (!e) return;
+  if (llmState(e.config?.model) === 'downloading') { cancelModelDownload(); toast('Download stopped. It continues where it left off next time.'); }
+  else startLlmDownload(e);
 }
 
 function remove(id) {
@@ -189,11 +242,16 @@ function remove(id) {
   const row = document.querySelector(`.svc-row[data-id="${id}"]`);
   const nextId = (row?.nextElementSibling || row?.previousElementSibling)?.dataset?.id;
   entries.remove(id);
+  // the on-device AI model's files go too, unless another service uses the same model
+  const lastUser = e.type === 'webllm'
+    && !settings.get().entries.some((x) => x.type === 'webllm' && llmKey(x.config?.model) === llmKey(e.config?.model));
+  const freed = lastUser && isDownloaded(e.config?.model);
+  if (lastUser) deleteModel(e.config?.model);
   initProvider(); renderLists();
   // keep focus in the list: the next row, else the previous one, else the add button
   const nextRadio = nextId && document.querySelector(`.svc-row[data-id="${nextId}"] input`);
   (nextRadio || $('btn-add-lt')).focus();
-  toast(`Removed ${e.label}`, {
+  toast(freed ? `Removed ${e.label} and deleted its download` : `Removed ${e.label}`, {
     action: 'Undo',
     onAction: () => {
       const list = settings.get().entries;
@@ -212,14 +270,22 @@ function openEditor({ id, type }) {
   closeManager({ silent: true });
   editing = { id: e?.id || newEntryId(), type: e?.type || type, isNew: !e, opener: document.activeElement };
   const def = getProviderDef(editing.type);
-  const kindName = def.kind === 'advanced' ? 'AI model' : def.label;
+  const kindName = editing.type === 'webllm' ? 'on-device AI' : def.kind === 'advanced' ? 'AI model' : def.label;
   $('svc-editor-title').textContent = e ? `Edit ${e.label}` : `Add ${kindName}`;
   $('svc-desc').textContent = def.description || '';
   $('svc-name').value = e?.label || '';
-  $('svc-name').placeholder = editing.isNew ? (def.kind === 'advanced' ? 'e.g. GPT, Groq, my Ollama' : 'e.g. My server') : '';
+  $('svc-name').placeholder = editing.isNew ? (editing.type === 'webllm' ? 'e.g. On-device AI' : def.kind === 'advanced' ? 'e.g. GPT, Groq, my Ollama' : 'e.g. My server') : '';
   renderFields($('svc-fields'), def, e?.config || {});
   $('test-result').hidden = true;
-  $('btn-test').hidden = editing.type === 'mock';
+  // on-device AI: testing would start the download; the save button says that it downloads
+  $('btn-test').hidden = editing.type === 'mock' || editing.type === 'webllm';
+  const saveLabel = () => {
+    const sel = $('svc-fields').querySelector('[data-key="model"]');
+    $('btn-svc-save').textContent = editing?.type === 'webllm' && !isDownloaded(sel?.value)
+      ? `${editing.isNew ? 'Add' : 'Save'} and download` : 'Save';
+  };
+  saveLabel();
+  if (editing.type === 'webllm') $('svc-fields').querySelector('[data-key="model"]').addEventListener('change', saveLabel);
   $('svc-editor').hidden = false;
   $('svc-add').hidden = true;
   requestAnimationFrame(() => {
@@ -269,7 +335,8 @@ function saveEditor() {
   if (isNew && kind === 'advanced' && wantAdvanced) { wantAdvanced = false; useEntry(id); }
   renderLists();
   closeEditor();
-  toast(isNew ? `Added ${label}${state.mode === kind && kind === 'advanced' ? ' · Advanced translation is on' : ''}` : `Saved ${label}`);
+  if (def.id === 'webllm' && llmState(config.model) === 'none') startLlmDownload({ label, config });
+  else toast(isNew ? `Added ${label}${state.mode === kind && kind === 'advanced' ? ' · Advanced translation is on' : ''}` : `Saved ${label}`);
 }
 
 function renderFields(host, def, saved) {

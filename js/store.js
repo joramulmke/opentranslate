@@ -34,6 +34,7 @@ export const newEntryId = () => 'e' + Date.now().toString(36) + Math.random().to
 export function entryLabel(type, config = {}) {
   if (type === 'mock') return MOCK_ENTRY.label;
   if (type === 'offline') return OFFLINE_ENTRY.label;
+  if (type === 'webllm') return `On-device AI · ${config.model === 'medium' ? 'Medium' : 'Small'}`;
   let host = '';
   try { host = new URL(config.baseUrl).hostname; } catch { /* empty / invalid url */ }
   const parts = host.split('.');

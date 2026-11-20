@@ -27,6 +27,7 @@ reorder (↑ ↓) or remove them (with Undo).
 | Classic | **LibreTranslate** | Any server with the standard `/languages`, `/detect`, `/translate` API. Server URL and (optional) API key. |
 | Classic | **Offline demo** | Built in, for trying the app: a few phrases, other text gets a clearly marked placeholder. Can simulate network / unsupported-pair errors. |
 | Advanced | **AI model** (OpenAI-compatible) | Any `/chat/completions` endpoint: OpenAI, OpenRouter, Groq, Mistral, DeepSeek, Ollama, LM Studio or custom. Base URL, API key and model; **Test connection** lists available models. |
+| Advanced | **On-device AI** | A small AI model running in the browser (see below). No server, no key, works offline after the download; nothing you type leaves the device. |
 
 **Which one is used:** the checked service in each group goes first. If it fails (offline, server down) or
 doesn't have the language, the next one **of the same group** is tried, in list order; the result then says
@@ -66,6 +67,27 @@ on iPhone work. To check:
 `curl -s -o /dev/null -w "%{http_code}\n" -r 0-15 -A Chrome https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/23db71e7-b6d9-45eb-a47d-0290d7d8ef63.bin`
 (406; without `-A Chrome` it is 206).
 
+### On-device AI (Advanced mode)
+
+Settings → **+ Add on-device AI**, pick a model, **Add and download**. The model runs in your browser on the
+graphics chip with [WebLLM](https://github.com/mlc-ai/web-llm) (Apache-2.0, loaded from jsDelivr, in a Web Worker):
+
+| Model | Download | Notes |
+| --- | --- | --- |
+| Small: Qwen 2.5 1.5B Instruct | ~0.9 GB | faster, works on more devices |
+| Medium: Llama 3.2 3B Instruct | ~1.8 GB | better translations, needs ~3 GB graphics memory |
+
+- Needs **WebGPU**: recent Chrome or Edge on a computer, Safari 26+. Without it the add button is disabled
+  and says why.
+- The files come from Hugging Face (`huggingface.co/mlc-ai`, works in Chrome too) and the engine code from
+  `raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs`; they are kept in Cache Storage (`webllm/*`).
+- The service row shows the download progress, with cancel (what was fetched is kept and resumes) and a
+  download button if it isn't downloaded yet. Translating before the download offers **Download** in the result.
+- Removing the service deletes its downloaded model (unless another service uses the same one).
+- Text only: no handwriting recognition or speech-to-text; those use their usual engines.
+- Translations are less fluent than large online models; the first translation after opening the app takes a few
+  seconds while the model loads onto the graphics chip.
+
 **Privacy:** in Advanced mode your text (and, for handwriting, the drawing) is sent to the AI service you
 configure. **API keys are stored only in your browser (`localStorage`) and sent only to the URL you enter.** They are
 never part of this repository. Use keys with spending limits; anyone with access to that browser profile can read them.
@@ -101,7 +123,8 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
 
 ## Features
 
-- **Text:** auto-detect, live translation while typing, swap, copy, read aloud (`speechSynthesis`),
+- **Text:** auto-detect, live translation while typing, swap, copy, read aloud (`speechSynthesis`; play the
+  same text again within 10 s and it plays slower, at 0.6×, for practising pronunciation; the next play is normal),
   history (last 100) and saved phrasebook, all stored in `localStorage`.
 - **Voice input** works in every browser that can record audio:
   1. the browser's speech service with live text (Chrome, Edge, Safari);
@@ -156,6 +179,7 @@ js/state.js            shared state, service chains (first choice + fallbacks pe
 js/store.js            localStorage: settings + service list (with migration), history, phrasebook
 js/providers.js        provider interface + registry: Mock, LibreTranslate, OpenAI-compatible
 js/features/offline.js on-device translation: model list, downloads, Bergamot worker, detection
+js/features/localllm.js on-device AI (WebLLM): model choice, WebGPU check, download, provider (+ llm-worker.js)
 vendor/bergamot/       Bergamot WebAssembly engine + worker (MPL-2.0, see LICENSE there)
 js/languages.js        bundled 50-language fallback, RTL and OCR language maps
 js/ui/*.js             text view, language bar/picker, mode menu, sheets, menus, icons, layout
@@ -181,7 +205,7 @@ The workflow bumps `CACHE_NAME` in `sw.js` so installed apps pick up new version
 
 `.htaccess` relaxes the host's site-wide security headers **for this folder only**: provider requests to any
 HTTPS URL (and `localhost` for local AI servers), scripts/workers from `cdn.jsdelivr.net` plus WebAssembly for
-OCR and the on-device models, `application/wasm` for the offline engine, and camera/microphone access. Without
+OCR, the on-device models and the on-device AI (WebGPU), `application/wasm` for the offline engine, and camera/microphone access. Without
 it, providers fail with "Can't reach", camera/mic are disabled and offline translation can't start.
 
 The service worker keeps downloaded language packs and the engine across app updates (only old app-shell
