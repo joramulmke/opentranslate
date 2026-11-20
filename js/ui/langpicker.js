@@ -5,6 +5,8 @@ import { icon } from './icons.js';
 import { setupDialog, openDialog, closeDialog } from './sheet.js';
 import { isWeb } from './layout.js';
 import { STATIC_LANGUAGES } from '../languages.js';
+import { offlineLanguages, onOfflineChange, loadRegistry } from '../features/offline.js';
+import { dlButton, updateDownloadButtons, onDownloadClick } from './offlineui.js';
 
 let dlg, list, search, title, searchBtn;
 let current = null; // { side, selected, includeAuto, resolve, returnFocus }
@@ -32,7 +34,10 @@ function init() {
       if (first) { e.preventDefault(); pick(first.dataset.code); }
     }
   });
+  onOfflineChange(() => { if (dlg.open) updateDownloadButtons(list); });
   list.addEventListener('click', (e) => {
+    const dl = e.target.closest('[data-dl]');
+    if (dl) { onDownloadClick(dl.dataset.dl); return; }
     const b = e.target.closest('.lang-item');
     if (!b) return;
     if (b.getAttribute('aria-disabled') === 'true') explain(b.dataset.code);
@@ -46,6 +51,10 @@ function init() {
     if (e.key === 'ArrowUp') { e.preventDefault(); (i === 0 && dlg.classList.contains('searching') ? search : items[Math.max(i - 1, 0)]).focus(); }
     if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
     if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+    if (e.key === 'ArrowRight') { const dl = items[i].parentElement.querySelector('[data-dl]'); if (dl) { e.preventDefault(); dl.focus(); } }
+  });
+  list.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft' && e.target.matches('[data-dl]')) { e.preventDefault(); e.target.parentElement.querySelector('.lang-item').focus(); }
   });
 }
 
@@ -80,8 +89,14 @@ function explain(code) {
   note.scrollIntoView({ block: 'nearest' });
 }
 
+let offlineSet = null;     // app codes that can be downloaded here, or null when not relevant
+
 let avail = null;
 function item(code, selected, sub = '') {
+  if (offlineSet?.has(code)) return `<div class="lang-row" role="none">${itemButton(code, selected, sub)}${dlButton(code)}</div>`;
+  return itemButton(code, selected, sub);
+}
+function itemButton(code, selected, sub = '') {
   const isSel = code === selected;
   const off = code !== 'auto' && avail && !avail.has(code);
   if (off) sub = 'Not available';
@@ -104,6 +119,9 @@ function render() {
   const { side, selected, includeAuto } = current;
   const q = search.value.trim().toLowerCase();
   avail = availableCodes(side);
+  // download buttons: Classic mode, languages the on-device engine knows (English is built in)
+  offlineSet = state.mode === 'classic' ? new Set(offlineLanguages().filter((c) => c !== 'en')) : null;
+  if (offlineSet) loadRegistry().then(() => { if (dlg.open) updateDownloadButtons(list); }).catch(() => {});
   const byCode = new Map([...STATIC_LANGUAGES, ...state.languages].map((l) => [l.code, l]));
   const langs = [...byCode.values()].sort((a, b) => a.name.localeCompare(b.name));
   let html = '';

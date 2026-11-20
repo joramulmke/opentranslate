@@ -315,28 +315,42 @@
       <button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="close"></i></button>
     </div>
     <form class="settings-form" id="settings-form" novalidate>
-      <fieldset class="settings-group">
-        <p class="setup-hint" id="setup-hint" hidden><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server below, or an AI model under Advanced translation, for real translations.</p>
-        <legend id="classic-legend">Classic translation</legend>
-        <div id="provider-options" class="radio-list"></div>
-        <p class="field-help" id="provider-desc"></p>
-        <div id="provider-fields"></div>
-        <div class="row-gap">
-          <button class="btn btn-tonal" type="button" id="btn-test" aria-describedby="classic-legend">Test connection</button>
-          <button class="btn btn-filled" type="submit">Save</button>
+      <fieldset class="settings-group" id="services-group" aria-describedby="svc-help">
+        <legend>Translation services</legend>
+        <p class="setup-hint" id="setup-hint" hidden><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server or an AI model below for real translations.</p>
+        <p class="field-help" id="svc-help">The checked service is used first. If it fails or doesn't have a language, the next one in the same group is tried. Keys stay in this browser.</p>
+        <h3 class="svc-head" id="svc-classic-head">Classic</h3>
+        <ul class="svc-list" id="svc-classic" aria-labelledby="svc-classic-head"></ul>
+        <h3 class="svc-head" id="svc-advanced-head">Advanced (AI model)</h3>
+        <ul class="svc-list" id="svc-advanced" aria-labelledby="svc-advanced-head"></ul>
+        <div class="row-gap svc-add" id="svc-add">
+          <button class="btn btn-tonal" type="button" id="btn-add-lt" aria-controls="svc-editor"><i data-icon="add"></i>Add LibreTranslate</button>
+          <button class="btn btn-tonal" type="button" id="btn-add-ai" aria-controls="svc-editor"><i data-icon="add"></i>Add AI model</button>
         </div>
-        <p class="test-result" id="test-result" role="status" hidden></p>
-      </fieldset>
-      <fieldset class="settings-group" id="advanced-group" aria-describedby="adv-desc">
-        <legend id="adv-legend">Advanced translation (AI model)</legend>
-        <p class="field-help" id="adv-desc"></p>
-        <div id="adv-fields"></div>
-        <datalist id="adv-models"></datalist>
-        <div class="row-gap">
-          <button class="btn btn-tonal" type="button" id="btn-test-adv" aria-describedby="adv-legend">Test connection</button>
-          <button class="btn btn-filled" type="submit">Save</button>
-        </div>
-        <p class="test-result" id="test-result-adv" role="status" hidden></p>
+        <section class="svc-editor" id="svc-editor" aria-labelledby="svc-editor-title" hidden>
+          <h3 id="svc-editor-title">Add service</h3>
+          <p class="field-help" id="svc-desc"></p>
+          <div class="field"><label for="svc-name">Name</label><input id="svc-name" type="text" autocomplete="off" spellcheck="false" placeholder="e.g. My server"></div>
+          <div id="svc-fields"></div>
+          <datalist id="adv-models"></datalist>
+          <div class="row-gap">
+            <button class="btn btn-tonal" type="button" id="btn-test">Test connection</button>
+            <span class="spacer"></span>
+            <button class="btn btn-text" type="button" id="btn-svc-cancel">Cancel</button>
+            <button class="btn btn-filled" type="submit" id="btn-svc-save">Save</button>
+          </div>
+          <p class="test-result" id="test-result" role="status" hidden></p>
+        </section>
+        <section class="svc-editor offline-manager" id="offline-manager" aria-labelledby="offline-title" hidden>
+          <div class="offline-head">
+            <h3 id="offline-title">Offline languages</h3>
+            <button class="btn btn-text" type="button" id="btn-offline-done">Done</button>
+          </div>
+          <p class="field-help">Translate without internet, privately in your browser. Each language is a one-time download (English is included). Models come from the Firefox translation project.</p>
+          <p class="offline-usage" id="offline-usage" role="status"></p>
+          <input type="search" id="offline-search" placeholder="Search languages" aria-label="Search offline languages" autocomplete="off" spellcheck="false">
+          <ul class="offline-list" id="offline-list" aria-labelledby="offline-title"></ul>
+        </section>
       </fieldset>
       <fieldset class="settings-group">
         <legend>Behaviour</legend>
@@ -362,12 +376,7 @@
 
   <!-- Classic / Advanced translation mode -->
   <dialog class="menu mode-menu" id="mode-menu" aria-label="Translation mode">
-    <div role="menu" aria-label="Translation mode">
-      <button type="button" role="menuitemradio" aria-checked="true" data-mode="classic">
-        <span class="mode-copy"><strong>Classic</strong><small>Fast, works offline with the demo or your LibreTranslate server</small></span><i data-icon="check" class="mode-check"></i></button>
-      <button type="button" role="menuitemradio" aria-checked="false" data-mode="advanced">
-        <span class="mode-copy"><strong>Advanced</strong><small>AI model through your OpenAI-compatible API: more fluent. Your text is sent to that service; your key stays in this browser.</small></span><i data-icon="check" class="mode-check"></i></button>
-    </div>
+    <div role="menu" aria-label="Translation mode" id="mode-items"></div>
   </dialog>
 
   <!-- Overflow menu (phones) / main menu (1200px+) -->

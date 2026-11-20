@@ -1164,12 +1164,12 @@ dialog.menu [role="menuitem"]:hover, dialog.menu [role="menuitem"]:focus-visible
 .mode-select:hover { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
 .mode-select .ic { width: 20px; height: 20px; }
 .mode-select.is-advanced { color: var(--primary-strong); background: color-mix(in srgb, var(--primary) 12%, transparent); }
-dialog.menu.mode-menu { position: fixed; margin: 0; padding: 4px 0; max-width: calc(100vw - 16px); }
-dialog.menu.mode-menu [role="menuitemradio"] {
+dialog.menu.mode-menu { position: fixed; margin: 0; padding: 4px 0; max-width: calc(100vw - 16px); overflow-y: auto; }
+dialog.menu.mode-menu [role^="menuitem"] {
   display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; border: 0; background: none; text-align: start; color: var(--on-surface);
 }
-dialog.menu.mode-menu [role="menuitemradio"]:hover,
-dialog.menu.mode-menu [role="menuitemradio"]:focus-visible { background: color-mix(in srgb, var(--on-surface) 8%, transparent); outline: none; }
+dialog.menu.mode-menu [role^="menuitem"]:hover,
+dialog.menu.mode-menu [role^="menuitem"]:focus-visible { background: color-mix(in srgb, var(--on-surface) 8%, transparent); outline: none; }
 .mode-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
 .mode-copy strong { font-weight: 500; font-size: 15px; }
 .mode-copy small { font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
@@ -1230,3 +1230,94 @@ dialog.menu.mode-menu [role="menuitemradio"]:focus-visible { background: color-m
 .lang-item.unavailable .sub { font-size: 12px; }
 .lang-note { margin: 8px 16px; padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 20px;
   background: var(--surface-high); color: var(--on-surface); position: sticky; top: 0; z-index: 1; }
+
+/* ---------- translation services (settings list + mode menu groups) ---------- */
+.mode-group-head { margin: 0; padding: 12px 16px 4px; display: grid; gap: 2px; }
+.mode-group-head strong { font-size: 12px; font-weight: 500; letter-spacing: .5px; text-transform: uppercase; color: var(--primary-strong); }
+.mode-group-head small { font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
+.mode-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mode-check.is-visible { visibility: visible; color: var(--on-surface-variant); }
+.mode-sep { height: 1px; margin: 4px 0; background: var(--outline-variant, color-mix(in srgb, var(--on-surface) 12%, transparent)); }
+
+.svc-head { margin: 8px 4px 0; font-size: 13px; font-weight: 500; color: var(--on-surface-variant); }
+.svc-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.svc-row { display: flex; align-items: center; gap: 4px; min-height: 56px; padding: 0 0 0 4px; border-radius: 12px; }
+.svc-row:hover { background: color-mix(in srgb, var(--on-surface) 4%, transparent); }
+.svc-pick { display: flex; align-items: center; gap: 16px; flex: 1; min-width: 0; min-height: 56px; cursor: pointer; }
+.svc-pick input { width: 20px; height: 20px; accent-color: var(--primary); margin: 0; flex: none; }
+.svc-copy { display: grid; min-width: 0; }
+.svc-copy strong { font-weight: 400; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc-copy small { font-size: 12px; color: var(--on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc-actions { display: flex; flex: none; }
+.icon-btn.sm { width: 40px; height: 40px; }
+.icon-btn.sm .ic { width: 20px; height: 20px; }
+.icon-btn:disabled { opacity: .38; cursor: default; }
+.svc-empty { padding: 8px 4px; font-size: 14px; color: var(--on-surface-variant); }
+.svc-add { flex-wrap: wrap; }
+.svc-add .btn { padding: 0 16px 0 12px; }
+.svc-add .btn .ic { width: 18px; height: 18px; }
+.svc-editor { display: grid; gap: 12px; padding: 16px; border-radius: 16px; background: var(--surface-container); }
+.svc-editor h3 { margin: 0; font-size: 16px; font-weight: 500; }
+.svc-editor .row-gap { flex-wrap: wrap; }
+.svc-editor [aria-invalid="true"] { outline: 2px solid var(--error); }
+/* polish: Material 3 list rows, 40px+ targets, tinted row for the service used first */
+.svc-head { margin: 12px 12px 4px; font-size: 14px; letter-spacing: .1px; color: var(--primary); }
+.svc-list { gap: 0; border-radius: 16px; overflow: hidden; background: var(--surface-container); }
+.svc-row { min-height: 64px; padding: 4px 4px 4px 12px; border-radius: 0; gap: 2px; }
+.svc-row + .svc-row { border-top: 1px solid var(--outline-variant); }
+.svc-row:has(input:checked) { background: color-mix(in srgb, var(--secondary-container) 55%, transparent); }
+.svc-pick { min-height: 56px; gap: 14px; }
+.svc-pick input:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.svc-copy { gap: 2px; }
+.svc-copy small { line-height: 16px; }
+.svc-actions .icon-btn.sm { color: var(--on-surface-variant); }
+.svc-empty { padding: 16px; }
+.svc-add { margin-top: 8px; gap: 8px; }
+.svc-add .btn { height: 40px; }
+.svc-editor { margin-top: 8px; padding: 16px 16px 12px; border: 1px solid var(--outline-variant); }
+.svc-editor .row-gap .btn { min-height: 40px; }
+.offline-manager .offline-list { border-radius: 12px; background: var(--surface); padding: 4px 0; }
+.offline-row { padding: 0 4px 0 12px; }
+.offline-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 719.98px) {
+  .settings-form { padding-left: 16px; padding-right: 16px; }
+}
+@media (min-width: 720px) {
+  /* tablets and desktop: settings is a centred dialog */
+  dialog.sheet.bottom#settings-dialog {
+    inset: 0; margin: auto; height: fit-content; max-height: 88dvh; width: min(600px, calc(100vw - 48px));
+    border-radius: var(--radius-lg);
+  }
+  dialog.sheet.bottom#settings-dialog[open] { animation: setupIn .22s var(--ease-emph); }
+  dialog.sheet.bottom#settings-dialog.closing { animation: setupOut .15s var(--ease) forwards !important; }
+  #settings-dialog .drag-handle { display: none; }
+}
+
+/* translation-service dropdown: scrolls inside the room it gets, 48px rows */
+dialog.menu.mode-menu { overflow-y: auto; overscroll-behavior: contain; }
+dialog.menu.mode-menu [role="menuitemradio"], dialog.menu.mode-menu [role="menuitem"] { min-height: 48px; height: auto; }
+dialog.menu.mode-menu [role="menuitemradio"][aria-checked="true"] { background: color-mix(in srgb, var(--secondary-container) 60%, transparent); }
+
+/* ---------- on-device language downloads ---------- */
+.lang-row { display: flex; align-items: center; padding-right: 12px; }
+.lang-row .lang-item { flex: 1; min-width: 0; padding-right: 8px; }
+.lang-dl { flex: none; width: 40px; height: 40px; color: var(--primary); }
+.lang-dl[data-state="downloading"] { color: var(--on-surface); }
+.lang-dl .ic { width: 22px; height: 22px; }
+.lang-dl[data-state="ready"] { color: var(--primary); }
+.lang-dl[data-state="downloading"]::before {
+  content: ''; position: absolute; inset: 4px; border-radius: 50%;
+  background: conic-gradient(var(--primary) calc(var(--p, 0) * 1%), color-mix(in srgb, var(--on-surface) 14%, transparent) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+}
+.panel .lang-row { padding-right: 4px; break-inside: avoid; }
+.panel .lang-dl { width: 32px; height: 32px; }
+.panel .lang-dl .ic { width: 18px; height: 18px; }
+.offline-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.offline-usage { margin: 0; font-size: 14px; color: var(--on-surface-variant); }
+#offline-search { width: 100%; height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--outline-variant); background: var(--surface); color: var(--on-surface); font: inherit; }
+.offline-list { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow-y: auto; display: grid; }
+.offline-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 0 0 4px; }
+.offline-copy { flex: 1; min-width: 0; display: grid; }
+.offline-copy small { font-size: 12px; color: var(--on-surface-variant); }

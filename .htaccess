@@ -3,10 +3,17 @@
 # Why the site-wide defaults are relaxed here:
 #   connect-src  https: + localhost  - translation providers are user-configured URLs (LibreTranslate, OpenAI-compatible
 #                                      APIs, local Ollama/LM Studio); handwriting model files come from huggingface.co
-#   script/worker-src cdn.jsdelivr.net + wasm-unsafe-eval - Tesseract.js (OCR) and transformers.js (handwriting model)
+#   script/worker-src cdn.jsdelivr.net + wasm-unsafe-eval - Tesseract.js (OCR), transformers.js (handwriting/speech models),
+#                                      franc (language detection) and the on-device engine (vendor/bergamot, WebAssembly);
+#                                      offline language models are downloaded from Mozilla's CDN (connect-src https:)
 #   img/media blob: mediastream:     - camera preview and captured photos
 #   Permissions-Policy camera/microphone=(self) - camera translation, voice input
 # No upgrade-insecure-requests: it would rewrite http://localhost calls to local AI servers.
+
+# The on-device translation engine: browsers only start WebAssembly served with this type (nosniff is on).
+<IfModule mod_mime.c>
+  AddType application/wasm .wasm
+</IfModule>
 
 <IfModule mod_headers.c>
   Header unset Content-Security-Policy

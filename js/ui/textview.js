@@ -12,6 +12,7 @@ import { toast } from './snackbar.js';
 import { isPhone } from './layout.js';
 import { speak, stopSpeaking, canDictate, dictate, dictationMessage } from '../features/speech.js';
 import { ensureMicrophone } from '../features/permissions.js';
+import { downloadPacks, formatMB } from './offlineui.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX = 5000;
@@ -212,7 +213,7 @@ async function runTranslate({ commit = false } = {}) {
       set({ detected: { language: res.detected, confidence: 1 } });
       source = res.detected;
     }
-    showResult({ text: res.text, source, target: state.target, input: text, mock: !!state.provider?.isMock });
+    showResult({ text: res.text, source, target: state.target, input: text, mock: !!state.provider?.isMock, via: res.via });
     if (commit) commitHistory(); else commitHistorySoon();
   } catch (err) {
     if (id !== reqId) return;
@@ -254,7 +255,9 @@ function showResult(r) {
   el.out.dir = isRtl(r.target) ? 'rtl' : 'ltr';
   el.out.classList.remove('stale');
   el.out.classList.toggle('long', r.text.length > 120);
-  el.mockChip.hidden = !r.mock;
+  // "Offline demo translation", or which service answered when the first choice couldn't
+  el.mockChip.textContent = r.mock ? 'Offline demo translation' : r.via ? `Translated with ${r.via}` : '';
+  el.mockChip.hidden = !r.mock && !r.via;
   setOutputActions(true);
   renderStar();
   renderLabels();
@@ -278,6 +281,16 @@ function showError(err) {
     b.addEventListener('click', fn);
     el.errActions.append(b);
   };
+  if (code === 'NEEDS_DOWNLOAD') {
+    const { langs = [], size } = err.detail || {};
+    action(`Download${size ? ` (${formatMB(size)})` : ''}`, (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      downloadPacks(langs, {
+        onProgress: (p) => { btn.textContent = `Downloading… ${Math.round(p * 100)}%`; },
+      }).then(() => runTranslate({ commit: true }), (er) => { btn.disabled = false; btn.textContent = 'Try again'; toast(er.message); });
+    });
+  }
   if (code === 'NO_PROVIDER' || code === 'AUTH') action('Open settings', openSettings);
   if (code === 'UNSUPPORTED_PAIR') action('Change language', async () => {
     const c = await pickLanguage({ side: 'target', selected: state.target });

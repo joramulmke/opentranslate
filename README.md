@@ -15,17 +15,42 @@ python3 -m http.server 8000
 Open <http://localhost:8000/>. Any static server works. Opening `index.html` from `file://` does not:
 browsers block ES modules there (the page shows a hint). Camera and microphone need `https://` or `localhost`.
 
-## Translation providers
+## Translation services
 
-Open **Settings** (gear icon).
+Open **Settings** (gear icon) → **Translation services**. Services are a list in two groups; add as many as
+you like with **+ Add LibreTranslate** / **+ Add AI model** (name, URL, key, model, **Test connection**), edit,
+reorder (↑ ↓) or remove them (with Undo).
 
-| Mode | Provider | Notes |
+| Group | Service | Notes |
 | --- | --- | --- |
-| Classic | **Offline demo (Mock)** | Default. Works offline, deterministic. Knows a set of common phrases; other text gets a clearly marked placeholder. Can simulate network / unsupported-pair errors. |
-| Classic | **LibreTranslate** | Any server with the standard `/languages`, `/detect`, `/translate` API. Enter the server URL and (optional) API key. |
-| Advanced | **OpenAI-compatible API** | An AI model via any `/chat/completions` endpoint: OpenAI, OpenRouter, Groq, Mistral, DeepSeek, Ollama, LM Studio or custom. Enter base URL, API key and model; **Test connection** lists available models. |
+| Classic | **On this device** | Built in. Translates in the browser with downloaded language packs (see below). No server, no key, works offline; nothing you type leaves the device. |
+| Classic | **LibreTranslate** | Any server with the standard `/languages`, `/detect`, `/translate` API. Server URL and (optional) API key. |
+| Classic | **Offline demo** | Built in, for trying the app: a few phrases, other text gets a clearly marked placeholder. Can simulate network / unsupported-pair errors. |
+| Advanced | **AI model** (OpenAI-compatible) | Any `/chat/completions` endpoint: OpenAI, OpenRouter, Groq, Mistral, DeepSeek, Ollama, LM Studio or custom. Base URL, API key and model; **Test connection** lists available models. |
 
-Switch between **Classic** and **Advanced** with the dropdown next to the character count.
+**Which one is used:** the checked service in each group goes first. If it fails (offline, server down) or
+doesn't have the language, the next one **of the same group** is tried, in list order; the result then says
+*Translated with …*. The offline demo never stands in for a real service.
+
+The dropdown next to the character count lists all services (Classic and Advanced) for quick switching.
+Settings saved by older versions (one LibreTranslate + one AI setup) are moved into the list automatically.
+
+### Offline languages (On this device)
+
+Download a language once, then translate without internet:
+
+- in the **language picker** (Classic mode), tap the download icon next to a language; tap again to cancel, or
+  to remove a downloaded one;
+- or in **Settings → On this device → Manage** (all languages, sizes, storage used, remove);
+- or when a translation needs a missing language, the result card offers **Download**.
+
+Each pack is English ↔ that language (about 45–75 MB, Chinese ~120 MB); English is built in. Other pairs go
+through English (German → English → French), so they need both packs. ~58 languages are available.
+The engine is [Bergamot](https://github.com/browsermt/bergamot-translator) (the engine of Firefox's built-in
+translation, WebAssembly in a Web Worker, vendored in `vendor/bergamot/`, MPL-2.0); the models are Mozilla's
+open translation models, downloaded from Mozilla's model CDN, checked against their SHA-256 hashes and stored in
+the browser's Cache Storage. Language detection uses [franc](https://github.com/wooorm/franc) (MIT), limited to
+the downloaded languages. Not available on device: Irish, Swahili, Esperanto (greyed out).
 
 **Privacy:** in Advanced mode your text (and, for handwriting, the drawing) is sent to the AI service you
 configure. **API keys are stored only in your browser (`localStorage`) and sent only to the URL you enter.** They are
@@ -40,7 +65,7 @@ python3 -m venv .venv && .venv/bin/pip install libretranslate
 .venv/bin/libretranslate --load-only en,es,fr,de
 ```
 
-Then set the server URL (e.g. `http://localhost:5000`) in Settings → Classic translation → LibreTranslate.
+Then add it in Settings → **+ Add LibreTranslate** with the server URL (e.g. `http://localhost:5000`).
 
 **Your own server:** the app is served over HTTPS, so the LibreTranslate server must be reachable over
 HTTPS too (e.g. behind a reverse proxy). LibreTranslate allows cross-origin browser requests by default; keep
@@ -53,7 +78,7 @@ ltmanage keys add 120                     # 120 requests/minute; prints the key
 docker exec -it <container> ./venv/bin/ltmanage keys add 120   # inside the Docker image
 ```
 
-Enter it in Settings → LibreTranslate → API key, then **Test connection**.
+Enter it in the service's **API key** field (Settings → edit the service), then **Test connection**.
 
 ### Local AI models (Ollama / LM Studio)
 
@@ -70,8 +95,8 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
      ~1.5 s of silence) and transcribes with your **Advanced API's Whisper endpoint** (`/audio/transcriptions`,
      set *Speech-to-text model*, e.g. `whisper-1`, `whisper-large-v3-turbo`) in Advanced mode, otherwise with
      **on-device Whisper** (`whisper-base`, asks before a one-time ~80 MB download, detects the language).
-- **Languages** your current setup can't translate stay visible but greyed out; tapping one explains why
-  (e.g. not installed on your LibreTranslate server).
+- **Languages** your services can't translate stay visible but greyed out; tapping one explains why
+  (e.g. not installed on your LibreTranslate server). Languages that can be downloaded show a download icon.
 - **Camera:** live preview or imported photo; OCR with [Tesseract.js](https://tesseract.projectnaptha.com/)
   (loaded from a CDN on first use); translated text drawn over the photo.
 - **Conversation:** two people, one language each, turns alternate; translations can be read aloud.
@@ -113,9 +138,11 @@ how to add a real provider.
 ```
 index.html  styles.css  manifest.webmanifest  sw.js  icons/
 js/app.js              boot, routing (#text, #camera, #conversation, #handwriting), theme, service worker
-js/state.js            shared state, Classic/Advanced provider selection, error messages
-js/store.js            localStorage: settings, history, phrasebook
+js/state.js            shared state, service chains (first choice + fallbacks per group), error messages
+js/store.js            localStorage: settings + service list (with migration), history, phrasebook
 js/providers.js        provider interface + registry: Mock, LibreTranslate, OpenAI-compatible
+js/features/offline.js on-device translation: model list, downloads, Bergamot worker, detection
+vendor/bergamot/       Bergamot WebAssembly engine + worker (MPL-2.0, see LICENSE there)
 js/languages.js        bundled 50-language fallback, RTL and OCR language maps
 js/ui/*.js             text view, language bar/picker, mode menu, sheets, menus, icons, layout
 js/features/*.js       camera, conversation, handwriting (+ hwr.js engines), OCR, speech (+ stt.js), permissions
@@ -131,7 +158,7 @@ registerProvider({
 });
 ```
 
-Settings renders the fields automatically; no UI changes needed.
+Settings renders the fields automatically and the service can be added to the list; no UI changes needed.
 
 ## Deployment
 
@@ -140,11 +167,15 @@ The workflow bumps `CACHE_NAME` in `sw.js` so installed apps pick up new version
 
 `.htaccess` relaxes the host's site-wide security headers **for this folder only**: provider requests to any
 HTTPS URL (and `localhost` for local AI servers), scripts/workers from `cdn.jsdelivr.net` plus WebAssembly for
-OCR and the on-device models, and camera/microphone access. Without it, providers fail with "Can't reach" and
-camera/mic are disabled.
+OCR and the on-device models, `application/wasm` for the offline engine, and camera/microphone access. Without
+it, providers fail with "Can't reach", camera/mic are disabled and offline translation can't start.
+
+The service worker keeps downloaded language packs and the engine across app updates (only old app-shell
+caches are cleared).
 
 ## Status
 
-Prototype. Tested with automated module and DOM tests and against API stand-ins; not yet tested against
-a real LibreTranslate server or a real AI provider, and camera/handwriting OCR not yet on real images.
+Prototype. Tested with automated module and DOM tests, API stand-ins, a real LibreTranslate server, and the
+real on-device engine with real model downloads (outside a browser). Not yet checked by hand in every browser
+and screen size; camera/handwriting OCR not yet on real images; no test against a real paid AI provider.
 Not affiliated with any translation service; all names and marks belong to their owners.

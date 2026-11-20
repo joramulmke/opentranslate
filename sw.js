@@ -1,5 +1,5 @@
 // Service worker: precache the app shell; never cache API responses or CDN OCR assets.
-const CACHE_NAME = 'ot-shell-v5';
+const CACHE_NAME = 'ot-shell-v6';
 const SHELL = [
   './',
   './index.html',
@@ -36,7 +36,13 @@ const SHELL = [
   './js/features/camera.js',
   './js/features/conversation.js',
   './js/features/handwriting.js',
+  './js/features/offline.js',
+  './js/ui/offlineui.js',
+  './vendor/bergamot/translator-worker.js',
+  './vendor/bergamot/bergamot-translator-worker.js',
 ];
+// The on-device engine binary (5 MB) is cached on first use, not precached for every visitor.
+const ENGINE_CACHE = 'ot-engine-v1';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -45,7 +51,8 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      // only old app-shell caches; downloaded language models (ot-offline-*) and the engine stay
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('ot-shell-') && k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -61,6 +68,16 @@ self.addEventListener('fetch', (e) => {
   // Navigations: network first (fresh deploys), fall back to cached shell offline.
   if (req.mode === 'navigate') {
     e.respondWith(fetch(req).catch(() => caches.match('./index.html', { ignoreSearch: true })));
+    return;
+  }
+  if (url.pathname.endsWith('.wasm') && url.pathname.includes('/vendor/')) {
+    e.respondWith(caches.open(ENGINE_CACHE).then(async (c) => {
+      const hit = await c.match(req, { ignoreSearch: true });
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok) c.put(req, res.clone());
+      return res;
+    }));
     return;
   }
   // Shell assets: cache first, then network (and refresh the cache in the background).

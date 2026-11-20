@@ -1,10 +1,13 @@
 // Red "!" on the settings and menu buttons while only the offline demo is set up,
 // so users find out early that they need a real provider.
-import { state, subscribe } from '../state.js';
+import { subscribe } from '../state.js';
+import { settings } from '../store.js';
+import { installedLanguages, onOfflineChange } from '../features/offline.js';
 
 const BUTTONS = ['btn-settings', 'btn-menu', 'btn-more'];
 
-export const onlyDemo = () => (!state.classic || !!state.classic.isMock) && !state.advanced;
+/** true while no real translation service has been added (only the demo). */
+export const onlyDemo = () => !settings.get().entries.some((e) => !['mock', 'offline'].includes(e.type)) && !installedLanguages().length;
 
 export function initSetupBadge() {
   const labels = {};
@@ -22,5 +25,6 @@ export function initSetupBadge() {
     if (hint) hint.hidden = !need;
   };
   subscribe(render);
+  onOfflineChange(render);
   render();
 }

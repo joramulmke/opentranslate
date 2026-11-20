@@ -1,5 +1,6 @@
 // Shared app state + provider access. UI modules subscribe; they never touch providers directly.
-import { createProvider, ProviderError } from './providers.js';
+import { createProvider, ProviderError, getProviderDef } from './providers.js';
+import './features/offline.js';   // registers the on-device service
 import { STATIC_LANGUAGES } from './languages.js';
 import { settings, recentLangs } from './store.js';
 
@@ -39,19 +40,126 @@ export function setPair(source, target) {
   settings.set({ source, target });
 }
 
-const build = (id) => {
-  try { return [createProvider(id, settings.providerConfig(id)), null]; } catch (e) { return [null, e]; }
-};
+export const kindOf = (entry) => getProviderDef(entry?.type)?.kind || 'classic';
+
+function buildEntry(e) {
+  try {
+    const p = createProvider(e.type, e.config || {});
+    p.entryId = e.id; p.entryLabel = e.label;
+    return [p, null];
+  } catch (err) { return [null, err]; }
+}
+
+/**
+ * All services of one kind as a single provider: the active entry first, then the others in
+ * list order. If one fails or can't do the language pair, the next one is tried.
+ * The offline demo only takes part when it is the active entry (its output isn't real).
+ */
+export class ProviderChain {
+  constructor(kind, members) {
+    this.kind = kind;
+    this.members = members;
+    const lead = members[0];
+    this.lead = lead;
+    this.name = lead.name;
+    this.entryId = lead.entryId;
+    this.entryLabel = lead.entryLabel;
+    this.isMock = !!lead.isMock;
+    this.isAdvanced = kind === 'advanced';
+    // optional capabilities, present only if some member has them (stt.js / hwr.js check for them)
+    const stt = members.find((m) => typeof m.transcribe === 'function' && m.sttModel);
+    if (stt) { this.sttModel = stt.sttModel; this.transcribe = (...a) => this._run('transcribe', a, (m) => !!m.sttModel).then(([r]) => r); }
+    if (members.some((m) => typeof m.recognizeImage === 'function')) {
+      this.recognizeImage = (...a) => this._run('recognizeImage', a).then(([r]) => r);
+    }
+  }
+
+  async _run(method, args, canTry = () => true) {
+    let firstErr = null;
+    const skipped = []; const later = [];
+    const attempt = async (m) => { try { return [await m[method](...args), m]; } catch (e) { firstErr ??= e; return null; } };
+    for (const m of this.members) {
+      if (typeof m[method] !== 'function') continue;
+      const ok = canTry(m);
+      if (ok === 'later') { later.push(m); continue; }
+      if (!ok) { skipped.push(m); continue; }
+      const r = await attempt(m);
+      if (r) return r;
+    }
+    // last resort, e.g. on-device without the languages yet: its error says what to download
+    for (const m of later) { const r = await attempt(m); if (r) return r; }
+    if (skipped.length && (!firstErr || !['UNSUPPORTED_PAIR', 'NEEDS_DOWNLOAD'].includes(firstErr.code))) {
+      // the services that know the language pair didn't answer, the others can't do the pair
+      const names = skipped.map((m) => m.entryLabel).join(', ');
+      throw new ProviderError('UNSUPPORTED_PAIR', `${names} can't translate this language pair` +
+        (firstErr ? `, and the other service failed: ${firstErr.message}` : '.'));
+    }
+    throw firstErr || new ProviderError('UNSUPPORTED_PAIR', 'None of your translation services can do this.');
+  }
+
+  /** false if the member is known not to support source→target (saves a request). */
+  supports(m, source, target) {
+    // on-device: only as a fallback once its languages are downloaded (as first choice it explains what to download)
+    if (typeof m.ready === 'function' && m !== this.lead) return m.ready(source, target) || 'later';
+    if (!source || source === 'auto' || typeof m.targetsFor !== 'function') return true;
+    const t = m.targetsFor(source);
+    return !t || t.includes(target);
+  }
+
+  async translate(text, source, target) {
+    const [r, m] = await this._run('translate', [text, source, target], (x) => this.supports(x, source, target));
+    return { ...r, via: m === this.lead ? undefined : m.entryLabel, entryId: m.entryId };
+  }
+
+  async detect(text) { return (await this._run('detect', [text]))[0]; }
+
+  async languages() {
+    const res = await Promise.allSettled(this.members.map((m) => m.languages()));
+    const ok = res.filter((r) => r.status === 'fulfilled' && Array.isArray(r.value));
+    if (!ok.length) throw res[0]?.reason;
+    const seen = new Map();
+    for (const r of ok) for (const l of r.value) if (!seen.has(l.code)) seen.set(l.code, l);
+    return [...seen.values()];
+  }
+
+  /** Union of what the members can translate into; null = unknown / anything. */
+  targetsFor(source) {
+    const out = new Set();
+    for (const m of this.members) {
+      const t = typeof m.targetsFor === 'function' ? m.targetsFor(source) : null;
+      if (!t) return null;
+      t.forEach((c) => out.add(c));
+    }
+    return [...out];
+  }
+
+  test() { return this.lead.test(); }
+}
+
+function buildChain(kind, entryList, activeId) {
+  const ofKind = entryList.filter((e) => kindOf(e) === kind);
+  const lead = ofKind.find((e) => e.id === activeId) || ofKind.find((e) => e.type !== 'mock') || ofKind[0];
+  if (!lead) {
+    return [null, new ProviderError('NO_PROVIDER', kind === 'advanced' ? 'No AI model is set up.' : 'No translation service is set up.')];
+  }
+  const order = lead.type === 'mock' ? [lead] : [lead, ...ofKind.filter((e) => e !== lead && e.type !== 'mock')];
+  const members = []; let leadErr = null;
+  for (const e of order) {
+    const [p, err] = buildEntry(e);
+    if (p) members.push(p); else if (e === lead) leadErr = err;
+  }
+  return members.length ? [new ProviderChain(kind, members), null] : [null, leadErr || new ProviderError('NO_PROVIDER', 'No translation service is set up.')];
+}
 
 const active = (mode, s = state) => (mode === 'advanced'
   ? { provider: s.advanced, providerError: s.advancedError }
   : { provider: s.classic, providerError: s.classicError });
 
-/** (Re)build the Classic and Advanced providers from settings; `provider` = the one for the current mode. */
+/** (Re)build the Classic and Advanced chains from settings; `provider` = the one for the current mode. */
 export function initProvider() {
   const s = settings.get();
-  const [classic, classicError] = build(s.providerId);
-  const [advanced, advancedError] = build(s.advancedProviderId);
+  const [classic, classicError] = buildChain('classic', s.entries, s.activeClassic);
+  const [advanced, advancedError] = buildChain('advanced', s.entries, s.activeAdvanced);
   const next = { classic, classicError, advanced, advancedError };
   set({ ...next, ...active(state.mode, next) });
   return loadLanguages();
@@ -63,6 +171,16 @@ export function setMode(mode) {
   settings.set({ mode });
   set({ mode, ...active(mode) });
   loadLanguages();
+}
+
+/** Make a service the one used first (and switch to its mode). */
+export function useEntry(id) {
+  const e = settings.get().entries.find((x) => x.id === id);
+  if (!e) return;
+  const kind = kindOf(e);
+  settings.set(kind === 'advanced' ? { activeAdvanced: id, mode: kind } : { activeClassic: id, mode: kind });
+  set({ mode: kind });
+  initProvider();
 }
 
 export const advancedReady = () => !!state.advanced;
@@ -117,6 +235,7 @@ export async function translate(text, source, target) {
 export function describeError(err) {
   const code = err?.code || 'SERVER';
   const map = {
+    NEEDS_DOWNLOAD: ['Download needed', `${err.message} Download it once to translate without internet.`],
     NO_PROVIDER: ['No translation provider', err.message || 'Choose a provider in Settings to start translating.'],
     NETWORK: ["Can't translate", `Check your connection and try again. ${err.message}`],
     UNSUPPORTED_PAIR: ['Language pair not supported', err.message],
