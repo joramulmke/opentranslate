@@ -1,0 +1,22 @@
+# Local-only working files (kept on disk for continued work, never published/deployed)
+
+# Craft Anything project + run files
+craft.json
+feed.json
+usage.json
+build-activity.log
+agent-session.jsonl
+capture/
+checks/
+inbox/
+investigation.cany/
+
+# Reference screenshots (third-party UI), snapshots, refine script
+craft/
+
+# Local test helpers
+tests/
+
+# OS / editor noise
+.DS_Store
+*.swp
