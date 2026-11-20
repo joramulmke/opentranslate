@@ -3,6 +3,7 @@
 import { state, subscribe, useEntry, kindOf } from '../state.js';
 import { settings } from '../store.js';
 import { escapeHtml } from './langpicker.js';
+import { offlineUnusable } from '../features/offline.js';
 import { icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +30,10 @@ export function initModeMenu({ openSettings }) {
       const rows = ofKind.length
         ? ofKind.map((e) => {
           const on = state.mode === kind && e.id === current;
+          if (e.type === 'offline' && offlineUnusable()) {
+            return `<button type="button" role="menuitemradio" aria-checked="false" aria-disabled="true" data-blocked title="${escapeHtml(e.label)}">
+            <span class="mode-copy"><strong>${escapeHtml(e.label)}</strong><small>Not available in this browser</small></span>${icon('check', 'mode-check')}</button>`;
+          }
           return `<button type="button" role="menuitemradio" aria-checked="${on}" data-entry="${e.id}" title="${escapeHtml(e.label)}">
             <span class="mode-copy"><strong>${escapeHtml(e.label)}</strong></span>${icon('check', 'mode-check')}</button>`;
         }).join('')
@@ -76,7 +81,8 @@ export function initModeMenu({ openSettings }) {
     const item = e.target.closest('[role^="menuitem"]');
     if (item) {
       close();
-      if (item.dataset.entry) useEntry(item.dataset.entry);
+      if ('blocked' in item.dataset) openSettings('offline');
+      else if (item.dataset.entry) useEntry(item.dataset.entry);
       else if (item.dataset.add) openSettings('advanced');
       else if ('manage' in item.dataset) openSettings();
       return;

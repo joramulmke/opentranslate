@@ -4,7 +4,7 @@
 // no UI changes here.
 import { getProviderDef, createProvider } from '../providers.js';
 import { settings, entries, entryLabel, newEntryId, MOCK_ENTRY, BUILT_IN } from '../store.js';
-import { installedLanguages, usedBytes, offlineLanguages, packState, packSize, onOfflineChange, loadRegistry } from '../features/offline.js';
+import { installedLanguages, usedBytes, offlineLanguages, packState, packSize, onOfflineChange, loadRegistry, downloadsBlocked, offlineUnusable, BLOCKED_REASON } from '../features/offline.js';
 import { dlButton, updateDownloadButtons, onDownloadClick, formatMB } from './offlineui.js';
 import { langName } from '../state.js';
 import { initProvider, kindOf, useEntry, state } from '../state.js';
@@ -137,6 +137,7 @@ function subtitle(e) {
   const c = e.config || {};
   if (e.type === 'mock') return 'A few phrases only, for trying the app';
   if (e.type === 'offline') {
+    if (offlineUnusable()) return 'Not available in this browser';
     const n = installedLanguages().length;
     return n ? `${n} language${n > 1 ? 's' : ''} + English · ${formatMB(usedBytes())} · works without internet` : 'No languages downloaded yet';
   }
@@ -152,7 +153,8 @@ function renderLists() {
   for (const kind of ['classic', 'advanced']) {
     const list = s.entries.filter((e) => kindOf(e) === kind);
     const activeId = kind === 'advanced' ? s.activeAdvanced : s.activeClassic;
-    lead[kind] = list.find((e) => e.id === activeId) || list.find((e) => e.type !== 'mock') || list[0];
+    const usable = list.filter((e) => !(e.type === 'offline' && offlineUnusable()));
+    lead[kind] = usable.find((e) => e.id === activeId) || usable.find((e) => e.type !== 'mock') || usable[0];
     const movable = list.filter((e) => e.id !== MOCK_ENTRY.id);
     const host = $(kind === 'advanced' ? 'svc-advanced' : 'svc-classic');
     host.innerHTML = list.length ? list.map((e) => {
@@ -161,7 +163,7 @@ function renderLists() {
       const builtIn = BUILT_IN.has(e.id);
       const isMock = e.id === MOCK_ENTRY.id;
       return `<li class="svc-row" data-id="${e.id}">
-        <label class="svc-pick"><input type="radio" name="svc-${kind}" value="${e.id}" ${e === lead[kind] ? 'checked' : ''}>
+        <label class="svc-pick"><input type="radio" name="svc-${kind}" value="${e.id}" ${e === lead[kind] ? 'checked' : ''} ${e.type === 'offline' && offlineUnusable() ? 'disabled' : ''}>
           <span class="svc-copy"><strong title="${name}">${name}</strong><small>${escapeHtml(subtitle(e))}</small></span></label>
         <span class="svc-actions">
           ${isMock ? '' : `<button class="icon-btn sm" type="button" data-act="up" aria-label="Move ${name} up" ${i <= 0 ? 'disabled' : ''}>${icon('up')}</button>
@@ -307,10 +309,10 @@ function openManager() {
   $('offline-manager').hidden = false;
   $('svc-add').hidden = true;
   renderManager();
-  loadRegistry().then(() => { if (!$('offline-manager').hidden) renderManager(); }).catch((e) => {
+  if (!downloadsBlocked) loadRegistry().then(() => { if (!$('offline-manager').hidden) renderManager(); }).catch((e) => {
     $('offline-usage').textContent = e.message;
   });
-  requestAnimationFrame(() => { $('offline-manager').scrollIntoView({ block: 'start' }); $('offline-search').focus(); });
+  requestAnimationFrame(() => { $('offline-manager').scrollIntoView({ block: 'start' }); (downloadsBlocked ? $('btn-offline-done') : $('offline-search')).focus(); });
 }
 
 function closeManager({ silent = false } = {}) {
@@ -322,6 +324,9 @@ function closeManager({ silent = false } = {}) {
 }
 
 function renderManager() {
+  $('offline-search').hidden = downloadsBlocked;
+  $('offline-list').hidden = downloadsBlocked;
+  if (downloadsBlocked) { $('offline-usage').textContent = BLOCKED_REASON; return; }
   const q = $('offline-search').value.trim().toLowerCase();
   const n = installedLanguages().length;
   $('offline-usage').textContent = n ? `${n} downloaded · ${formatMB(usedBytes())} used on this device` : 'Nothing downloaded yet.';

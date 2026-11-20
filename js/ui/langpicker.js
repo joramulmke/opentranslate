@@ -5,7 +5,7 @@ import { icon } from './icons.js';
 import { setupDialog, openDialog, closeDialog } from './sheet.js';
 import { isWeb } from './layout.js';
 import { STATIC_LANGUAGES } from '../languages.js';
-import { offlineLanguages, onOfflineChange, loadRegistry } from '../features/offline.js';
+import { offlineLanguages, onOfflineChange, loadRegistry, downloadsBlocked } from '../features/offline.js';
 import { dlButton, updateDownloadButtons, onDownloadClick } from './offlineui.js';
 
 let dlg, list, search, title, searchBtn;
@@ -120,7 +120,7 @@ function render() {
   const q = search.value.trim().toLowerCase();
   avail = availableCodes(side);
   // download buttons: Classic mode, languages the on-device engine knows (English is built in)
-  offlineSet = state.mode === 'classic' ? new Set(offlineLanguages().filter((c) => c !== 'en')) : null;
+  offlineSet = state.mode === 'classic' && !downloadsBlocked ? new Set(offlineLanguages().filter((c) => c !== 'en')) : null;
   if (offlineSet) loadRegistry().then(() => { if (dlg.open) updateDownloadButtons(list); }).catch(() => {});
   const byCode = new Map([...STATIC_LANGUAGES, ...state.languages].map((l) => [l.code, l]));
   const langs = [...byCode.values()].sort((a, b) => a.name.localeCompare(b.name));

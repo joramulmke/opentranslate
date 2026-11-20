@@ -297,7 +297,7 @@ function showError(err) {
       }).then(() => runTranslate({ commit: true }), (er) => { btn.disabled = false; btn.textContent = 'Try again'; toast(er.message); });
     });
   }
-  if (code === 'NO_PROVIDER' || code === 'AUTH') action('Open settings', openSettings);
+  if (code === 'NO_PROVIDER' || code === 'AUTH' || code === 'BROWSER_BLOCKED') action('Open settings', openSettings);
   if (code === 'UNSUPPORTED_PAIR') action('Change language', async () => {
     const c = await pickLanguage({ side: 'target', selected: state.target });
     if (c) { set({ target: c }); settings.set({ target: c }); }

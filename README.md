@@ -52,6 +52,20 @@ open translation models, downloaded from Mozilla's model CDN, checked against th
 the browser's Cache Storage. Language detection uses [franc](https://github.com/wooorm/franc) (MIT), limited to
 the downloaded languages. Not available on device: Irish, Swahili, Esperanto (greyed out).
 
+Mozilla serves the models from two addresses:
+
+- model list (works in every browser):
+  `https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/translations-models/records`
+- model files: `https://firefox-settings-attachments.cdn.mozilla.net/` + each record's `attachment.location`
+
+**Chrome, Edge, Brave and other Chromium-based browsers can't download models:** the file server answers
+HTTP 406 to any browser whose User-Agent contains "Chrome", and a web page can't change that header. In those
+browsers the app switches the on-device service off (download buttons hidden, the service shown as "Not
+available in this browser", translations go to the next service) and explains why. Safari, Firefox and Chrome
+on iPhone work. To check:
+`curl -s -o /dev/null -w "%{http_code}\n" -r 0-15 -A Chrome https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/23db71e7-b6d9-45eb-a47d-0290d7d8ef63.bin`
+(406; without `-A Chrome` it is 206).
+
 **Privacy:** in Advanced mode your text (and, for handwriting, the drawing) is sent to the AI service you
 configure. **API keys are stored only in your browser (`localStorage`) and sent only to the URL you enter.** They are
 never part of this repository. Use keys with spending limits; anyone with access to that browser profile can read them.

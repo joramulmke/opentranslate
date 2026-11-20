@@ -1,6 +1,6 @@
 // Shared app state + provider access. UI modules subscribe; they never touch providers directly.
 import { createProvider, ProviderError, getProviderDef } from './providers.js';
-import './features/offline.js';   // registers the on-device service
+import { offlineUnusable } from './features/offline.js';   // registers the on-device service
 import { STATIC_LANGUAGES } from './languages.js';
 import { settings, recentLangs } from './store.js';
 
@@ -137,7 +137,8 @@ export class ProviderChain {
 }
 
 function buildChain(kind, entryList, activeId) {
-  const ofKind = entryList.filter((e) => kindOf(e) === kind);
+  // the on-device service is left out where it can't work (see offline.js)
+  const ofKind = entryList.filter((e) => kindOf(e) === kind && !(e.type === 'offline' && offlineUnusable()));
   const lead = ofKind.find((e) => e.id === activeId) || ofKind.find((e) => e.type !== 'mock') || ofKind[0];
   if (!lead) {
     return [null, new ProviderError('NO_PROVIDER', kind === 'advanced' ? 'No AI model is set up.' : 'No translation service is set up.')];
@@ -236,6 +237,7 @@ export function describeError(err) {
   const code = err?.code || 'SERVER';
   const map = {
     NEEDS_DOWNLOAD: ['Download needed', `${err.message} Download it once to translate without internet.`],
+    BROWSER_BLOCKED: ['Not available in this browser', err.message],
     NO_PROVIDER: ['No translation provider', err.message || 'Choose a provider in Settings to start translating.'],
     NETWORK: ["Can't translate", `Check your connection and try again. ${err.message}`],
     UNSUPPORTED_PAIR: ['Language pair not supported', err.message],

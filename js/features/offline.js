@@ -15,6 +15,14 @@ const MAX_MAJOR = 2;          // newer model generations may need a newer engine
 const MAX_LOADED = 2;         // the engine's memory is capped at 2 GB; a pivot needs two models
 const PIVOT = 'en';
 
+// Mozilla's model server answers HTTP 406 to every browser whose User-Agent contains "Chrome"
+// (Chrome, Edge, Brave, Opera, Chrome on Android). A page can't change that header, so in those
+// browsers downloads are switched off and the app says why.
+export const downloadsBlocked = /Chrome/.test(globalThis.navigator?.userAgent || '');
+export const BLOCKED_REASON = "This browser can't download offline languages: Mozilla's model server doesn't serve Chrome, Edge, Brave or other Chromium-based browsers. Open OpenTranslate in Safari or Firefox to use them, or translate with a LibreTranslate server.";
+/** True when the on-device service can't do anything here (blocked browser, nothing downloaded). */
+export const offlineUnusable = () => downloadsBlocked && !installedLanguages().length;
+
 // App language codes ↔ model codes
 const TO_FX = { zh: 'zh-Hans', no: 'nb' };
 const FROM_FX = Object.fromEntries(Object.entries(TO_FX).map(([a, b]) => [b, a]));
@@ -190,6 +198,7 @@ async function fetchFile(cache, file, signal, onBytes) {
 
 /** Download a language pack (English ↔ lang). Resolves when it's ready to use. */
 export async function downloadPack(lang) {
+  if (downloadsBlocked) throw new ProviderError('BROWSER_BLOCKED', BLOCKED_REASON);
   if (lang === PIVOT || packState(lang) === 'ready') return;
   if (downloads.has(lang)) return downloads.get(lang).promise;
   const ctrl = new AbortController();
@@ -401,6 +410,7 @@ registerProvider({
         let detected;
         if (!source || source === 'auto') { detected = (await detectLang(text)).language; source = detected; }
         const missing = missingFor(source, target);
+        if (missing.length && downloadsBlocked) throw new ProviderError('BROWSER_BLOCKED', BLOCKED_REASON);
         if (missing.length) {
           await loadRegistry().catch(() => {});
           const size = missing.reduce((a, l) => a + (packSize(l) || 0), 0);

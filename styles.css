@@ -1367,3 +1367,9 @@ h3.lang-section { margin: 0; }
   .lang-dl[data-state="downloading"]::before { forced-color-adjust: none; background: conic-gradient(Highlight calc(var(--p, 0) * 1%), GrayText 0); }
   .icon-btn:disabled, .btn:disabled { color: GrayText; }
 }
+
+/* on-device service where the browser can't download models (Chromium) */
+.mode-copy small { font-size: 13px; color: var(--on-surface-variant); }
+dialog.menu [aria-disabled="true"] strong { color: var(--on-surface-variant); }
+.svc-pick:has(input:disabled) { cursor: default; }
+.svc-pick:has(input:disabled) strong { color: var(--on-surface-variant); }
