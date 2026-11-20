@@ -10,6 +10,7 @@ import { initSettingsSheet, openSettings } from './ui/settingssheet.js';
 import { initModeMenu } from './ui/modemenu.js';
 import { initSetupBadge } from './ui/setupbadge.js';
 import { initSiteFooter } from './ui/sitefooter.js';
+import { loadSiteConfig } from './siteconfig.js';
 import { initMenu, openMenu } from './ui/menu.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
@@ -174,6 +175,8 @@ function boot() {
   initModeMenu({ openSettings });
   initSetupBadge();
   initSiteFooter();
+  // change-me.md changed since the last start (e.g. demo_mode): rebuild the service list
+  loadSiteConfig().then((changed) => { if (changed) { settings.set({}); initProvider(); } });
   initMenu('more-menu', {
     history: () => openHistory('history'),
     saved: () => openHistory('saved'),

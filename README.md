@@ -18,8 +18,10 @@ browsers block ES modules there (the page shows a hint). Camera and microphone n
 ## Translation services
 
 Open **Settings** (gear icon) → **Translation services**. Services are a list in two groups; add as many as
-you like with **+ Add LibreTranslate** / **+ Add AI model** (name, URL, key, model, **Test connection**), edit,
-reorder (↑ ↓) or remove them (with Undo).
+you like with **+ Add LibreTranslate** (under Classic) and **+ Add AI model** / **+ Add on-device AI** (under
+Advanced), edit, reorder (↑ ↓) or remove them (with Undo). An AI model's form has two boxes, **Read images
+(handwriting)** and **Speech to text**. The page can't tell from a model's name what it can do, so both stay off until
+**Test connection** has tried it (a small red square, half a second of silence); then you decide whether to use it.
 
 | Group | Service | Notes |
 | --- | --- | --- |
@@ -162,7 +164,7 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
 - **Handwriting:** draw on a pad (undo, clear, stroke width), pick a suggestion, edit, then translate.
   Three engines; the one checked in Settings → Translation services → **Handwriting** goes first, the others follow:
   1. **AI vision**: your AI model reads the drawing (any script, cursive), when chosen or in Advanced mode. Needs a
-     vision-capable model; one API call per recognition.
+     model whose **Read images** box is ticked (after Test connection); one API call per recognition.
   2. **On-device model**: TrOCR handwriting model in the browser via
      [transformers.js](https://github.com/huggingface/transformers.js); asks before a one-time ~130 MB download,
      Latin-script languages only, private.
@@ -180,6 +182,7 @@ Deployment-specific values live in [`change-me.md`](change-me.md) (`key = value`
 | --- | --- |
 | `privacy_policy_link` | "Datenschutzerklärung" link in the footer (and "Impressum" unless `imprint_link` is set) |
 | `imprint_link` | optional separate "Impressum" link |
+| `demo_mode` | `false` removes the offline demo service (default: on). Until someone adds a real service, Settings then says none is set up |
 
 The footer sits below the full-height app, so it appears when you scroll down.
 

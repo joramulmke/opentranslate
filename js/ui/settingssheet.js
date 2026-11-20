@@ -77,6 +77,15 @@ export function initSettingsSheet({ onThemeChange }) {
 
   wireTest($('btn-test'), $('test-result'), (r) => {
     if (r.models?.length) $('adv-models').innerHTML = r.models.map((m) => `<option value="${escapeHtml(m)}">`).join('');
+    for (const [key, ok] of Object.entries(r.caps || {})) {
+      const box = $('svc-fields').querySelector(`[data-cap="${key}"]`);
+      if (box && ok !== null) setCap(box, ok ? 'on' : 'no');
+    }
+  });
+  // capability boxes: off until a test confirms them; clicks on an unconfirmed box do nothing
+  $('svc-fields').addEventListener('click', (e) => {
+    const box = e.target.closest('[data-cap]');
+    if (box?.getAttribute('aria-disabled') === 'true') e.preventDefault();
   });
 
   // Enter in an editor field saves that service; nothing else in the sheet needs saving
@@ -261,7 +270,7 @@ function remove(id) {
   initProvider(); renderLists();
   // keep focus in the list: the next row, else the previous one, else the add button
   const nextRadio = nextId && document.querySelector(`.svc-row[data-id="${nextId}"] input`);
-  (nextRadio || $('btn-add-lt')).focus();
+  (nextRadio || $(kindOf(e) === 'advanced' ? 'btn-add-ai' : 'btn-add-lt')).focus();
   toast(freed ? `Removed ${e.label} and deleted its download` : `Removed ${e.label}`, {
     action: 'Undo',
     onAction: () => {
@@ -299,19 +308,23 @@ function openEditor({ id, type }) {
   saveLabel();
   if (editing.type === 'webllm') $('svc-fields').querySelector('[data-key="model"]').addEventListener('change', saveLabel);
   $('svc-editor').hidden = false;
-  $('svc-add').hidden = true;
+  // the form opens right under the list it adds to
+  $(def.kind === 'advanced' ? 'svc-add-advanced' : 'svc-add-classic').after($('svc-editor'));
+  showAddRows(false);
   requestAnimationFrame(() => {
     $('svc-editor').scrollIntoView({ block: 'nearest' });
     (editing.isNew ? $('svc-fields').querySelector('input, select') : $('svc-name'))?.focus();
   });
 }
 
+function showAddRows(on) { document.querySelectorAll('.svc-add').forEach((r) => { r.hidden = !on; }); }
+
 function closeEditor({ silent = false } = {}) {
   const wasId = editing?.id;
   const opener = editing?.opener;
   editing = null;
   $('svc-editor').hidden = true;
-  $('svc-add').hidden = false;
+  showAddRows(true);
   if (silent) return;
   // saved/edited: that row's edit button; cancelled add: the "+ Add" button that opened the editor
   const target = document.querySelector(`.svc-row[data-id="${wasId}"] [data-act="edit"]`)
@@ -356,6 +369,10 @@ function renderFields(host, def, saved) {
   host.innerHTML = (def.fields || []).map((f) => {
     const fid = `pf-${id}-${f.key}`;
     const val = saved[f.key] ?? f.default ?? '';
+    if (f.type === 'cap') {
+      return `<div class="field cap-field"><label class="cap-row" for="${fid}"><input type="checkbox" id="${fid}" data-cap="${f.key}" data-what="${f.what}" aria-describedby="${fid}-help">
+        <span>${escapeHtml(f.label)}</span></label><p class="field-help" id="${fid}-help"></p></div>`;
+    }
     const control = f.type === 'select'
       ? `<select id="${fid}" data-key="${f.key}" ${f.help ? `aria-describedby="${fid}-help"` : ''}>${f.options.map((o) => `<option value="${o.value}" ${o.value === val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select>`
       : `<input id="${fid}" data-key="${f.key}" type="${f.type || 'text'}" value="${escapeHtml(val)}" placeholder="${escapeHtml(f.placeholder || '')}"
@@ -366,6 +383,14 @@ function renderFields(host, def, saved) {
   }).join('');
   host.style.display = host.innerHTML ? 'grid' : 'none';
   host.style.gap = '12px';
+  // capabilities: saved 'on' / 'off' were confirmed by a test earlier; '' = not tested
+  for (const f of def.fields || []) {
+    if (f.type !== 'cap') continue;
+    const box = host.querySelector(`[data-cap="${f.key}"]`);
+    setCap(box, saved[f.key] === 'on' || saved[f.key] === 'off' ? saved[f.key] : '');
+    // a different model hasn't been tested
+    host.querySelector(`[data-key="${f.resetBy}"]`)?.addEventListener('input', () => setCap(box, ''));
+  }
   // Fields that fill others (e.g. a service preset fills the base URL)
   for (const f of def.fields || []) {
     if (!f.fills) continue;
@@ -381,7 +406,30 @@ function renderFields(host, def, saved) {
 function readFields(host) {
   const out = {};
   host.querySelectorAll('[data-key]').forEach((i) => { out[i.dataset.key] = i.value.trim(); });
+  host.querySelectorAll('[data-cap]').forEach((b) => {
+    out[b.dataset.cap] = b.dataset.state === 'ok' ? (b.checked ? 'on' : 'off') : '';
+  });
   return out;
+}
+
+/**
+ * One capability box. state: '' (not tested: off and unavailable), 'no' (test says it can't),
+ * 'on' / 'off' (test confirmed it; the user decides).
+ */
+function setCap(box, state) {
+  const ok = state === 'on' || state === 'off';
+  box.dataset.state = ok ? 'ok' : state || 'untested';
+  box.checked = state === 'on';
+  // aria-disabled, not disabled: stays reachable, so the reason below is heard
+  if (ok) box.removeAttribute('aria-disabled'); else box.setAttribute('aria-disabled', 'true');
+  const what = box.dataset.what;
+  const needsStt = what === 'audio' && !$('svc-fields').querySelector('[data-key="sttModel"]')?.value.trim();
+  $(box.getAttribute('aria-describedby')).textContent = ok
+    ? (what === 'images' ? 'Checked by the test. Untick to not send drawings to this model.' : 'Checked by the test. Untick to not send your voice to this service.')
+    : state === 'no'
+      ? (what === 'images' ? "The test showed this model can't read images." : "The test showed this speech-to-text model doesn't work here.")
+      : needsStt ? 'Fill in a speech-to-text model above, then press “Test connection” to check it.'
+        : 'Not checked yet. Press “Test connection” to find out.';
 }
 
 /* ------------------------------------------------- offline languages manager */
@@ -390,8 +438,9 @@ function openManager() {
   if (editing) closeEditor({ silent: true });
   closeOcrManager({ silent: true });
   $('offline-search').value = '';
+  $('svc-add-classic').after($('offline-manager'));   // under the Classic list it belongs to
   $('offline-manager').hidden = false;
-  $('svc-add').hidden = true;
+  showAddRows(false);
   renderManager();
   if (!downloadsBlocked) loadRegistry().then(() => { if (!$('offline-manager').hidden) renderManager(); }).catch((e) => {
     $('offline-usage').textContent = e.message;
@@ -402,7 +451,7 @@ function openManager() {
 function closeManager({ silent = false } = {}) {
   if ($('offline-manager').hidden) return;
   $('offline-manager').hidden = true;
-  $('svc-add').hidden = false;
+  showAddRows(true);
   renderLists();
   if (!silent) document.querySelector('.svc-row [data-act="manage"]')?.focus();
 }

@@ -325,24 +325,26 @@
     <form class="settings-form" id="settings-form" novalidate>
       <fieldset class="settings-group" id="services-group" aria-describedby="svc-help">
         <legend>Translation services</legend>
-        <p class="setup-hint" id="setup-hint" hidden><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server or an AI model below for real translations.</p>
+        <p class="setup-hint" id="setup-hint" hidden><span data-hint="demo"><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server or an AI model below for real translations.</span><span data-hint="none" hidden><strong>No translation service yet.</strong> Add a LibreTranslate server or an AI model below to start translating.</span></p>
         <p class="field-help" id="svc-help">The checked service is used first. If it fails or doesn't have a language, the next one in the same group is tried. Keys stay in this browser. Each download says where it comes from and can be deleted here.</p>
         <h3 class="svc-head" id="svc-classic-head">Classic</h3>
         <ul class="svc-list" id="svc-classic" aria-labelledby="svc-classic-head"></ul>
+        <div class="row-gap svc-add" id="svc-add-classic">
+          <button class="btn btn-tonal" type="button" id="btn-add-lt" aria-controls="svc-editor"><i data-icon="add"></i>Add LibreTranslate</button>
+        </div>
         <h3 class="svc-head" id="svc-advanced-head">Advanced (AI model)</h3>
         <ul class="svc-list" id="svc-advanced" aria-labelledby="svc-advanced-head"></ul>
+        <div class="row-gap svc-add" id="svc-add-advanced">
+          <button class="btn btn-tonal" type="button" id="btn-add-ai" aria-controls="svc-editor"><i data-icon="add"></i>Add AI model</button>
+          <button class="btn btn-tonal" type="button" id="btn-add-llm" aria-controls="svc-editor" aria-describedby="llm-unavailable"><i data-icon="add"></i>Add on-device AI</button>
+          <p class="field-help" id="llm-unavailable" hidden></p>
+        </div>
         <h3 class="svc-head" id="svc-speech-head">Speech recognition</h3>
         <ul class="svc-list" id="svc-speech" aria-labelledby="svc-speech-head"></ul>
         <h3 class="svc-head" id="svc-hwr-head">Handwriting</h3>
         <ul class="svc-list" id="svc-hwr" aria-labelledby="svc-hwr-head"></ul>
         <h3 class="svc-head" id="svc-ocr-head">Camera text (OCR)</h3>
         <ul class="svc-list" id="svc-ocr" aria-labelledby="svc-ocr-head"></ul>
-        <div class="row-gap svc-add" id="svc-add">
-          <button class="btn btn-tonal" type="button" id="btn-add-lt" aria-controls="svc-editor"><i data-icon="add"></i>Add LibreTranslate</button>
-          <button class="btn btn-tonal" type="button" id="btn-add-ai" aria-controls="svc-editor"><i data-icon="add"></i>Add AI model</button>
-          <button class="btn btn-tonal" type="button" id="btn-add-llm" aria-controls="svc-editor" aria-describedby="llm-unavailable"><i data-icon="add"></i>Add on-device AI</button>
-          <p class="field-help" id="llm-unavailable" hidden></p>
-        </div>
         <section class="svc-editor" id="svc-editor" aria-labelledby="svc-editor-title" hidden>
           <h3 id="svc-editor-title">Add service</h3>
           <p class="field-help" id="svc-desc"></p>

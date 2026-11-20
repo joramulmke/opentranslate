@@ -60,7 +60,7 @@ function row({ group, value, title, sub, src, checked, disabled, actions = '' })
 }
 
 function speechRows() {
-  const stt = aiEntries().find((e) => e.config?.sttModel);
+  const stt = aiEntries().find((e) => e.config?.sttModel && e.config?.audio === 'on');
   const usable = { browser: browserSpeechAvailable(), api: !!stt && canRecord(), ondevice: canRecord() };
   const pref = settings.get().speechEngine || 'browser';
   const first = [pref, ...SPEECH_ENGINES].find((e) => usable[e]);
@@ -69,7 +69,7 @@ function speechRows() {
       sub: usable.browser ? 'Live text while you speak · nothing to download' : 'Not available in this browser',
       src: 'Not a download: your voice goes to the browser maker’s service (Google for Chrome, Microsoft for Edge, Apple for Safari).' }),
     row({ group: 'speech', value: 'api', title: 'AI service (Whisper API)', checked: first === 'api', disabled: !usable.api,
-      sub: stt ? `${stt.label} · ${stt.config.sttModel}` : 'Set a speech-to-text model on an AI service under Advanced',
+      sub: stt ? `${stt.label} · ${stt.config.sttModel}` : 'Edit an AI model under Advanced: fill in a speech-to-text model and press Test connection',
       src: stt ? `Not a download: your voice goes to ${esc(hostOf(stt))}.` : '' }),
     row({ group: 'speech', value: 'ondevice', title: 'On this device (Whisper)', checked: first === 'ondevice', disabled: !usable.ondevice,
       sub: modelSub('whisper', ' · private'), src: modelSource('whisper'), actions: modelButton('whisper') }),
@@ -77,13 +77,13 @@ function speechRows() {
 }
 
 function hwrRows() {
-  const ai = state.advanced?.recognizeImage ? aiEntries()[0] : null;
+  const ai = aiEntries().find((e) => e.config?.vision === 'on') || null;
   const usable = { vision: !!ai, ondevice: true, tesseract: true };
   const pref = hwrPref();
   const first = [pref, ...HWR_ENGINES].find((e) => usable[e]);
   return [
     row({ group: 'hwr', value: 'vision', title: 'AI vision', checked: first === 'vision', disabled: !usable.vision,
-      sub: ai ? `${ai.label} reads the drawing · any script · needs a vision-capable model` : 'Add an AI model under Advanced first',
+      sub: ai ? `${ai.label} reads the drawing · any script` : 'Needs an AI model that can read images: edit it under Advanced and press Test connection',
       src: ai ? `Not a download: the drawing goes to ${esc(hostOf(ai))}.` : '' }),
     row({ group: 'hwr', value: 'ondevice', title: 'On-device model (TrOCR)', checked: first === 'ondevice',
       sub: modelSub('trocr', ' · Latin script only'), src: modelSource('trocr'), actions: modelButton('trocr') }),
@@ -156,7 +156,7 @@ export function openOcrManager({ onOpen } = {}) {
   onOpen?.();
   $('ocr-search').value = '';
   $('ocr-manager').hidden = false;
-  $('svc-add').hidden = true;
+  document.querySelectorAll('.svc-add').forEach((r) => { r.hidden = true; });
   $('ocr-source').innerHTML = ocrSourceHtml();
   renderOcrManager();
   ocrDownloaded().then((m) => { ocrFiles = m; renderOcrManager(); renderEngines(); }).catch(() => {});
@@ -166,7 +166,7 @@ export function openOcrManager({ onOpen } = {}) {
 export function closeOcrManager({ silent = false } = {}) {
   if ($('ocr-manager').hidden) return;
   $('ocr-manager').hidden = true;
-  $('svc-add').hidden = false;
+  document.querySelectorAll('.svc-add').forEach((r) => { r.hidden = false; });
   renderEngines();
   if (!silent) document.querySelector('[data-act="ocr-manage"]')?.focus();
 }

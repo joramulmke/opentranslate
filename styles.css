@@ -1258,7 +1258,15 @@ dialog.menu.mode-menu [role^="menuitem"]:focus-visible { background: color-mix(i
 .icon-btn.sm .ic { width: 20px; height: 20px; }
 .icon-btn:disabled { opacity: .38; cursor: default; }
 .svc-empty { padding: 8px 4px; font-size: 14px; color: var(--on-surface-variant); }
-.svc-add { flex-wrap: wrap; }
+.svc-add { flex-wrap: wrap; margin-top: 8px; }
+/* what an AI model can do: checkboxes that a test turns on */
+.cap-field { gap: 2px; }
+.cap-field .cap-row { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 0 4px; border-radius: 12px; cursor: pointer; font-size: 15px; font-weight: 400; color: var(--on-surface); }
+.cap-field .cap-row input { all: revert; width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--primary); }
+.cap-field .cap-row input:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.cap-field .cap-row:has(input[aria-disabled="true"]) { cursor: not-allowed; }
+.cap-field .cap-row input[aria-disabled="true"] { opacity: .5; }
+.cap-field .field-help { margin: 0 4px 0 38px; }
 .svc-add .btn { padding: 0 16px 0 12px; }
 .svc-add .btn .ic { width: 18px; height: 18px; }
 .svc-editor { display: grid; gap: 12px; padding: 16px; border-radius: 16px; background: var(--surface-container); }

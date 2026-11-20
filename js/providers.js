@@ -376,6 +376,10 @@ registerProvider({
       suggest: true, help: '“Test connection” fills in the models your server offers.' },
     { key: 'sttModel', label: 'Speech-to-text model', type: 'text', placeholder: 'e.g. whisper-1 (OpenAI), whisper-large-v3-turbo (Groq)',
       suggest: true, help: 'Optional. Used for voice input where the browser has no speech service (Brave, Firefox). Empty = on-device model.' },
+    // What the model can do besides text. The page can't know this from the name, so "Test connection"
+    // tries it; the box stays off until the test confirms it, then the user decides.
+    { key: 'vision', label: 'Read images (handwriting)', type: 'cap', resetBy: 'model', what: 'images' },
+    { key: 'audio', label: 'Speech to text (voice input)', type: 'cap', resetBy: 'sttModel', what: 'audio' },
   ],
   create(cfg) { return new OpenAICompatibleProvider(cfg); },
 });
@@ -387,14 +391,29 @@ const langLabel = (code) => {
   try { return `${new Intl.DisplayNames(['en'], { type: 'language' }).of(code)} (${code})`; } catch { return code; }
 };
 
+// a 32×32 red square, for the "can it read images?" check
+const RED_PNG = 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAAKElEQVR42u3NQQkAAAgAseuf0TCm8CEM9l9TpxIIBAKBQCAQCARfggW09XAu+IMdsgAAAABJRU5ErkJggg==';
+/** Half a second of silence as a 16 kHz 16-bit mono WAV file. */
+function silentWav() {
+  const n = 8000; const b = new ArrayBuffer(44 + n * 2); const v = new DataView(b);
+  const str = (o, t) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 16000, true); v.setUint32(28, 32000, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); str(36, 'data'); v.setUint32(40, n * 2, true);
+  return b;
+}
+
 export class OpenAICompatibleProvider {
-  constructor({ baseUrl, apiKey, model, sttModel }) {
+  constructor({ baseUrl, apiKey, model, sttModel, vision, audio }) {
     this.name = 'OpenAI-compatible';
     this.isAdvanced = true;
     this.base = String(baseUrl).trim().replace(/\/+$/, '');
     this.apiKey = String(apiKey || '').trim();
     this.model = String(model || '').trim();
-    this.sttModel = String(sttModel || '').trim();
+    this.sttName = String(sttModel || '').trim();
+    // only what a test confirmed and the user left on ('on'); untested = '' , turned off = 'off'
+    this.sttModel = audio === 'on' ? this.sttName : '';
+    if (vision !== 'on') this.recognizeImage = undefined;
   }
 
   async _req(path, body, { timeout = 60000 } = {}) {
@@ -515,12 +534,45 @@ export class OpenAICompatibleProvider {
     return list.map((m) => m.id || m.name).filter(Boolean).sort();
   }
 
+  /** Can the chat model see images? Sends a small red square and asks its colour. true / false / null (unknown). */
+  async probeVision() {
+    try {
+      const data = await this._req('/chat/completions', {
+        model: this.model, temperature: 0, max_tokens: 10,
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: 'What colour is this image? Answer with one English word.' },
+          { type: 'image_url', image_url: { url: `data:image/png;base64,${RED_PNG}` } }] }],
+      }, { timeout: 30000 });
+      return /red/i.test(String(data?.choices?.[0]?.message?.content || ''));
+    } catch (e) {
+      if (e.code === 'SERVER' || e.code === 'BAD_RESPONSE') return false;
+      return null;
+    }
+  }
+
+  /** Does the speech-to-text model answer? Sends half a second of silence. true / false / null. */
+  async probeAudio() {
+    if (!this.sttName) return null;
+    const fd = new FormData();
+    fd.append('file', new Blob([silentWav()], { type: 'audio/wav' }), 'test.wav');
+    fd.append('model', this.sttName);
+    fd.append('response_format', 'json');
+    try { const d = await this._req('/audio/transcriptions', fd, { timeout: 30000 }); return typeof d?.text === 'string'; }
+    catch (e) { return e.code === 'SERVER' || e.code === 'BAD_RESPONSE' ? false : null; }
+  }
+
   async test() {
     let models = [];
     try { models = await this.listModels(); } catch (e) { if (e.code === 'AUTH' || e.code === 'NETWORK') throw e; }
     if (!this.model) return { ok: false, models, message: `Connected${models.length ? `, ${models.length} models available` : ''}. Pick a model, then test again.` };
     const r = await this.translate('Good morning', 'en', 'es');
-    return { ok: true, models, message: `Connected. ${this.model}: “Good morning” → “${r.text}”` };
+    const [vision, audio] = await Promise.all([this.probeVision(), this.probeAudio()]);
+    const say = (v, yes, no) => (v === true ? yes : v === false ? no : '');
+    const notes = [
+      say(vision, 'It can read images.', "It can't read images."),
+      this.sttName ? say(audio, `${this.sttName} turns speech into text.`, `${this.sttName} didn't accept audio.`) : '',
+    ].filter(Boolean).join(' ');
+    return { ok: true, models, caps: { vision, audio }, message: `Connected. ${this.model}: “Good morning” → “${r.text}”${notes ? `. ${notes}` : ''}` };
   }
 }
 

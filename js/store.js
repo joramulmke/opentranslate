@@ -1,4 +1,5 @@
 // localStorage persistence: settings, history (last 100), phrasebook (starred).
+import { demoEnabled } from './siteconfig.js';
 const KEY = { settings: 'ot.settings.v1', history: 'ot.history.v1', saved: 'ot.phrasebook.v1', recents: 'ot.recentLangs.v1' };
 const HISTORY_MAX = 100;
 
@@ -86,6 +87,9 @@ export const settings = {
       raw.entries.splice(demo < 0 ? raw.entries.length : demo, 0, { ...OFFLINE_ENTRY });
       write(KEY.settings, raw);
     }
+    // the offline demo: left out when change-me.md says demo_mode = false, back (last) when it's on again
+    if (!demoEnabled()) raw.entries = raw.entries.filter((e) => e.type !== 'mock');
+    else if (!raw.entries.some((e) => e.id === MOCK_ENTRY.id)) { raw.entries.push({ ...MOCK_ENTRY }); write(KEY.settings, raw); }
     return { ...DEFAULT_SETTINGS, ...raw };
   },
   set(patch) { const next = { ...this.get(), ...patch }; write(KEY.settings, next); emit('settings'); return next; },
