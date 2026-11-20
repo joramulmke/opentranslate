@@ -354,8 +354,9 @@
             <h3 id="offline-title">Offline languages</h3>
             <button class="btn btn-text" type="button" id="btn-offline-done">Done</button>
           </div>
-          <p class="field-help">Translate without internet, privately in your browser. Each language is a one-time download (English is included). Models come from the Firefox translation project.</p>
+          <p class="field-help" id="offline-help">Translate without internet, privately in your browser. Each language is a one-time download (English is included). Models come from the Firefox translation project.</p>
           <p class="offline-usage" id="offline-usage" role="status"></p>
+          <p class="offline-blocked" id="offline-blocked" tabindex="-1" hidden></p>
           <input type="search" id="offline-search" placeholder="Search languages" aria-label="Search offline languages" autocomplete="off" spellcheck="false">
           <ul class="offline-list" id="offline-list" aria-labelledby="offline-title"></ul>
         </section>

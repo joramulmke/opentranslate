@@ -31,8 +31,9 @@ export function initModeMenu({ openSettings }) {
         ? ofKind.map((e) => {
           const on = state.mode === kind && e.id === current;
           if (e.type === 'offline' && offlineUnusable()) {
-            return `<button type="button" role="menuitemradio" aria-checked="false" aria-disabled="true" data-blocked title="${escapeHtml(e.label)}">
-            <span class="mode-copy"><strong>${escapeHtml(e.label)}</strong><small>Not available in this browser</small></span>${icon('check', 'mode-check')}</button>`;
+            // not a choice here, but it still does something: it opens the explanation
+            return `<button type="button" role="menuitem" data-blocked title="${escapeHtml(e.label)}">
+            <span class="mode-copy"><strong>${escapeHtml(e.label)}</strong><small>Not available in this browser. Show why</small></span>${icon('info', 'mode-check is-visible')}</button>`;
           }
           return `<button type="button" role="menuitemradio" aria-checked="${on}" data-entry="${e.id}" title="${escapeHtml(e.label)}">
             <span class="mode-copy"><strong>${escapeHtml(e.label)}</strong></span>${icon('check', 'mode-check')}</button>`;

@@ -147,13 +147,15 @@ function subtitle(e) {
   return host;
 }
 
+const blocked = (e) => e.type === 'offline' && offlineUnusable();
+
 function renderLists() {
   const s = settings.get();
   const lead = { classic: null, advanced: null };
   for (const kind of ['classic', 'advanced']) {
     const list = s.entries.filter((e) => kindOf(e) === kind);
     const activeId = kind === 'advanced' ? s.activeAdvanced : s.activeClassic;
-    const usable = list.filter((e) => !(e.type === 'offline' && offlineUnusable()));
+    const usable = list.filter((e) => !blocked(e));
     lead[kind] = usable.find((e) => e.id === activeId) || usable.find((e) => e.type !== 'mock') || usable[0];
     const movable = list.filter((e) => e.id !== MOCK_ENTRY.id);
     const host = $(kind === 'advanced' ? 'svc-advanced' : 'svc-classic');
@@ -163,13 +165,15 @@ function renderLists() {
       const builtIn = BUILT_IN.has(e.id);
       const isMock = e.id === MOCK_ENTRY.id;
       return `<li class="svc-row" data-id="${e.id}">
-        <label class="svc-pick"><input type="radio" name="svc-${kind}" value="${e.id}" ${e === lead[kind] ? 'checked' : ''} ${e.type === 'offline' && offlineUnusable() ? 'disabled' : ''}>
-          <span class="svc-copy"><strong title="${name}">${name}</strong><small>${escapeHtml(subtitle(e))}</small></span></label>
+        <label class="svc-pick"><input type="radio" name="svc-${kind}" value="${e.id}" aria-describedby="svc-sub-${e.id}" ${e === lead[kind] ? 'checked' : ''} ${blocked(e) ? 'disabled' : ''}>
+          <span class="svc-copy"><strong title="${name}">${name}</strong><small id="svc-sub-${e.id}">${escapeHtml(subtitle(e))}</small></span></label>
         <span class="svc-actions">
           ${isMock ? '' : `<button class="icon-btn sm" type="button" data-act="up" aria-label="Move ${name} up" ${i <= 0 ? 'disabled' : ''}>${icon('up')}</button>
           <button class="icon-btn sm" type="button" data-act="down" aria-label="Move ${name} down" ${i >= movable.length - 1 ? 'disabled' : ''}>${icon('down')}</button>`}
           ${e.type === 'offline'
-    ? `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Manage offline languages">${icon('download')}</button>`
+    ? (blocked(e)
+      ? `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Why offline languages aren't available" aria-describedby="svc-sub-${e.id}">${icon('info')}</button>`
+      : `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Manage offline languages">${icon('download')}</button>`)
     : `<button class="icon-btn sm" type="button" data-act="edit" aria-label="Edit ${name}">${icon('edit')}</button>`}
           ${builtIn ? '' : `<button class="icon-btn sm" type="button" data-act="delete" aria-label="Remove ${name}">${icon('delete')}</button>`}
         </span></li>`;
@@ -312,7 +316,7 @@ function openManager() {
   if (!downloadsBlocked) loadRegistry().then(() => { if (!$('offline-manager').hidden) renderManager(); }).catch((e) => {
     $('offline-usage').textContent = e.message;
   });
-  requestAnimationFrame(() => { $('offline-manager').scrollIntoView({ block: 'start' }); (downloadsBlocked ? $('btn-offline-done') : $('offline-search')).focus(); });
+  requestAnimationFrame(() => { $('offline-manager').scrollIntoView({ block: 'start' }); (downloadsBlocked ? $('offline-blocked') : $('offline-search')).focus(); });
 }
 
 function closeManager({ silent = false } = {}) {
@@ -324,9 +328,11 @@ function closeManager({ silent = false } = {}) {
 }
 
 function renderManager() {
-  $('offline-search').hidden = downloadsBlocked;
-  $('offline-list').hidden = downloadsBlocked;
-  if (downloadsBlocked) { $('offline-usage').textContent = BLOCKED_REASON; return; }
+  // blocked: a heading and the reason, read once when focus lands on it (no live region)
+  $('offline-title').textContent = downloadsBlocked ? "Offline languages aren't available" : 'Offline languages';
+  for (const id of ['offline-help', 'offline-usage', 'offline-search', 'offline-list']) $(id).hidden = downloadsBlocked;
+  $('offline-blocked').hidden = !downloadsBlocked;
+  if (downloadsBlocked) { $('offline-blocked').textContent = BLOCKED_REASON; return; }
   const q = $('offline-search').value.trim().toLowerCase();
   const n = installedLanguages().length;
   $('offline-usage').textContent = n ? `${n} downloaded · ${formatMB(usedBytes())} used on this device` : 'Nothing downloaded yet.';
