@@ -1,74 +1,45 @@
-// Handwriting recognition engines, best first:
-//   1. AI vision  - Advanced mode on: the OpenAI-compatible model reads the drawing (any script, cursive)
+// Handwriting recognition engines (Settings › Translation services › Handwriting picks the first;
+// the others follow in this order):
+//   1. AI vision  - your AI model reads the drawing (any script, cursive); when chosen, or in Advanced mode
 //   2. On-device  - TrOCR handwriting model in the browser via transformers.js (Latin script; ~130 MB, once)
 //   3. Basic      - Tesseract (print-like letters; also the fallback for non-Latin scripts)
 import { state } from '../state.js';
 import { settings } from '../store.js';
 import { recognize as tesseract, ocrLangFor, describeOcrStatus } from './ocr.js';
 import { sheet } from './permissions.js';
-
-const TRANSFORMERS = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
-const MODEL = 'Xenova/trocr-small-handwritten';
+import { getPipeline, modelState, fromText, HF_MODELS } from './models.js';
 const LATIN = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'nb', 'fi', 'pl', 'cs', 'sk', 'sl', 'hr', 'ro', 'hu', 'tr',
   'id', 'ms', 'tl', 'sw', 'ca', 'ga', 'et', 'lv', 'lt', 'eo', 'af', 'sq', 'eu', 'gl', 'cy', 'is', 'az', 'uz', 'vi']);
 
-export const ENGINES = {
-  auto: 'Automatic (best available)',
-  vision: 'AI vision (Advanced model)',
-  ondevice: 'On-device model',
-  tesseract: 'Basic (Tesseract)',
-};
+export const HWR_ENGINES = ['vision', 'ondevice', 'tesseract'];
+/** Saved choice; older versions saved 'auto', which meant the same order with AI vision first. */
+export const hwrPref = () => (HWR_ENGINES.includes(settings.get().hwrEngine) ? settings.get().hwrEngine : 'vision');
 export const engineLabel = { vision: 'AI vision', ondevice: 'On-device model', tesseract: 'Basic' };
 
-let trocr = null; // Promise<pipeline>
-
-function loadTrocr(onStatus) {
-  if (!trocr) {
-    trocr = (async () => {
-      const { pipeline, env } = await import(/* webpackIgnore: true */ TRANSFORMERS);
-      env.allowLocalModels = false;
-      const files = {};
-      // Full-precision encoder + 8-bit decoder: same accuracy as full fp32 in tests, ~130 MB instead of ~250 MB
-      // (fully 8-bit is ~70 MB but misreads a lot: "good morning" -> "wood machines").
-      return pipeline('image-to-text', MODEL, {
-        dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' },
-        progress_callback: (p) => {
-          if (p.status === 'progress' && p.total) {
-            files[p.file] = [p.loaded, p.total];
-            const [l, t] = Object.values(files).reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]);
-            onStatus?.(`Downloading handwriting model… ${Math.round((l / t) * 100)}% (${Math.round(t / 1e6)} MB)`);
-          }
-        },
-      });
-    })();
-    trocr.catch(() => { trocr = null; });
-  }
-  return trocr;
-}
 
 /** Ask once before the ~130 MB download. Stored so we never nag again. */
 async function onDeviceAllowed() {
   const s = settings.get();
-  if (s.hwrModelOk === true) return true;
+  if (modelState('trocr') === 'ready' || s.hwrModelOk === true) return true;
   if (s.hwrModelOk === false) return false;
   const ok = await sheet({
     iconName: 'gesture', title: 'Better handwriting recognition?',
-    body: 'Download an on-device handwriting model (about 130 MB, once). It runs privately in your browser and is kept in its cache for next time. Latin-script languages only.',
+    body: `Download an on-device handwriting model (about ${HF_MODELS.trocr.sizeMB} MB, once, ${fromText('trocr')})? It runs privately in your browser. Latin-script languages only. You can delete it in Settings › Translation services.`,
     allowLabel: 'Download', cancelLabel: 'Use basic',
   });
   settings.set({ hwrModelOk: ok });
   return ok;
 }
 
-const visionReady = () => state.mode === 'advanced' && typeof state.advanced?.recognizeImage === 'function';
+// the drawing goes to your AI service: when that's the chosen engine, or in Advanced mode
+const visionReady = () => (hwrPref() === 'vision' || state.mode === 'advanced') && typeof state.advanced?.recognizeImage === 'function';
 
 function pickEngines(lang) {
-  const pref = settings.get().hwrEngine || 'auto';
+  const pref = hwrPref();
   const latin = LATIN.has(String(lang).split('-')[0]);
-  if (pref === 'tesseract') return ['tesseract'];
-  if (pref === 'vision') return [visionReady() ? 'vision' : null, 'tesseract'].filter(Boolean);
-  if (pref === 'ondevice') return [latin ? 'ondevice' : null, 'tesseract'].filter(Boolean);
-  return [visionReady() ? 'vision' : null, latin ? 'ondevice' : null, 'tesseract'].filter(Boolean);
+  const usable = { vision: visionReady(), ondevice: latin, tesseract: true };
+  // Basic is always the last resort
+  return [pref, ...HWR_ENGINES.filter((e) => e !== pref), 'tesseract'].filter((e, i, a) => usable[e] && a.indexOf(e) === i);
 }
 
 async function runTesseract(canvas, lang, single, onStatus) {
@@ -79,7 +50,7 @@ async function runTesseract(canvas, lang, single, onStatus) {
 }
 
 async function runTrocr(canvas, onStatus) {
-  const pipe = await loadTrocr(onStatus);
+  const pipe = await getPipeline('trocr', { onStatus });
   onStatus?.('Recognizing…');
   const url = canvas.toDataURL('image/png');
   let out;

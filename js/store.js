@@ -20,7 +20,8 @@ const DEFAULT_SETTINGS = {
   liveTranslate: true,
   theme: 'system',             // system | light | dark
   speakConversation: true,
-  hwrEngine: 'auto',           // auto | vision | ondevice | tesseract
+  hwrEngine: 'vision',         // first handwriting engine: vision | ondevice | tesseract (old 'auto' = vision)
+  speechEngine: 'browser',     // first speech engine: browser | api | ondevice
   hwrModelOk: null,            // null = not asked yet, true/false = answer to the model download prompt
   sttModelOk: null,            // same, for the on-device speech model
 };

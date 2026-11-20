@@ -1,13 +1,21 @@
-// Speech-to-text for browsers without a speech service (Brave, Firefox) or when it fails:
+// Speech-to-text when the browser's speech service isn't used (not chosen, Brave, Firefox, or it fails):
 // record the microphone ourselves (like any video-call site), stop on silence, then transcribe with
-//   1. Advanced mode: your OpenAI-compatible /audio/transcriptions endpoint (Whisper), if a speech model is set
-//   2. On-device Whisper in the browser via transformers.js (asks once before the download)
+//   - your AI service's /audio/transcriptions endpoint (Whisper), if a speech model is set
+//   - on-device Whisper in the browser via transformers.js (asks once before the download)
+// in the order chosen in Settings › Translation services › Speech recognition.
 import { state } from '../state.js';
 import { settings } from '../store.js';
 import { sheet } from './permissions.js';
+import { HF_MODELS, getPipeline, transformers, modelState, fromText } from './models.js';
 
-const TRANSFORMERS = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
-export const WHISPER = { model: 'Xenova/whisper-base', dtype: 'q8', sizeMB: 80 };
+export const WHISPER = { model: HF_MODELS.whisper.repo, sizeMB: HF_MODELS.whisper.sizeMB };
+
+/** Speech engines in the order to try: the chosen one first, then the others. */
+export const SPEECH_ENGINES = ['browser', 'api', 'ondevice'];
+export function speechOrder() {
+  const pref = SPEECH_ENGINES.includes(settings.get().speechEngine) ? settings.get().speechEngine : 'browser';
+  return [pref, ...SPEECH_ENGINES.filter((e) => e !== pref)];
+}
 
 export const canRecord = () => !!navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder === 'function';
 
@@ -62,30 +70,6 @@ async function toPcm16k(blob) {
   } finally { ctx.close().catch(() => {}); }
 }
 
-let whisper = null;
-let TensorCls = null;
-function loadWhisper(onStatus) {
-  if (!whisper) {
-    whisper = (async () => {
-      const { pipeline, env, Tensor } = await import(/* webpackIgnore: true */ TRANSFORMERS);
-      TensorCls = Tensor;
-      env.allowLocalModels = false;
-      const files = {};
-      return pipeline('automatic-speech-recognition', WHISPER.model, {
-        dtype: WHISPER.dtype,
-        progress_callback: (p) => {
-          if (p.status === 'progress' && p.total) {
-            files[p.file] = [p.loaded, p.total];
-            const [l, t] = Object.values(files).reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]);
-            onStatus?.(`Downloading speech model… ${Math.round((l / t) * 100)}%`);
-          }
-        },
-      });
-    })();
-    whisper.catch(() => { whisper = null; });
-  }
-  return whisper;
-}
 
 /**
  * Whisper language identification. transformers.js 3.0 has no auto-detect (without a language it
@@ -95,7 +79,8 @@ async function detectLanguage(asr, pcm) {
   const ids = asr.tokenizer.model.tokens_to_ids;
   const sot = ids.get('<|startoftranscript|>');
   const { input_features } = await asr.processor(pcm);
-  const out = await asr.model({ input_features, decoder_input_ids: new TensorCls('int64', [BigInt(sot)], [1, 1]) });
+  const { Tensor } = await transformers();
+  const out = await asr.model({ input_features, decoder_input_ids: new Tensor('int64', [BigInt(sot)], [1, 1]) });
   const V = out.logits.dims.at(-1);
   const row = out.logits.data.slice(out.logits.data.length - V);
   let best = 'en'; let bv = -Infinity;
@@ -108,18 +93,20 @@ async function detectLanguage(asr, pcm) {
 
 async function onDeviceAllowed() {
   const s = settings.get();
-  if (s.sttModelOk === true) return true;
+  if (modelState('whisper') === 'ready' || s.sttModelOk === true) return true;
   if (s.sttModelOk === false) return false;
   const ok = await sheet({
     iconName: 'mic', title: 'Voice input on this device?',
-    body: `This browser has no built-in speech service. Download a speech-recognition model (about ${WHISPER.sizeMB} MB, once) that runs privately in your browser? It understands many languages.`,
+    body: `Download a speech-recognition model (about ${WHISPER.sizeMB} MB, once, ${fromText('whisper')})? It runs privately in your browser and understands many languages. You can delete it in Settings › Translation services.`,
     allowLabel: 'Download', cancelLabel: 'Not now',
   });
   settings.set({ sttModelOk: ok });
   return ok;
 }
 
-const apiReady = () => state.mode === 'advanced' && typeof state.advanced?.transcribe === 'function' && !!state.advanced.sttModel;
+// your AI service: when it's the chosen engine, or as a fallback in Advanced mode
+const apiReady = () => (settings.get().speechEngine === 'api' || state.mode === 'advanced')
+  && typeof state.advanced?.transcribe === 'function' && !!state.advanced.sttModel;
 
 /**
  * Transcribe a recording with the best available engine.
@@ -128,17 +115,21 @@ const apiReady = () => state.mode === 'advanced' && typeof state.advanced?.trans
 export async function transcribe(blob, lang, { onStatus } = {}) {
   const code = lang && lang !== 'auto' ? String(lang).split('-')[0] : undefined;
   let apiError = null;
-  if (apiReady()) {
+  const api = async () => {
+    if (!apiReady()) return null;
     try {
       onStatus?.('Transcribing…');
       return { text: await state.advanced.transcribe(blob, code), engine: 'api' }; // API Whisper detects the language itself
-    } catch (e) { apiError = e; }
-  }
+    } catch (e) { apiError = e; return null; }
+  };
+  const order = speechOrder().filter((e) => e !== 'browser');
+  if (order[0] === 'api') { const r = await api(); if (r) return r; }
   if (!(await onDeviceAllowed())) {
-    const err = new Error(apiError ? `Speech API failed: ${apiError.message}` : 'NO_ENGINE');
-    throw err;
+    const r = order[0] === 'ondevice' ? await api() : null;
+    if (r) return r;
+    throw new Error(apiError ? `Speech API failed: ${apiError.message}` : 'NO_ENGINE');
   }
-  const asr = await loadWhisper(onStatus);
+  const asr = await getPipeline('whisper', { onStatus });
   onStatus?.('Transcribing…');
   const pcm = await toPcm16k(blob);
   const language = code || await detectLanguage(asr, pcm);

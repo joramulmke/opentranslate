@@ -1280,6 +1280,11 @@ dialog.menu.mode-menu [role^="menuitem"]:focus-visible { background: color-mix(i
 .svc-add { margin-top: 8px; gap: 8px; }
 .svc-add .btn { height: 44px; }
 .svc-add .field-help { flex-basis: 100%; margin: 0; }
+/* where a download comes from: a full-width line under the row, lined up with the name */
+.svc-row:has(.svc-src) { flex-wrap: wrap; }
+.svc-src { flex-basis: 100%; margin: -6px 0 8px; padding: 0 8px 0 34px; font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
+.svc-src a { color: var(--primary); }
+.svc-pick-static { cursor: default; padding-left: 34px; }
 .svc-editor { margin-top: 8px; padding: 16px 16px 12px; border: 1px solid var(--outline-variant); }
 .svc-editor .row-gap .btn { min-height: 44px; }
 .offline-manager .offline-list { border-radius: 12px; background: var(--surface); padding: 4px 0; }

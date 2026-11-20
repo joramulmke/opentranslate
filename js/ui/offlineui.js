@@ -35,7 +35,7 @@ function dlInfo(code) {
   const name = langName(code);
   if (st === 'ready') return { ic: 'downloadDone', label: `${name} is downloaded. Remove from this device`, pct: 0 };
   if (st === 'downloading') { const p = Math.round(packProgress(code) * 100); return { ic: 'close', label: `Downloading ${name}, ${p}%. Cancel`, pct: p }; }
-  return { ic: 'download', label: `Download ${name} for offline use${size ? ` (${formatMB(size)})` : ''}`, pct: 0 };
+  return { ic: 'download', label: `Download ${name} for offline use${size ? ` (${formatMB(size)})` : ''} from Mozilla`, pct: 0 };
 }
 
 /** @param {boolean} [tabbable]  false inside listboxes (reached with the arrow keys) */

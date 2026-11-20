@@ -1,4 +1,4 @@
-import { canRecord, record, transcribe } from './stt.js';
+import { canRecord, record, transcribe, speechOrder } from './stt.js';
 import { toast } from '../ui/snackbar.js';
 // Text-to-speech (speechSynthesis) and dictation (SpeechRecognition, where the browser has it).
 
@@ -77,7 +77,9 @@ const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 // fails with "network". The microphone itself works, so there we record and transcribe ourselves.
 const isBrave = () => !!navigator.brave;
 let browserServiceBroken = false;
-const useBrowserService = () => !!Recognition && !isBrave() && !browserServiceBroken;
+export const browserSpeechAvailable = () => !!Recognition && !isBrave() && !browserServiceBroken;
+// the browser's service only when it's the chosen speech engine (Settings) and works here
+const useBrowserService = () => browserSpeechAvailable() && speechOrder()[0] === 'browser';
 
 export const canDictate = () => useBrowserService() || canRecord();
 

@@ -326,11 +326,17 @@
       <fieldset class="settings-group" id="services-group" aria-describedby="svc-help">
         <legend>Translation services</legend>
         <p class="setup-hint" id="setup-hint" hidden><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server or an AI model below for real translations.</p>
-        <p class="field-help" id="svc-help">The checked service is used first. If it fails or doesn't have a language, the next one in the same group is tried. Keys stay in this browser.</p>
+        <p class="field-help" id="svc-help">The checked service is used first. If it fails or doesn't have a language, the next one in the same group is tried. Keys stay in this browser. Each download says where it comes from and can be deleted here.</p>
         <h3 class="svc-head" id="svc-classic-head">Classic</h3>
         <ul class="svc-list" id="svc-classic" aria-labelledby="svc-classic-head"></ul>
         <h3 class="svc-head" id="svc-advanced-head">Advanced (AI model)</h3>
         <ul class="svc-list" id="svc-advanced" aria-labelledby="svc-advanced-head"></ul>
+        <h3 class="svc-head" id="svc-speech-head">Speech recognition</h3>
+        <ul class="svc-list" id="svc-speech" aria-labelledby="svc-speech-head"></ul>
+        <h3 class="svc-head" id="svc-hwr-head">Handwriting</h3>
+        <ul class="svc-list" id="svc-hwr" aria-labelledby="svc-hwr-head"></ul>
+        <h3 class="svc-head" id="svc-ocr-head">Camera text (OCR)</h3>
+        <ul class="svc-list" id="svc-ocr" aria-labelledby="svc-ocr-head"></ul>
         <div class="row-gap svc-add" id="svc-add">
           <button class="btn btn-tonal" type="button" id="btn-add-lt" aria-controls="svc-editor"><i data-icon="add"></i>Add LibreTranslate</button>
           <button class="btn btn-tonal" type="button" id="btn-add-ai" aria-controls="svc-editor"><i data-icon="add"></i>Add AI model</button>
@@ -356,22 +362,28 @@
             <h3 id="offline-title">Offline languages</h3>
             <button class="btn btn-text" type="button" id="btn-offline-done">Done</button>
           </div>
-          <p class="field-help" id="offline-help">Translate without internet, privately in your browser. Each language is a one-time download (English is included). Models come from the Firefox translation project.</p>
+          <p class="field-help" id="offline-help">Translate without internet, privately in your browser. Each language is a one-time download (English is included). Models come from the Firefox translation project, downloaded from Mozilla (firefox-settings-attachments.cdn.mozilla.net).</p>
           <p class="offline-usage" id="offline-usage" role="status"></p>
           <p class="offline-blocked" id="offline-blocked" tabindex="-1" hidden></p>
           <input type="search" id="offline-search" placeholder="Search languages" aria-label="Search offline languages" autocomplete="off" spellcheck="false">
           <ul class="offline-list" id="offline-list" aria-labelledby="offline-title"></ul>
+        </section>
+        <section class="svc-editor offline-manager" id="ocr-manager" aria-labelledby="ocr-title" hidden>
+          <div class="offline-head">
+            <h3 id="ocr-title">Camera text languages</h3>
+            <button class="btn btn-text" type="button" id="btn-ocr-done">Done</button>
+          </div>
+          <p class="field-help">Reading text in photos and Basic handwriting need one file per language. Download them ahead to use the camera without internet.</p>
+          <p class="field-help" id="ocr-source"></p>
+          <p class="offline-usage" id="ocr-usage" role="status"></p>
+          <input type="search" id="ocr-search" placeholder="Search languages" aria-label="Search camera text languages" autocomplete="off" spellcheck="false">
+          <ul class="offline-list" id="ocr-list" aria-labelledby="ocr-title"></ul>
         </section>
       </fieldset>
       <fieldset class="settings-group">
         <legend>Behaviour</legend>
         <label class="switch-row"><span>Translate as you type</span><input type="checkbox" id="set-live" role="switch"></label>
         <label class="switch-row"><span>Read conversation translations aloud</span><input type="checkbox" id="set-speak" role="switch"></label>
-        <div class="field">
-          <label for="set-hwr">Handwriting recognition</label>
-          <select id="set-hwr" aria-describedby="set-hwr-help"></select>
-          <p class="field-help" id="set-hwr-help">Automatic uses AI vision in Advanced mode, otherwise the on-device model (asks before its one-time ~130 MB download), otherwise Basic.</p>
-        </div>
       </fieldset>
       <fieldset class="settings-group">
         <legend>Theme</legend>
@@ -461,8 +473,8 @@
 
   <div class="boot-msg" id="boot-msg" hidden>
     <strong>Can't start from a file:// URL.</strong>
-    Browsers block ES modules on file:// pages. Serve the folder instead:<br>
-    <code>cd app &amp;&amp; python3 -m http.server 8000</code> then open <code>http://localhost:8000</code>.
+    Browsers block ES modules on file:// pages. In the folder that holds this index.html, run:<br>
+    <code>python3 -m http.server 8000</code> then open <code>http://localhost:8000</code>.
   </div>
   <script>
     // If the module graph never boots (file:// in Chrome/Firefox), explain how to run it.

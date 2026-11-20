@@ -145,7 +145,7 @@ export async function deleteModel(key) {
 }
 
 const needsDownload = (key) => new ProviderError('NEEDS_DOWNLOAD',
-  `The ${LLM_MODELS[key].name.toLowerCase()} on-device AI model isn't downloaded yet.`,
+  `The ${LLM_MODELS[key].name.toLowerCase()} on-device AI model isn't downloaded yet. It comes from Hugging Face (huggingface.co/mlc-ai).`,
   { size: LLM_MODELS[key].sizeMB * 1e6, download: (onProgress) => downloadModel(key, { onProgress }) });
 
 async function chat(key, messages, maxTokens) {

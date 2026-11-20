@@ -415,7 +415,7 @@ registerProvider({
           await loadRegistry().catch(() => {});
           const size = missing.reduce((a, l) => a + (packSize(l) || 0), 0);
           throw new ProviderError('NEEDS_DOWNLOAD',
-            `${missing.map(nameOf).join(' and ')} ${missing.length > 1 ? "aren't" : "isn't"} downloaded to this device yet.`,
+            `${missing.map(nameOf).join(' and ')} ${missing.length > 1 ? "aren't" : "isn't"} downloaded to this device yet. ${missing.length > 1 ? 'They come' : 'It comes'} from Mozilla (firefox-settings-attachments.cdn.mozilla.net).`,
             { langs: missing, size });
         }
         const models = route(source, target);

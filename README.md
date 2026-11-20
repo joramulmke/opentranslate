@@ -88,6 +88,25 @@ graphics chip with [WebLLM](https://github.com/mlc-ai/web-llm) (Apache-2.0, load
 - Translations are less fluent than large online models; the first translation after opening the app takes a few
   seconds while the model loads onto the graphics chip.
 
+### Downloads on this device
+
+Everything the app downloads is listed in Settings → **Translation services**, with its size, status, where it
+comes from (host and a link to the model page) and buttons to download ahead of time (e.g. before travelling) or
+delete it to free space. Every download prompt and error also names the source.
+
+| Group | What | From | Kept in |
+| --- | --- | --- | --- |
+| Classic › On this device | offline languages, ~45–75 MB each | Mozilla (`firefox-settings-attachments.cdn.mozilla.net`) | Cache Storage `ot-offline-*` |
+| Advanced › On-device AI | WebLLM model, ~0.9 / 1.8 GB | Hugging Face (`huggingface.co/mlc-ai`) | Cache Storage `webllm/*` |
+| Speech recognition › On this device | Whisper base, ~80 MB | Hugging Face (`huggingface.co/Xenova/whisper-base`) | Cache Storage `transformers-cache` |
+| Handwriting › On-device model | TrOCR small handwritten, ~130 MB | Hugging Face (`huggingface.co/Xenova/trocr-small-handwritten`) | Cache Storage `transformers-cache` |
+| Camera text (OCR) › Tesseract | one file per language, ~1–15 MB; manager with search | jsDelivr (`cdn.jsdelivr.net/npm/@tesseract.js-data`) | IndexedDB `keyval-store` |
+
+The engines themselves (Bergamot is in the app; WebLLM, transformers.js and Tesseract.js come from jsDelivr) sit in
+the browser's normal cache and are not listed. Whisper and TrOCR downloads can't be cancelled half-way
+(transformers.js has no way to stop them); the others can. Deleting Whisper or TrOCR means the app asks again
+before downloading it the next time it's needed.
+
 **Privacy:** in Advanced mode your text (and, for handwriting, the drawing) is sent to the AI service you
 configure. **API keys are stored only in your browser (`localStorage`) and sent only to the URL you enter.** They are
 never part of this repository. Use keys with spending limits; anyone with access to that browser profile can read them.
@@ -126,21 +145,24 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
 - **Text:** auto-detect, live translation while typing, swap, copy, read aloud (`speechSynthesis`; play the
   same text again within 10 s and it plays slower, at 0.6×, for practising pronunciation; the next play is normal),
   history (last 100) and saved phrasebook, all stored in `localStorage`.
-- **Voice input** works in every browser that can record audio:
-  1. the browser's speech service with live text (Chrome, Edge, Safari);
-  2. where there is none (Brave, Firefox) or it fails, the app records the microphone itself (stops after
-     ~1.5 s of silence) and transcribes with your **Advanced API's Whisper endpoint** (`/audio/transcriptions`,
-     set *Speech-to-text model*, e.g. `whisper-1`, `whisper-large-v3-turbo`) in Advanced mode, otherwise with
-     **on-device Whisper** (`whisper-base`, asks before a one-time ~80 MB download, detects the language).
+- **Voice input** works in every browser that can record audio. Three engines; the one checked in
+  Settings → Translation services → **Speech recognition** goes first, the others follow:
+  1. the **browser's speech service** with live text (Chrome, Edge, Safari; your voice goes to Google, Microsoft
+     or Apple). Not in Brave or Firefox; if it fails, the app switches to recording;
+  2. **AI service (Whisper API)**: the app records the microphone itself (stops after ~1.5 s of silence) and sends
+     it to your AI service's `/audio/transcriptions` (set *Speech-to-text model*, e.g. `whisper-1`,
+     `whisper-large-v3-turbo`). Used when chosen, or in Advanced mode;
+  3. **On this device (Whisper)**: `whisper-base` in the browser, asks before a one-time ~80 MB download, detects
+     the language.
 - **Languages** your services can't translate stay visible but greyed out; tapping one explains why
   (e.g. not installed on your LibreTranslate server). Languages that can be downloaded show a download icon.
 - **Camera:** live preview or imported photo; OCR with [Tesseract.js](https://tesseract.projectnaptha.com/)
-  (loaded from a CDN on first use); translated text drawn over the photo.
+  (loaded from jsDelivr on first use; one language file per language, see below); translated text drawn over the photo.
 - **Conversation:** two people, one language each, turns alternate; translations can be read aloud.
 - **Handwriting:** draw on a pad (undo, clear, stroke width), pick a suggestion, edit, then translate.
-  Three engines, best available first (Settings → Handwriting recognition):
-  1. **AI vision**: in Advanced mode, your model reads the drawing (any script, cursive). Needs a vision-capable
-     model; one API call per recognition.
+  Three engines; the one checked in Settings → Translation services → **Handwriting** goes first, the others follow:
+  1. **AI vision**: your AI model reads the drawing (any script, cursive), when chosen or in Advanced mode. Needs a
+     vision-capable model; one API call per recognition.
   2. **On-device model**: TrOCR handwriting model in the browser via
      [transformers.js](https://github.com/huggingface/transformers.js); asks before a one-time ~130 MB download,
      Latin-script languages only, private.
@@ -180,6 +202,8 @@ js/store.js            localStorage: settings + service list (with migration), h
 js/providers.js        provider interface + registry: Mock, LibreTranslate, OpenAI-compatible
 js/features/offline.js on-device translation: model list, downloads, Bergamot worker, detection
 js/features/localllm.js on-device AI (WebLLM): model choice, WebGPU check, download, provider (+ llm-worker.js)
+js/features/models.js  transformers.js models (Whisper, TrOCR): loading, downloaded state, size, source, delete
+js/ui/enginerows.js    Settings rows for Speech recognition, Handwriting, Camera text (+ OCR language manager)
 vendor/bergamot/       Bergamot WebAssembly engine + worker (MPL-2.0, see LICENSE there)
 js/languages.js        bundled 50-language fallback, RTL and OCR language maps
 js/ui/*.js             text view, language bar/picker, mode menu, sheets, menus, icons, layout
