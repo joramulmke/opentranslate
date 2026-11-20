@@ -1,0 +1,400 @@
+# One job for every push to main: deploy to the web host, then push a snapshot (no history) to the mirror.
+# .github/ is uploaded too, as a backup; the mirror leaves out .github/workflows.
+# Mirror secrets: MIRROR_HOST (the git host) and MIRROR_SSH_KEY (a deploy key with write access there).
+#
+# Screenshots for the install dialog (icons/screenshots/, see .github/scripts/screenshots.mjs) are only made
+# when asked: the "Run workflow" button (then nothing is deployed), or "[screenshots]" in the commit message.
+# They're committed back to main and go live with the next deploy.
+name: Deploy and mirror
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.event.repository.name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  web-deploy:
+    name: Deploy, mirror, screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DEPLOY: ${{ github.event_name == 'push' }}
+      SHOTS: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[screenshots]') }}
+    steps:
+      - name: Get latest code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore deploy-state cache
+        if: env.DEPLOY == 'true'
+        id: restore_deploy_state_cache
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: /tmp/deploy-state-cache
+          key: deploy-state-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            deploy-state-${{ github.ref_name }}-
+
+      - name: Update cache name in sw.js
+        if: env.DEPLOY == 'true'
+        run: |
+          if [ -f sw.js ]; then
+            NEW_CACHE="$(date -u +%Y%m%d%H%M%S)"
+            sed -i "s/const CACHE_NAME = '[^']*'/const CACHE_NAME = '$NEW_CACHE'/" sw.js
+            echo "Cache name set to: $NEW_CACHE"
+          else
+            echo "sw.js not found, skipping cache update"
+          fi
+
+      - name: Determine last deployed commit
+        if: env.DEPLOY == 'true'
+        env:
+          SFTP_HOST: ${{ secrets.FTP_SERVER }}
+          SFTP_USER: ${{ secrets.FTP_USERNAME }}
+          SFTP_PASS: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_BASE: "JoramUlmke/${{ github.event.repository.name }}"
+        run: |
+          MARKER=""
+          if [ -f /tmp/deploy-state-cache/last-sha.txt ]; then
+            MARKER=$(tr -d '[:space:]' < /tmp/deploy-state-cache/last-sha.txt)
+            echo "Found deploy-state cache entry: $MARKER"
+          fi
+
+          if [ -z "$MARKER" ]; then
+            echo "Cache miss, falling back to remote .deploy-state marker."
+            rm -f /tmp/remote_deploy_state
+            printf 'get %s/.deploy-state /tmp/remote_deploy_state\nbye\n' "$REMOTE_BASE" > /tmp/marker_batch.txt
+            sshpass -p "$SFTP_PASS" sftp -o StrictHostKeyChecking=no -o BatchMode=no -b /tmp/marker_batch.txt -P 22 "$SFTP_USER@$SFTP_HOST" 2>/tmp/marker_err.log || \
+              echo "::warning::Remote marker fetch failed: $(tail -n 3 /tmp/marker_err.log)"
+            if [ -f /tmp/remote_deploy_state ]; then
+              MARKER=$(tr -d '[:space:]' < /tmp/remote_deploy_state)
+            fi
+          fi
+
+          if [ -n "$MARKER" ] && git cat-file -e "$MARKER" 2>/dev/null; then
+            echo "Last deployed commit: $MARKER"
+            echo "LAST_DEPLOYED_SHA=$MARKER" >> "$GITHUB_ENV"
+          else
+            echo "No usable last-deployed marker found (missing, or commit not in local history)."
+            echo "LAST_DEPLOYED_SHA=" >> "$GITHUB_ENV"
+          fi
+
+      - name: Compute changed files
+        if: env.DEPLOY == 'true'
+        env:
+          AFTER: ${{ github.sha }}
+        run: |
+          FULL_SYNC=false
+          if [ -n "$LAST_DEPLOYED_SHA" ]; then
+            FILES=$(git diff --name-only --diff-filter=d "$LAST_DEPLOYED_SHA" "$AFTER")
+          else
+            echo "Falling back to full verification sync (hash-compare against remote)."
+            FULL_SYNC=true
+            FILES=""
+          fi
+          if [ -f sw.js ]; then
+            FILES=$(printf '%s\n' "$FILES" | grep -v '^sw\.js$' || true)
+            FILES="sw.js"$'\n'"$FILES"
+          fi
+          printf '%s\n' "$FILES" | grep -v '^[[:space:]]*$' > /tmp/changed_files.txt || true
+          echo "FULL_SYNC=$FULL_SYNC" >> "$GITHUB_ENV"
+          echo "Files to upload so far:"; cat /tmp/changed_files.txt
+          echo "Total: $(wc -l < /tmp/changed_files.txt)"
+
+      - name: Full verification sync (hash compare against remote)
+        if: env.DEPLOY == 'true' && env.FULL_SYNC == 'true'
+        env:
+          SFTP_HOST: ${{ secrets.FTP_SERVER }}
+          SFTP_USER: ${{ secrets.FTP_USERNAME }}
+          SFTP_PASS: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_BASE: "JoramUlmke/${{ github.event.repository.name }}"
+        run: |
+          # sftp glob-expands [, ], *, ? in batch-file paths, which breaks
+          # literal bracketed dirs like Next.js's app/[id]/page.tsx. Escape
+          # them so they're treated as literal characters.
+          sftp_escape() {
+            printf '%s' "$1" | sed -e 's/\[/\\[/g' -e 's/\]/\\]/g' -e 's/\*/\\*/g' -e 's/?/\\?/g'
+          }
+
+          rm -rf /tmp/remote_mirror
+          BATCH=/tmp/mirror_batch.txt
+          > "$BATCH"
+          while IFS= read -r f; do
+            mkdir -p "/tmp/remote_mirror/$(dirname "$f")"
+            ESCAPED_F=$(sftp_escape "$f")
+            echo "-get $REMOTE_BASE/$ESCAPED_F /tmp/remote_mirror/$ESCAPED_F" >> "$BATCH"
+          done < <(git ls-files)
+          echo "bye" >> "$BATCH"
+          sshpass -p "$SFTP_PASS" sftp -o StrictHostKeyChecking=no -o BatchMode=no -b "$BATCH" -P 22 "$SFTP_USER@$SFTP_HOST" || true
+
+          while IFS= read -r f; do
+            LOCAL_HASH=$(sha256sum "$f" | awk '{print $1}')
+            if [ -f "/tmp/remote_mirror/$f" ]; then
+              REMOTE_HASH=$(sha256sum "/tmp/remote_mirror/$f" | awk '{print $1}')
+            else
+              REMOTE_HASH=""
+            fi
+            if [ "$LOCAL_HASH" != "$REMOTE_HASH" ] && ! grep -qxF "$f" /tmp/changed_files.txt; then
+              echo "$f" >> /tmp/changed_files.txt
+            fi
+          done < <(git ls-files)
+
+          echo "Files to upload after full verification:"; cat /tmp/changed_files.txt
+          echo "Total: $(wc -l < /tmp/changed_files.txt)"
+
+      - name: Count tracked files
+        if: env.DEPLOY == 'true'
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          COUNT=$(git ls-files | wc -l)
+          echo "Tracked files: $COUNT"
+          if [ "$COUNT" -ge 500 ]; then
+            echo "BIG_PROJECT=true" >> "$GITHUB_ENV"
+          else
+            echo "BIG_PROJECT=false" >> "$GITHUB_ENV"
+          fi
+
+          if [ $(( RUN_NUMBER % 5 )) -eq 0 ]; then
+            echo "THROTTLE_HIT=true" >> "$GITHUB_ENV"
+          else
+            echo "THROTTLE_HIT=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install lftp
+        if: >-
+          env.DEPLOY == 'true' &&
+          env.FULL_SYNC != 'true' &&
+          !contains(github.event.head_commit.message, '(no-full-check)') &&
+          (env.BIG_PROJECT != 'true' || env.THROTTLE_HIT == 'true' || contains(github.event.head_commit.message, '(full-check)'))
+        run: sudo apt-get install -y -q lftp
+
+      - name: Check for files missing on remote
+        if: >-
+          env.DEPLOY == 'true' &&
+          env.FULL_SYNC != 'true' &&
+          !contains(github.event.head_commit.message, '(no-full-check)') &&
+          (env.BIG_PROJECT != 'true' || env.THROTTLE_HIT == 'true' || contains(github.event.head_commit.message, '(full-check)'))
+        env:
+          SFTP_HOST: ${{ secrets.FTP_SERVER }}
+          SFTP_USER: ${{ secrets.FTP_USERNAME }}
+          SFTP_PASS: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_BASE: "JoramUlmke/${{ github.event.repository.name }}"
+        run: |
+          set +e
+          REMOTE_FILES=$(lftp -u "$SFTP_USER,$SFTP_PASS" "sftp://$SFTP_HOST" \
+            -e "set sftp:connect-program 'ssh -a -x -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'; set net:timeout 15; set net:max-retries 2; find $REMOTE_BASE; quit" 2>/tmp/lftp_err.log)
+          LFTP_STATUS=$?
+          set -e
+
+          if [ "$LFTP_STATUS" -ne 0 ] && grep -qE 'No such file|Access failed' /tmp/lftp_err.log; then
+            echo "Remote directory $REMOTE_BASE does not exist yet — treating all tracked files as missing."
+            MISSING=$(git ls-files | sort)
+          elif [ "$LFTP_STATUS" -ne 0 ]; then
+            echo "::error::Could not verify remote files — lftp exited with status $LFTP_STATUS: $(tail -n 5 /tmp/lftp_err.log)"
+            exit 1
+          elif [ -z "$REMOTE_FILES" ]; then
+            echo "Remote directory reported as empty by lftp — treating all tracked files as missing."
+            MISSING=$(git ls-files | sort)
+          else
+            REMOTE_NORMALIZED=$(echo "$REMOTE_FILES" \
+              | awk -v base="$REMOTE_BASE/" 'substr($0,1,length(base))==base{print substr($0,length(base)+1)}' \
+              | grep -v '^[[:space:]]*$' | sort)
+            ALL_LOCAL=$(git ls-files | sort)
+            MISSING=$(comm -23 <(echo "$ALL_LOCAL") <(echo "$REMOTE_NORMALIZED") \
+              | grep -v '^[[:space:]]*$' || true)
+          fi
+
+          if [ -z "$MISSING" ]; then
+            echo "No files missing on remote."
+          else
+            echo "Files missing on remote (will be added to upload list):"
+            echo "$MISSING"
+            while IFS= read -r f; do
+              if ! grep -qxF "$f" /tmp/changed_files.txt; then
+                echo "$f" >> /tmp/changed_files.txt
+              fi
+            done <<< "$MISSING"
+            echo "Updated total: $(wc -l < /tmp/changed_files.txt)"
+          fi
+
+      - name: Upload changed files via SFTP
+        if: env.DEPLOY == 'true'
+        env:
+          SFTP_HOST: ${{ secrets.FTP_SERVER }}
+          SFTP_USER: ${{ secrets.FTP_USERNAME }}
+          SFTP_PASS: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_BASE: "JoramUlmke/${{ github.event.repository.name }}"
+        run: |
+          if [ ! -s /tmp/changed_files.txt ]; then
+            echo "No files to upload, skipping."; exit 0
+          fi
+          # sftp glob-expands [, ], *, ? in batch-file paths, which breaks
+          # literal bracketed dirs like Next.js's app/[id]/page.tsx. Escape
+          # them so they're treated as literal characters.
+          sftp_escape() {
+            printf '%s' "$1" | sed -e 's/\[/\\[/g' -e 's/\]/\\]/g' -e 's/\*/\\*/g' -e 's/?/\\?/g'
+          }
+
+          BATCH=/tmp/sftp_batch.txt
+          > "$BATCH"
+          echo "-mkdir $REMOTE_BASE" >> "$BATCH"
+          declare -A SEEN_DIRS
+          while IFS= read -r FILE; do
+            CURRENT=$(dirname "$FILE")
+            while [[ "$CURRENT" != "." && "$CURRENT" != "/" ]]; do
+              SEEN_DIRS["$CURRENT"]=1
+              CURRENT=$(dirname "$CURRENT")
+            done
+          done < /tmp/changed_files.txt
+          for DIR in $(printf '%s\n' "${!SEEN_DIRS[@]}" | awk -F'/' '{print NF, $0}' | sort -n | awk '{print $2}'); do
+            echo "-mkdir $REMOTE_BASE/$(sftp_escape "$DIR")" >> "$BATCH"
+          done
+          while IFS= read -r FILE; do
+            ESCAPED=$(sftp_escape "$FILE")
+            echo "put $ESCAPED $REMOTE_BASE/$ESCAPED" >> "$BATCH"
+          done < /tmp/changed_files.txt
+          echo "bye" >> "$BATCH"
+          echo "SFTP batch:"; cat "$BATCH"
+
+          MAX_ATTEMPTS=3
+          attempt=1
+          until sshpass -p "$SFTP_PASS" sftp \
+            -o StrictHostKeyChecking=no \
+            -o BatchMode=no \
+            -b "$BATCH" \
+            -P 22 \
+            "$SFTP_USER@$SFTP_HOST"
+          do
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "Upload failed after $MAX_ATTEMPTS attempts."
+              exit 1
+            fi
+            echo "Upload attempt $attempt failed, retrying in 10s..."
+            attempt=$((attempt + 1))
+            sleep 10
+          done
+
+      - name: Write deploy-state cache entry
+        if: env.DEPLOY == 'true'
+        env:
+          AFTER: ${{ github.sha }}
+        run: |
+          mkdir -p /tmp/deploy-state-cache
+          echo -n "$AFTER" > /tmp/deploy-state-cache/last-sha.txt
+
+      - name: Save deploy-state cache
+        if: env.DEPLOY == 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: /tmp/deploy-state-cache
+          key: deploy-state-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Record deploy state on remote (best-effort fallback)
+        if: env.DEPLOY == 'true'
+        continue-on-error: true
+        env:
+          SFTP_HOST: ${{ secrets.FTP_SERVER }}
+          SFTP_USER: ${{ secrets.FTP_USERNAME }}
+          SFTP_PASS: ${{ secrets.FTP_PASSWORD }}
+          REMOTE_BASE: "JoramUlmke/${{ github.event.repository.name }}"
+          AFTER: ${{ github.sha }}
+        run: |
+          echo -n "$AFTER" > /tmp/deploy_state.txt
+          printf 'put /tmp/deploy_state.txt %s/.deploy-state\nbye\n' "$REMOTE_BASE" > /tmp/record_batch.txt
+
+          sleep 3
+          MAX_ATTEMPTS=3
+          attempt=1
+          until sshpass -p "$SFTP_PASS" sftp -o StrictHostKeyChecking=no -o BatchMode=no -b /tmp/record_batch.txt -P 22 "$SFTP_USER@$SFTP_HOST"
+          do
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "::warning::Recording deploy state on remote failed after $MAX_ATTEMPTS attempts (non-fatal — deploy-state cache is primary)."
+              exit 0
+            fi
+            echo "Record attempt $attempt failed, retrying immediately..."
+            attempt=$((attempt + 1))
+          done
+          echo "Recorded deployed commit on remote: $AFTER"
+
+
+      # ---------------------------------------------------------------- mirror
+
+      - name: Check mirror secrets
+        if: env.DEPLOY == 'true'
+        env:
+          MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
+          MIRROR_SSH_KEY: ${{ secrets.MIRROR_SSH_KEY }}
+        run: |
+          if [ -z "$MIRROR_HOST" ] || [ -z "$MIRROR_SSH_KEY" ]; then
+            echo "::error::The MIRROR_HOST or MIRROR_SSH_KEY secret is empty or not found."
+            exit 1
+          fi
+
+      - name: Setup SSH Agent
+        if: env.DEPLOY == 'true'
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.MIRROR_SSH_KEY }}
+
+      - name: Add mirror host key
+        if: env.DEPLOY == 'true'
+        env:
+          MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan "$MIRROR_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Push to the mirror (no history)
+        if: env.DEPLOY == 'true'
+        env:
+          MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          git checkout -- .   # the deploy changed the cache name in sw.js
+          git remote add mirror "git@$MIRROR_HOST:joramulmke/$REPO.git" \
+            || git remote set-url mirror "git@$MIRROR_HOST:joramulmke/$REPO.git"
+          HOUR=$(TZ="Europe/Berlin" date +%H)
+          if [ "$HOUR" -ge 19 ]; then
+            COMMIT_DATE=$(TZ="Europe/Berlin" date +"%Y-%m-%dT19:00:00%z")
+          else
+            COMMIT_DATE=$(TZ="Europe/Berlin" date -d "yesterday" +"%Y-%m-%dT19:00:00%z")
+          fi
+          export GIT_AUTHOR_DATE="$COMMIT_DATE"
+          export GIT_COMMITTER_DATE="$COMMIT_DATE"
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git checkout --orphan no_history
+          rm -rf .github/workflows
+          git add -A
+          git commit -m "Latest snapshot"
+          git push mirror no_history:main --force
+
+      # ---------------------------------------------------------------- screenshots (only when asked)
+
+      - name: Make screenshots
+        if: env.SHOTS == 'true'
+        run: |
+          git checkout -f -B main origin/main
+          npm i --no-save --no-audit --no-fund playwright-core@1.48.2
+          node .github/scripts/screenshots.mjs
+
+      - name: Commit screenshots (live with the next deploy)
+        if: env.SHOTS == 'true'
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git add icons/screenshots
+          if git diff --cached --quiet; then echo "Screenshots unchanged."; exit 0; fi
+          git commit -m "Update install screenshots"
+          git pull --rebase origin main && git push origin HEAD:main
