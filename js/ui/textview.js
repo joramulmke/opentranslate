@@ -42,7 +42,7 @@ export function initTextView(opts) {
     outCard: $('output-card'), placeholder: $('out-placeholder'), skeleton: $('out-skeleton'),
     out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'),
     errActions: $('out-error-actions'), mockChip: $('mock-chip'), why: $('btn-why'), whyList: $('why-list'),
-    speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), starBtn: $('btn-star'),
+    speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), shareBtn: $('btn-share'), starBtn: $('btn-star'),
     inputCard: $('input-card'), live: $('out-live'),
   };
 
@@ -63,6 +63,9 @@ export function initTextView(opts) {
   el.clear.addEventListener('click', () => clearText());
   el.translateBtn.addEventListener('click', () => runTranslate({ commit: true }));
   el.copyBtn.addEventListener('click', copyResult);
+  // the phone's share menu (WhatsApp, email…); only where the browser can share text
+  el.shareBtn.hidden = typeof navigator.share !== 'function';
+  el.shareBtn.addEventListener('click', shareResult);
   el.why?.addEventListener('click', () => {
     const open = el.whyList.hidden;
     el.whyList.hidden = !open;
@@ -361,6 +364,7 @@ function setOutputActions(on) {
     el.speakBtn.title = l;
   }
   el.copyBtn.disabled = !on;
+  el.shareBtn.disabled = !on;
   el.starBtn.disabled = !on;
 }
 
@@ -436,6 +440,19 @@ async function copyResult() {
   await copyText(result.text);
   commitHistory();
   toast('Translation copied');
+}
+
+async function shareResult() {
+  if (!result) return;
+  const text = result.text;
+  commitHistory();
+  try {
+    await navigator.share({ text });
+  } catch (e) {
+    if (e?.name === 'AbortError') return;   // closed the share menu
+    await copyText(text);
+    toast('Couldn’t open sharing. Translation copied instead');
+  }
 }
 
 function speakSource() {

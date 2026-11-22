@@ -74,9 +74,33 @@ function navigate(tab, { replace = false, focus = false } = {}) {
     else { navIndex += 1; history.pushState({ ot: tab, i: navIndex }, '', hash); }
   }
   hooks[tab]?.onShow?.({ viaArrowKeys: focus });   // focus === keyboard tab navigation
+  updateWakeLock();
   if (focus) document.getElementById(`tab-${tab}`).focus();
   else if (prev && isPhone()) focusAfterPhoneNav(tab, prev);
 }
+
+// Conversation and Camera keep the screen on while they're open (Wake Lock). The browser drops the lock
+// when the app goes to the background, so it is asked for again on return.
+const AWAKE = ['camera', 'conversation'];
+let wakeLock = null;
+let wakeLockAsking = false;
+async function updateWakeLock() {
+  const want = AWAKE.includes(currentTab) && document.visibilityState === 'visible';
+  if (!want) {
+    const l = wakeLock; wakeLock = null;
+    l?.release().catch(() => {});
+    return;
+  }
+  if ((wakeLock && !wakeLock.released) || wakeLockAsking || !navigator.wakeLock) return;
+  wakeLockAsking = true;
+  try {
+    const l = await navigator.wakeLock.request('screen');
+    if (AWAKE.includes(currentTab) && document.visibilityState === 'visible') wakeLock = l;
+    else l.release().catch(() => {});
+  } catch { /* not allowed (battery saver, no permission): the screen just dims as usual */ }
+  wakeLockAsking = false;
+}
+document.addEventListener('visibilitychange', updateWakeLock);
 
 function focusAfterPhoneNav(tab, prev) {
   // only move focus if it was on a control that just disappeared
