@@ -59,3 +59,5 @@ the app tells you why.
 <sub>Built on open translation, speech and text recognition models, including Mozilla's Bergamot (the engine
 behind Firefox's translations), Whisper, Piper, Kokoro, Tesseract and PP-OCRv6. Not affiliated with Google or
 any translation service; all names and marks belong to their owners.</sub>
+
+<sub>P.S.: You can host it yourself, just change the imprint link in change-me.md. Thx!</sub>
