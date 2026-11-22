@@ -47,19 +47,24 @@ export const paddleBytes = () => bytes;
 
 /** Whether the models (and the runtime) are in the cache. */
 export async function refreshPaddle() {
-  bytes = 0;
-  if (typeof caches === 'undefined') { emit(); return; }
-  try {
-    const c = await caches.open(CACHE);
-    let total = 0; let models = 0;
-    for (const req of await c.keys()) {
-      const res = await c.match(req);
-      const n = Number(res?.headers.get('content-length')) || (res ? (await res.clone().blob()).size : 0);
-      total += n;
-      if (MODEL_FILES.includes(req.url)) models++;
-    }
-    bytes = models === MODEL_FILES.length ? total : 0;
-  } catch { bytes = 0; }
+  // count into a local and swap at the end: the state stays as it was while the cache is read
+  // (resetting it first made the Settings rows flicker to "download" on every refresh)
+  let found = 0;
+  if (typeof caches !== 'undefined') {
+    try {
+      const c = await caches.open(CACHE);
+      let total = 0; let models = 0;
+      for (const req of await c.keys()) {
+        const res = await c.match(req);
+        const n = Number(res?.headers.get('content-length')) || (res ? (await res.clone().blob()).size : 0);
+        total += n;
+        if (MODEL_FILES.includes(req.url)) models++;
+      }
+      found = models === MODEL_FILES.length ? total : 0;
+    } catch { found = 0; }
+  }
+  if (found === bytes) return;
+  bytes = found;
   emit();
 }
 
