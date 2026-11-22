@@ -1483,3 +1483,23 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 @media (min-width: 720px) {
   dialog.sheet.bottom.info-sheet { margin: auto; border-radius: 28px; width: min(560px, calc(100vw - 48px)); }
 }
+/* Menu › Feedback wizard */
+.fb-progress { display: grid; gap: 6px; font-size: 12px; color: var(--on-surface-variant); }
+.fb-bar { height: 4px; border-radius: 2px; background: var(--surface-container, color-mix(in srgb, var(--on-surface) 10%, transparent)); overflow: hidden; position: relative; }
+.fb-bar::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--p, 0%); background: var(--primary); border-radius: 2px; transition: width .2s; }
+.fb-step { display: grid; gap: 10px; }
+.fb-q { margin: 4px 0 0; font-size: 18px; font-weight: 500; line-height: 24px; }
+.fb-q:focus { outline: none; }
+.fb-label { margin: 6px 0 0; font-size: 14px; font-weight: 500; color: var(--on-surface-variant); }
+.fb-step textarea { width: 100%; min-height: 96px; resize: vertical; border-radius: 8px; border: 1px solid var(--outline); background: transparent; padding: 12px 14px; font-size: 16px; line-height: 22px; }
+.fb-step textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
+.fb-summary { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+.fb-summary dt { color: var(--on-surface-variant); }
+.fb-summary dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fb-diag summary { cursor: pointer; font-size: 14px; font-weight: 500; min-height: 32px; }
+.fb-diag[open] summary { margin-bottom: 6px; }
+.fb-error { margin: 0; min-height: 0; font-size: 13px; color: var(--error, #B3261E); }
+.fb-error:empty { display: none; }
+.fb-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.fb-actions .spacer { flex: 1; }
+@media (max-width: 480px) { .fb-summary { grid-template-columns: 1fr; } .fb-summary dd { margin-bottom: 6px; } }

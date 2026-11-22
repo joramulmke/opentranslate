@@ -479,6 +479,7 @@
       <button type="button" role="menuitem" data-menu="theme" data-theme-toggle><i data-icon="darkMode"></i><span>Dark theme</span></button>
       <button type="button" role="menuitem" data-menu="install" id="menu-install"><i data-icon="install"></i><span>Install app</span></button>
       <button type="button" role="menuitem" data-menu="settings" id="menu-settings"><i data-icon="settings"></i><span>Settings</span></button>
+      <button type="button" role="menuitem" data-menu="feedback"><i data-icon="feedback"></i><span>Feedback</span></button>
     </div>
   </dialog>
 
@@ -553,6 +554,27 @@
     <div class="info-body">
       <p>Add it to your home screen and it opens like any app, full screen and offline.</p>
       <ol class="install-steps" id="install-steps"></ol>
+    </div>
+  </dialog>
+
+  <!-- Menu › Feedback: step-by-step questions, then a pre-filled GitHub issue (js/ui/feedback.js) -->
+  <dialog class="sheet bottom info-sheet fb-sheet" id="feedback-dialog" aria-labelledby="fb-title">
+    <div class="drag-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="fb-title">Feedback</h2>
+      <span class="spacer"></span>
+      <button class="icon-btn" type="button" data-close aria-label="Close feedback"><i data-icon="close"></i></button>
+    </div>
+    <div class="info-body">
+      <div class="fb-progress"><span id="fb-progress" aria-live="polite"></span><span class="fb-bar" id="fb-bar" aria-hidden="true"></span></div>
+      <div class="fb-step" id="fb-step"></div>
+      <p class="fb-error" id="fb-error" role="alert"></p>
+      <div class="row-gap fb-actions">
+        <button class="btn btn-text" id="fb-back" type="button">Back</button>
+        <span class="spacer"></span>
+        <button class="btn btn-filled" id="fb-next" type="button">Next</button>
+        <button class="btn btn-filled" id="fb-send" type="button" hidden><i data-icon="openIn"></i><span>Open GitHub issue</span></button>
+      </div>
     </div>
   </dialog>
 

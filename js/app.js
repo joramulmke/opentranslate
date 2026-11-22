@@ -14,6 +14,7 @@ import { initVersion } from './ui/version.js';
 import { loadSiteConfig } from './siteconfig.js';
 import { initMenu, openMenu } from './ui/menu.js';
 import { initInstall } from './ui/install.js';
+import { initFeedback, openFeedback } from './ui/feedback.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
 import { takeShare, takeLinkText, onOpenedFile } from './share.js';
@@ -216,7 +217,9 @@ function boot() {
     theme: toggleTheme,
     install: initInstall($('menu-install')),
     settings: () => openSettings(),
+    feedback: openFeedback,
   });
+  initFeedback({ currentTab: () => currentTab });
 
   onChange((what) => { if (what === 'phrasebook') textView.refreshStar(); });
   onLayoutChange(() => textView.onLayoutChange());
