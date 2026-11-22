@@ -14,6 +14,7 @@ import { loadSiteConfig } from './siteconfig.js';
 import { initMenu, openMenu } from './ui/menu.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
+import { takeShare } from './share.js';
 import { initConversation } from './features/conversation.js';
 import { initHandwriting } from './features/handwriting.js';
 
@@ -191,6 +192,17 @@ function boot() {
   navigate(location.hash.slice(1) || 'text', { replace: true });
 
   if (!state.provider) console.info('[OpenTranslate] no usable provider:', state.providerError?.message);
+
+  // shared from another app (manifest share_target, see sw.js): a photo goes to camera text, text is translated
+  takeShare().then(async (shared) => {
+    if (!shared) return;
+    if (shared.kind === 'photo') {
+      if (await hooks.camera?.openImage?.(shared.photo)) navigate('camera', { replace: true });
+      return;
+    }
+    navigate('text', { replace: true });
+    textView.setInput(shared.text, { translateNow: true });
+  });
 
   window.__otBooted = true;
   document.getElementById('boot-msg').hidden = true;

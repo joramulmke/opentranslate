@@ -219,6 +219,10 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
      the language.
 - **Languages** your services can't translate stay visible but greyed out; tapping one explains why
   (e.g. not installed on your LibreTranslate server). Languages that can be downloaded show a download icon.
+- **Share to OpenTranslate** (installed app, Android and desktop Chrome/Edge): other apps can share text, a link
+  or a photo to it (`share_target` in the manifest; the service worker receives it at `./share`). Text opens in
+  the text view and is translated right away (a link's title and text, without the URL; a bare link stays as
+  is); a photo opens in camera text and is read like an imported one. Nothing is kept after it's opened.
 - **Camera:** live preview or imported photo; OCR with [Tesseract.js](https://tesseract.projectnaptha.com/)
   (loaded from jsDelivr on first use; one language file per language, see below) as **Basic (Tesseract)**, or **Many languages (PP-OCRv6)** (PaddlePaddle,
   Apache-2.0) when picked in Settings → Text recognition → Camera text: two small ONNX models (31 MB, once, from
@@ -271,6 +275,7 @@ js/app.js              boot, routing (#text, #camera, #conversation, #handwritin
 js/state.js            shared state, service chains (first choice + fallbacks per group), error messages
 js/ui/storage.js       Settings: space used on this device and the "Free up space" list
 js/ui/settingssearch.js Settings: search box that hides what doesn't match
+js/share.js            Share to OpenTranslate: picks up what another app shared
 js/store.js            localStorage: settings + service list (with migration), history, phrasebook
 js/providers.js        provider interface + registry: Mock, LibreTranslate, OpenAI-compatible
 js/features/offline.js on-device translation: model list, downloads, Bergamot worker, detection

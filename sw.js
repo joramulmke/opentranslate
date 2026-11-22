@@ -1,5 +1,5 @@
 // Service worker: precache the app shell; never cache API responses or CDN OCR assets.
-const CACHE_NAME = 'ot-shell-v16';
+const CACHE_NAME = 'ot-shell-v17';
 const SHELL = [
   './',
   './index.html',
@@ -49,6 +49,7 @@ const SHELL = [
   './js/ui/storage.js',
   './js/ui/settingssearch.js',
   './js/ui/tags.js',
+  './js/share.js',
   './js/features/llm-worker.js',
   './js/ui/offlineui.js',
   './vendor/bergamot/translator-worker.js',
@@ -70,10 +71,31 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+// "Share to OpenTranslate" (manifest share_target): keep what was shared, then open the app on it.
+const SHARE_CACHE = 'ot-share-v1';
+async function receiveShare(req) {
+  const scope = self.registration.scope;
+  let photo = null;
+  try {
+    const fd = await req.formData();
+    const pick = (k) => String(fd.get(k) || '').slice(0, 20000);
+    photo = fd.getAll('photo').find((f) => f && typeof f !== 'string' && /^image\//.test(f.type)) || null;
+    const c = await caches.open(SHARE_CACHE);
+    await c.put(new URL('__shared.json', scope), new Response(JSON.stringify({ title: pick('title'), text: pick('text'), url: pick('url') }), { headers: { 'Content-Type': 'application/json' } }));
+    if (photo) await c.put(new URL('__shared-photo', scope), new Response(photo, { headers: { 'Content-Type': photo.type } }));
+    else await c.delete(new URL('__shared-photo', scope));
+  } catch { /* nothing readable: just open the app */ }
+  return Response.redirect(new URL(photo ? './?share=photo#text' : './?share=text#text', scope).href, 303);
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET') return;                       // translate/detect POSTs go straight to network
   const url = new URL(req.url);
+  if (req.method === 'POST' && url.origin === self.location.origin && url.pathname === new URL('share', self.registration.scope).pathname) {
+    e.respondWith(receiveShare(req));
+    return;
+  }
+  if (req.method !== 'GET') return;                       // translate/detect POSTs go straight to network
   if (url.origin !== self.location.origin) return;        // provider APIs, Tesseract CDN: not cached here
   const scope = new URL(self.registration.scope);
   if (!url.pathname.startsWith(scope.pathname)) return;

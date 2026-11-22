@@ -210,17 +210,22 @@ export function initCamera({ sendToText }) {
   const pickFile = () => el.file.click();
   el.importBtn.addEventListener('click', pickFile);
   el.import2.addEventListener('click', pickFile);
-  el.file.addEventListener('change', async () => {
-    const f = el.file.files?.[0];
-    el.file.value = '';
-    if (!f) return;
+  /** An imported or shared photo: read it like a taken one. */
+  async function openImage(f) {
     try {
       const bmp = await createImageBitmap(f);
       el.empty.hidden = true;
       processCanvas(toCanvas(bmp, bmp.width, bmp.height));
+      return true;
     } catch {
       toast('That file could not be opened as an image');
+      return false;
     }
+  }
+  el.file.addEventListener('change', async () => {
+    const f = el.file.files?.[0];
+    el.file.value = '';
+    if (f) openImage(f);
   });
   el.retry.addEventListener('click', startStream);
   // If the user unblocks the camera in site settings while the tab is open, start right away.
@@ -248,6 +253,7 @@ export function initCamera({ sendToText }) {
   });
 
   return {
+    openImage,
     onShow() { visible = true; if (!shot) { setMode(false); gate(); } },
     onHide() { visible = false; stopStream(); },
   };
