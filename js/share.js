@@ -33,3 +33,25 @@ export async function takeShare() {
     return null;
   }
 }
+
+/** A web+translate: link (manifest protocol_handlers) opens ./?q=web%2Btranslate%3A…: the text after the colon, or ''. */
+export function takeLinkText() {
+  const params = new URLSearchParams(location.search);
+  const q = params.get('q');
+  if (q == null) return '';
+  params.delete('q');
+  const rest = params.toString();
+  history.replaceState(history.state, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+  let t = q.replace(/^web\+translate:(\/\/)?/i, '');
+  try { t = decodeURIComponent(t); } catch { /* not encoded: keep as is */ }
+  return t.trim().slice(0, 20000);
+}
+
+/** "Open with OpenTranslate" on a computer (manifest file_handlers): calls handler(file) with the opened file. */
+export function onOpenedFile(handler) {
+  if (!('launchQueue' in window)) return;
+  window.launchQueue.setConsumer(async (params) => {
+    if (!params.files?.length) return;
+    try { handler(await params.files[0].getFile()); } catch { /* file gone or not allowed */ }
+  });
+}

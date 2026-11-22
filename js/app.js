@@ -14,7 +14,7 @@ import { loadSiteConfig } from './siteconfig.js';
 import { initMenu, openMenu } from './ui/menu.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
-import { takeShare } from './share.js';
+import { takeShare, takeLinkText, onOpenedFile } from './share.js';
 import { initConversation } from './features/conversation.js';
 import { initHandwriting } from './features/handwriting.js';
 
@@ -192,6 +192,26 @@ function boot() {
   navigate(location.hash.slice(1) || 'text', { replace: true });
 
   if (!state.provider) console.info('[OpenTranslate] no usable provider:', state.providerError?.message);
+
+  // a web+translate: link (manifest protocol_handlers): the text is translated
+  const linkText = takeLinkText();
+  if (linkText) {
+    navigate('text', { replace: true });
+    textView.setInput(linkText, { translateNow: true });
+  }
+
+  // a file opened with the installed app on a computer (manifest file_handlers): an image goes to camera text,
+  // a text file is translated
+  onOpenedFile(async (file) => {
+    if (file.type.startsWith('image/')) {
+      if (await hooks.camera?.openImage?.(file)) navigate('camera', { replace: true });
+      return;
+    }
+    const text = (await file.text()).slice(0, 20000).trim();
+    if (!text) return;
+    navigate('text', { replace: true });
+    textView.setInput(text, { translateNow: true });
+  });
 
   // shared from another app (manifest share_target, see sw.js): a photo goes to camera text, text is translated
   takeShare().then(async (shared) => {
