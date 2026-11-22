@@ -54,6 +54,9 @@ jobs:
           else
             echo "sw.js not found, skipping cache update"
           fi
+          # Settings shows this as "Version abc1234 · date" (js/ui/version.js)
+          printf '{ "commit": "%s", "date": "%s" }\n' "$GITHUB_SHA" "$(git log -1 --format=%cI "$GITHUB_SHA")" > version.json
+          cat version.json
 
       - name: Determine last deployed commit
         if: env.DEPLOY == 'true'
@@ -102,8 +105,8 @@ jobs:
             FILES=""
           fi
           if [ -f sw.js ]; then
-            FILES=$(printf '%s\n' "$FILES" | grep -v '^sw\.js$' || true)
-            FILES="sw.js"$'\n'"$FILES"
+            FILES=$(printf '%s\n' "$FILES" | grep -v '^sw\.js$' | grep -v '^version\.json$' || true)
+            FILES="sw.js"$'\n'"version.json"$'\n'"$FILES"
           fi
           printf '%s\n' "$FILES" | grep -v '^[[:space:]]*$' > /tmp/changed_files.txt || true
           echo "FULL_SYNC=$FULL_SYNC" >> "$GITHUB_ENV"
@@ -361,7 +364,7 @@ jobs:
           MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
           REPO: ${{ github.event.repository.name }}
         run: |
-          git checkout -- .   # the deploy changed the cache name in sw.js
+          git checkout -- .   # the deploy changed the cache name in sw.js and stamped version.json
           git remote add mirror "git@$MIRROR_HOST:joramulmke/$REPO.git" \
             || git remote set-url mirror "git@$MIRROR_HOST:joramulmke/$REPO.git"
           HOUR=$(TZ="Europe/Berlin" date +%H)

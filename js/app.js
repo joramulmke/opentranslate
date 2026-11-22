@@ -10,6 +10,7 @@ import { initSettingsSheet, openSettings } from './ui/settingssheet.js';
 import { initModeMenu } from './ui/modemenu.js';
 import { initSetupBadge } from './ui/setupbadge.js';
 import { initSiteFooter } from './ui/sitefooter.js';
+import { initVersion } from './ui/version.js';
 import { loadSiteConfig } from './siteconfig.js';
 import { initMenu, openMenu } from './ui/menu.js';
 import { initInstall } from './ui/install.js';
@@ -206,6 +207,7 @@ function boot() {
   initModeMenu({ openSettings });
   initSetupBadge();
   initSiteFooter();
+  initVersion();
   // change-me.txt changed since the last start (e.g. demo_mode): rebuild the service list
   loadSiteConfig().then((changed) => { if (changed) { settings.set({}); initProvider(); } });
   initMenu('more-menu', {

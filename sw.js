@@ -8,6 +8,8 @@ const SHELL = [
   './styles.css',
   './manifest.webmanifest',
   './change-me.txt',
+  './version.json',
+  './js/ui/version.js',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -164,6 +166,11 @@ self.addEventListener('fetch', (e) => {
   const scope = new URL(self.registration.scope);
   if (!url.pathname.startsWith(scope.pathname)) return;
 
+  // Settings → "Check for updates": the server's version.json, never a cached one.
+  if (url.pathname === scope.pathname + 'version.json' && url.searchParams.has('latest')) {
+    e.respondWith(fetch(req, { cache: 'no-store' }));
+    return;
+  }
   // Navigations: the page from this version's cache (network only if it's missing).
   if (req.mode === 'navigate' && (url.pathname === scope.pathname || url.pathname === scope.pathname + 'index.html')) {
     e.respondWith(fromShell(new Request(new URL('./index.html', scope).href)).then((hit) => hit || fetch(req)));
