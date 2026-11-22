@@ -132,13 +132,21 @@ async function downloads() {
   ];
 }
 
+// version.json is stamped by the deploy (.github/workflows/deploy.yml) with the commit and its date
+const REPO = 'https://github.com/joramulmke/opentranslate';
 let version = null;
 async function appVersion() {
   if (version) return version;
   try {
     const v = await (await fetch('version.json')).json();
-    version = v?.commit && v.commit !== 'dev' ? `${v.commit.slice(0, 7)}${v.date ? ` (${v.date.slice(0, 10)})` : ''}` : 'dev';
-  } catch { version = 'unknown'; }
+    if (!v?.commit || v.commit === 'dev') {
+      version = [['App version', 'dev (local copy without a version stamp)']];
+    } else {
+      const d = v.date ? new Date(v.date) : null;
+      const when = d && !Number.isNaN(+d) ? `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC` : 'date unknown';
+      version = [['App version', `${v.commit.slice(0, 7)} · ${when}`], ['Commit', `${REPO}/commit/${v.commit}`]];
+    }
+  } catch { version = [['App version', 'unknown (version.json not readable)']]; }
   return version;
 }
 
@@ -146,7 +154,7 @@ async function appVersion() {
 export async function collectDiagnostics() {
   const [ver, sys, dl] = await Promise.all([appVersion(), system(), downloads().catch(() => [['Downloads', 'could not be read']])]);
   return [
-    { title: 'System', rows: [['App version', ver], ...sys] },
+    { title: 'System', rows: [...ver, ...sys] },
     { title: 'Translation', rows: services() },
     { title: 'Engines used first', rows: engines() },
     { title: 'Downloads', rows: dl },
