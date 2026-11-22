@@ -1,5 +1,6 @@
 // localStorage persistence: settings, history (last 100), phrasebook (starred).
 import { demoEnabled } from './siteconfig.js';
+import { prettyName } from './features/llmcatalog.js';
 const KEY = { settings: 'ot.settings.v1', history: 'ot.history.v1', saved: 'ot.phrasebook.v1', recents: 'ot.recentLangs.v1' };
 const HISTORY_MAX = 100;
 
@@ -39,7 +40,13 @@ export function entryLabel(type, config = {}) {
   if (type === 'mock') return MOCK_ENTRY.label;
   if (type === 'offline') return OFFLINE_ENTRY.label;
   if (type === 'elevenlabs') return 'ElevenLabs';
-  if (type === 'webllm') return `On-device AI · ${config.model === 'medium' ? 'Medium' : 'Small'}`;
+  if (type === 'chrome-translator') return 'Chrome translator';
+  if (type === 'webllm') {
+    const m = { small: 'Qwen2.5-1.5B-Instruct', medium: 'Llama-3.2-3B-Instruct' }[config.model] || config.model || 'Qwen2.5-1.5B-Instruct';
+    if (m === 'gemini-nano') return 'Gemini Nano';
+    if (m === 'custom') return `On-device AI · ${String(config.customUrl || '').split('/').filter(Boolean).pop() || 'own model'}`;
+    return `On-device AI · ${prettyName(m)}`;
+  }
   let host = '';
   try { host = new URL(config.baseUrl).hostname; } catch { /* empty / invalid url */ }
   const parts = host.split('.');

@@ -71,13 +71,25 @@ on iPhone work. To check:
 
 ### On-device AI (Advanced mode)
 
-Settings → **+ Add on-device AI**, pick a model, **Add and download**. The model runs in your browser on the
-graphics chip with [WebLLM](https://github.com/mlc-ai/web-llm) (Apache-2.0, loaded from jsDelivr, in a Web Worker):
+Settings → **+ Add on-device AI**, pick a model, **Add and download**. The model picker has a filter box and
+four groups:
 
-| Model | Download | Notes |
-| --- | --- | --- |
-| Small: Qwen 2.5 1.5B Instruct | ~0.9 GB | faster, works on more devices |
-| Medium: Llama 3.2 3B Instruct | ~1.8 GB | better translations, needs ~3 GB graphics memory |
+- **Recommended for translating**: 10 multilingual models from tiny to large, each with its download size and the
+  graphics memory it needs (e.g. Qwen 3.5 0.8B: 0.4 GB, fits phones; Qwen 2.5 1.5B: 0.9 GB, the default;
+  Llama 3.2 3B: 1.8 GB; Qwen 3.5 9B / Gemma 2 9B: ~5 GB, strong graphics chip).
+- **Built into this browser**: Gemini Nano in Chrome (Prompt API). Chrome downloads and updates it itself; no
+  WebGPU needed. It may not write every target language yet; the app says so when it can't.
+- **All WebLLM models**: the whole catalogue of WebLLM 0.2.87 (62 chat models; embedding, vision and 70B models
+  left out), sizes measured from Hugging Face (`js/features/llmcatalog.js`).
+- **Your own model**: an MLC-compiled model by URL plus its WebGPU model library (`.wasm`, https only). WebLLM
+  runs code from that library, so the field says to use only one you trust.
+
+WebLLM models run on the graphics chip with [WebLLM](https://github.com/mlc-ai/web-llm) (Apache-2.0, loaded from
+jsDelivr, in a Web Worker). Qwen 3 models are told not to "think" first, which keeps translations quick.
+
+Classic also offers **Add Chrome translator** where Chrome has its built-in translator (Translator API): Chrome
+downloads each language pair the first time it's used and translates on the device; detection uses Chrome's
+LanguageDetector.
 
 - Needs **WebGPU**: recent Chrome or Edge on a computer, Safari 26+. Without it the add button is disabled
   and says why.
@@ -99,7 +111,7 @@ delete it to free space. Every download prompt and error also names the source.
 | Group | What | From | Kept in |
 | --- | --- | --- | --- |
 | Classic › On this device | offline languages, ~45–75 MB each | Mozilla (`firefox-settings-attachments.cdn.mozilla.net`) | Cache Storage `ot-offline-*` |
-| Advanced › On-device AI | WebLLM model, ~0.9 / 1.8 GB | Hugging Face (`huggingface.co/mlc-ai`) | Cache Storage `webllm/*` |
+| Advanced › On-device AI | WebLLM model, ~0.2–7 GB (your pick), or your own model | Hugging Face (`huggingface.co/mlc-ai`) or your model URL | Cache Storage `webllm/*` |
 | Speech recognition › On this device | Whisper base, ~80 MB | Hugging Face (`huggingface.co/Xenova/whisper-base`) | Cache Storage `transformers-cache` |
 | Read aloud › Offline voices | Piper voice, ~63 MB per language (+ 30 MB engine, once); manager with search | Hugging Face (`huggingface.co/rhasspy/piper-voices`), engine from jsDelivr | Cache Storage `ot-piper-v1` |
 | Handwriting › On-device model | TrOCR small handwritten, ~130 MB | Hugging Face (`huggingface.co/Xenova/trocr-small-handwritten`) | Cache Storage `transformers-cache` |
@@ -225,6 +237,8 @@ js/features/localllm.js on-device AI (WebLLM): model choice, WebGPU check, downl
 js/features/models.js  transformers.js models (Whisper, TrOCR): loading, downloaded state, size, source, delete
 js/ui/enginerows.js    Settings rows for Speech recognition, Read aloud, Handwriting, Camera text (+ voice and OCR managers)
 js/features/piper.js   offline voices (Piper): voice list, download, delete, synthesis
+js/features/llmcatalog.js  on-device AI models: WebLLM catalogue with sizes, recommended picks
+js/features/chrometranslator.js  Chrome's built-in translator (Classic)
 vendor/bergamot/       Bergamot WebAssembly engine + worker (MPL-2.0, see LICENSE there)
 js/languages.js        bundled 50-language fallback, RTL and OCR language maps
 js/ui/*.js             text view, language bar/picker, mode menu, sheets, menus, icons, layout

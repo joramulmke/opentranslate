@@ -49,7 +49,9 @@ export function createProvider(id, config = {}, { skipRequired = false } = {}) {
   if (!def) throw new ProviderError('NO_PROVIDER', 'No translation provider is selected.');
   const cfg = { ...defaults(def), ...config };
   for (const f of def.fields || []) {
-    if (f.required && !skipRequired && !String(cfg[f.key] || '').trim()) {
+    // fields shown only for one choice (showIf) are only required then
+    const applies = !f.showIf || Object.entries(f.showIf).every(([k, v]) => cfg[k] === v);
+    if (f.required && applies && !skipRequired && !String(cfg[f.key] || '').trim()) {
       throw new ProviderError('NO_PROVIDER', `${def.label} needs a ${f.label.toLowerCase()} before it can translate.`);
     }
   }

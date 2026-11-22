@@ -1,7 +1,8 @@
 // Shared app state + provider access. UI modules subscribe; they never touch providers directly.
 import { createProvider, ProviderError, getProviderDef } from './providers.js';
 import { offlineUnusable } from './features/offline.js';   // registers the on-device service
-import './features/localllm.js';                           // registers the on-device AI model
+import './features/localllm.js';
+import './features/chrometranslator.js';                    // registers Chrome's built-in translator                           // registers the on-device AI model
 import { STATIC_LANGUAGES } from './languages.js';
 import { settings, recentLangs } from './store.js';
 

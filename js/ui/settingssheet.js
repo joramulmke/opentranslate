@@ -13,7 +13,8 @@ import { escapeHtml } from './langpicker.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
 import { initEngineRows, renderEngines, closeOcrManager, closeVoiceManager, sourceLine, extLink } from './enginerows.js';
-import { llmKey, llmTitle, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, LLM_MODELS } from '../features/localllm.js';
+import { chromeTranslatorSupported } from '../features/chrometranslator.js';
+import { llmSpec, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, nanoSupported, NANO } from '../features/localllm.js';
 
 const $ = (id) => document.getElementById(id);
 let dlg, form;
@@ -27,6 +28,7 @@ export function initSettingsSheet({ onThemeChange }) {
   $('btn-add-lt').addEventListener('click', () => openEditor({ type: 'libretranslate' }));
   $('btn-add-ai').addEventListener('click', () => openEditor({ type: 'openai' }));
   $('btn-add-llm').addEventListener('click', () => openEditor({ type: 'webllm' }));
+  $('btn-add-chrome').addEventListener('click', () => openEditor({ type: 'chrome-translator' }));
   $('btn-add-eleven').addEventListener('click', () => openEditor({ type: 'elevenlabs' }));
   onLlmChange((what) => {
     if (!dlg?.open) return;
@@ -148,9 +150,11 @@ export function openSettings(focus) {
   $('set-speak').checked = s.speakConversation;
   form.querySelectorAll('input[name="theme"]').forEach((r) => { r.checked = r.value === s.theme; });
   checkGpu().then((g) => {
-    $('btn-add-llm').disabled = !g.ok;
-    $('llm-unavailable').hidden = g.ok;
-    $('llm-unavailable').textContent = g.ok ? '' : `On-device AI: ${g.reason}`;
+    // Gemini Nano (Chrome) needs no WebGPU
+    const ok = g.ok || nanoSupported();
+    $('btn-add-llm').disabled = !ok;
+    $('llm-unavailable').hidden = ok;
+    $('llm-unavailable').textContent = ok ? '' : `On-device AI: ${g.reason}`;
   });
   openDialog(dlg);
   if (focus === 'offline') openManager();
@@ -171,12 +175,17 @@ function subtitle(e) {
     return n ? `${n} language${n > 1 ? 's' : ''} + English · ${formatMB(usedBytes())} · works without internet` : 'No languages downloaded yet';
   }
   if (e.type === 'webllm') {
-    const st = llmState(c.model);
-    const what = llmTitle(c.model);
-    if (st === 'downloading') return `${what} · Downloading… ${Math.round(llmProgress(c.model) * 100)}%`;
-    if (st === 'ready') return `${what} · Downloaded · runs on this device`;
-    return `${what} · Not downloaded (${formatMB(LLM_MODELS[llmKey(c.model)].sizeMB * 1e6)})`;
+    const spec = llmSpec(c);
+    const st = llmState(spec.key);
+    if (spec.kind === 'nano') {
+      if (!nanoSupported()) return `${spec.title} · Not available in this browser`;
+      return st === 'ready' ? `${spec.title} · Ready · runs on this device` : st === 'downloading' ? `${spec.title} · Chrome is downloading it…` : `${spec.title} · Chrome downloads it when you press Download`;
+    }
+    if (st === 'downloading') return `${spec.title} · Downloading… ${Math.round(llmProgress(spec.key) * 100)}%`;
+    if (st === 'ready') return `${spec.title} · Downloaded · runs on this device`;
+    return `${spec.title} · Not downloaded${spec.sizeMB ? ` (${formatMB(spec.sizeMB * 1e6)})` : ''}`;
   }
+  if (e.type === 'chrome-translator') return chromeTranslatorSupported() ? 'Built into Chrome · runs on this device · each language pair downloaded by Chrome' : 'Only in Chrome on computers';
   let host = c.baseUrl || '';
   try { host = new URL(c.baseUrl).host; } catch { /* keep raw */ }
   if (e.type === 'openai') return [host, c.model].filter(Boolean).join(' · ');
@@ -193,8 +202,13 @@ function sourceOf(e) {
     return sourceLine(`svc-src-${e.id}`, `From ${extLink('https://github.com/mozilla/translations', 'Mozilla')} (firefox-settings-attachments.cdn.mozilla.net) · Firefox translation models · engine Bergamot, included in the app`);
   }
   if (e.type === 'webllm') {
-    const repo = `mlc-ai/${LLM_MODELS[llmKey(e.config?.model)].f16}`;
-    return sourceLine(`svc-src-${e.id}`, `From ${extLink(`https://huggingface.co/${repo}`, `Hugging Face: ${repo}`)} · engine WebLLM from jsDelivr and GitHub (raw.githubusercontent.com)`);
+    const spec = llmSpec(e.config);
+    if (spec.kind === 'nano') return sourceLine(`svc-src-${e.id}`, `Built into Chrome: Google's Gemini Nano, downloaded and updated by Chrome (see ${extLink('https://developer.chrome.com/docs/ai/prompt-api', 'Prompt API')})`);
+    if (spec.custom) {
+      let host = spec.custom.url; try { host = new URL(spec.custom.url).host; } catch { /* keep */ }
+      return sourceLine(`svc-src-${e.id}`, `From ${extLink(spec.custom.url, host)} (your own model) · engine WebLLM from jsDelivr`);
+    }
+    return sourceLine(`svc-src-${e.id}`, `From ${extLink(`https://huggingface.co/mlc-ai?search_models=${encodeURIComponent(spec.key)}`, `Hugging Face: mlc-ai/${spec.key}`)} · engine WebLLM from jsDelivr and GitHub (raw.githubusercontent.com)`);
   }
   return '';
 }
@@ -209,6 +223,8 @@ function renderLists() {
   const hadAct = document.activeElement?.dataset?.act;
   const lead = { classic: null, advanced: null };
   renderVoiceList(s);
+  // Chrome's translator: offered only where it exists, once
+  $('btn-add-chrome').hidden = !chromeTranslatorSupported() || s.entries.some((e) => e.type === 'chrome-translator');
   for (const kind of ['classic', 'advanced']) {
     const list = s.entries.filter((e) => kindOf(e) === kind);
     const activeId = kind === 'advanced' ? s.activeAdvanced : s.activeClassic;
@@ -227,7 +243,7 @@ function renderLists() {
         <span class="svc-actions">
           ${isMock ? '' : `<button class="icon-btn sm" type="button" data-act="up" aria-label="Move ${name} up" ${i <= 0 ? 'disabled' : ''}>${icon('up')}</button>
           <button class="icon-btn sm" type="button" data-act="down" aria-label="Move ${name} down" ${i >= movable.length - 1 ? 'disabled' : ''}>${icon('down')}</button>`}
-          ${e.type === 'webllm' && llmState(e.config?.model) !== 'ready' ? llmButton(e) : ''}
+          ${e.type === 'webllm' && llmState(llmSpec(e.config).key) !== 'ready' && !(llmSpec(e.config).kind === 'nano' && !nanoSupported()) ? llmButton(e) : ''}
           ${e.type === 'offline'
     ? (blocked(e)
       ? `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Why offline languages aren't available" aria-describedby="svc-sub-${e.id}">${icon('info')}</button>`
@@ -259,17 +275,30 @@ function renderVoiceList(s) {
   }).join('') : '<li class="svc-empty">None yet. Optional: cloud voices for reading aloud and voice input.</li>';
 }
 
+/** "(868 MB) from Hugging Face" / "from huggingface.co" / "with Chrome" */
+function llmFrom(spec) {
+  if (spec.kind === 'nano') return 'with Chrome';
+  let host = 'Hugging Face';
+  if (spec.custom) { try { host = new URL(spec.custom.url).host; } catch { host = 'your model URL'; } }
+  return `${spec.sizeMB ? `(${formatMB(spec.sizeMB * 1e6)}) ` : ''}from ${host}`;
+}
+
 function llmButton(e) {
   const name = escapeHtml(e.label);
-  const size = formatMB(LLM_MODELS[llmKey(e.config?.model)].sizeMB * 1e6);
-  return llmState(e.config?.model) === 'downloading'
-    ? `<button class="icon-btn sm" type="button" data-act="llm-dl" aria-label="Cancel download of ${name}">${icon('close')}</button>`
-    : `<button class="icon-btn sm" type="button" data-act="llm-dl" aria-label="Download ${name} (${size}) from Hugging Face">${icon('download')}</button>`;
+  const spec = llmSpec(e.config);
+  if (llmState(spec.key) === 'downloading') {
+    // Chrome's own download of Gemini Nano can't be stopped from here
+    return spec.kind === 'nano'
+      ? `<button class="icon-btn sm" type="button" data-act="llm-dl" aria-disabled="true" aria-label="Chrome is downloading ${name}">${icon('download')}</button>`
+      : `<button class="icon-btn sm" type="button" data-act="llm-dl" aria-label="Cancel download of ${name}">${icon('close')}</button>`;
+  }
+  return `<button class="icon-btn sm" type="button" data-act="llm-dl" aria-label="Download ${name} ${escapeHtml(llmFrom(spec))}">${icon('download')}</button>`;
 }
 
 function startLlmDownload(e) {
-  const key = llmKey(e.config?.model);
-  toast(`Downloading ${e.label} (${formatMB(LLM_MODELS[key].sizeMB * 1e6)}) from Hugging Face. You can keep using the app.`);
+  const spec = llmSpec(e.config);
+  const key = spec.key;
+  toast(`Downloading ${e.label} ${llmFrom(spec)}. You can keep using the app.`);
   downloadModel(key).then(
     () => toast(`${e.label} is ready. It works without internet.`),
     (err) => { if (!/cancel/i.test(err.message)) toast(err.message); },
@@ -278,7 +307,9 @@ function startLlmDownload(e) {
 
 function llmDownloadToggle(e) {
   if (!e) return;
-  if (llmState(e.config?.model) === 'downloading') { cancelModelDownload(); toast('Download stopped. It continues where it left off next time.'); }
+  const key = llmSpec(e.config).key;
+  if (llmState(key) === 'downloading') {
+    if (key === NANO) return; cancelModelDownload(); toast('Download stopped. It continues where it left off next time.'); }
   else startLlmDownload(e);
 }
 
@@ -291,10 +322,11 @@ function remove(id) {
   const nextId = (row?.nextElementSibling || row?.previousElementSibling)?.dataset?.id;
   entries.remove(id);
   // the on-device AI model's files go too, unless another service uses the same model
-  const lastUser = e.type === 'webllm'
-    && !settings.get().entries.some((x) => x.type === 'webllm' && llmKey(x.config?.model) === llmKey(e.config?.model));
-  const freed = lastUser && isDownloaded(e.config?.model);
-  if (lastUser) deleteModel(e.config?.model);
+  const key = e.type === 'webllm' ? llmSpec(e.config).key : null;
+  const lastUser = key && key !== NANO
+    && !settings.get().entries.some((x) => x.type === 'webllm' && llmSpec(x.config).key === key);
+  const freed = lastUser && isDownloaded(key);
+  if (lastUser) deleteModel(key);
   initProvider(); renderLists();
   // keep focus in the list: the next row, else the previous one, else the add button
   const nextRadio = nextId && document.querySelector(`.svc-row[data-id="${nextId}"] input`);
@@ -332,12 +364,12 @@ function openEditor({ id, type }) {
   // on-device AI: testing would start the download; the save button says that it downloads
   $('btn-test').hidden = editing.type === 'mock' || editing.type === 'webllm';
   const saveLabel = () => {
-    const sel = $('svc-fields').querySelector('[data-key="model"]');
-    $('btn-svc-save').textContent = editing?.type === 'webllm' && !isDownloaded(sel?.value)
+    const spec = editing?.type === 'webllm' ? llmSpec(readFields($('svc-fields'))) : null;
+    $('btn-svc-save').textContent = spec && !isDownloaded(spec.key) && !(spec.kind === 'nano' && !nanoSupported())
       ? `${editing.isNew ? 'Add' : 'Save'} and download` : 'Save';
   };
   saveLabel();
-  if (editing.type === 'webllm') $('svc-fields').querySelector('[data-key="model"]').addEventListener('change', saveLabel);
+  if (editing.type === 'webllm') $('svc-fields').addEventListener('change', saveLabel);
   $('svc-editor').hidden = false;
   // the form opens right under the list it adds to
   $(addRow).after($('svc-editor'));
@@ -368,7 +400,8 @@ function saveEditor() {
   const def = getProviderDef(editing.type);
   const config = readFields($('svc-fields'));
   for (const f of def.fields || []) {
-    if (f.required && !config[f.key]) {
+    const shown = !f.showIf || Object.entries(f.showIf).every(([k, v]) => config[k] === v);
+    if (shown && f.required && !config[f.key]) {
       const input = $('svc-fields').querySelector(`[data-key="${f.key}"]`);
       input.setAttribute('aria-invalid', 'true');
       input.focus();
@@ -391,7 +424,8 @@ function saveEditor() {
   if (isNew && kind === 'advanced' && wantAdvanced) { wantAdvanced = false; useEntry(id); }
   renderLists();
   closeEditor();
-  if (def.id === 'webllm' && llmState(config.model) === 'none') startLlmDownload({ label, config });
+  const spec = def.id === 'webllm' ? llmSpec(config) : null;
+  if (spec && llmState(spec.key) === 'none' && !(spec.kind === 'nano' && !nanoSupported())) startLlmDownload({ label, config });
   else toast(isNew ? `Added ${label}${state.mode === kind && kind === 'advanced' ? ' · Advanced translation is on' : ''}` : `Saved ${label}`);
 }
 
@@ -399,21 +433,49 @@ function renderFields(host, def, saved) {
   const id = def.id;
   host.innerHTML = (def.fields || []).map((f) => {
     const fid = `pf-${id}-${f.key}`;
-    const val = saved[f.key] ?? f.default ?? '';
+    const raw = saved[f.key] ?? f.default ?? '';
+    const val = f.normalize ? f.normalize(raw) : raw;
     if (f.type === 'cap') {
       return `<div class="field cap-field"><label class="cap-row" for="${fid}"><input type="checkbox" id="${fid}" data-cap="${f.key}" data-what="${f.what}" aria-describedby="${fid}-help">
         <span>${escapeHtml(f.label)}</span></label><p class="field-help" id="${fid}-help"></p></div>`;
     }
+    // fields shown only for some choices can't use the browser's own "required" check (it blocks Save while hidden)
+    const req = f.required ? (f.showIf ? 'aria-required="true"' : 'required aria-required="true"') : '';
     const control = f.type === 'select'
-      ? `<select id="${fid}" data-key="${f.key}" ${f.help ? `aria-describedby="${fid}-help"` : ''}>${f.options.map((o) => `<option value="${o.value}" ${o.value === val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select>`
+      ? `${f.filter ? `<input type="search" class="field-filter" id="${fid}-filter" data-filter-for="${fid}" placeholder="Filter, e.g. qwen, gemma, 3B" aria-label="Filter the ${escapeHtml(f.label.toLowerCase())} list" aria-controls="${fid}" autocomplete="off" spellcheck="false"><span class="visually-hidden" role="status" id="${fid}-count"></span>` : ''}
+        <select id="${fid}" data-key="${f.key}" ${f.help ? `aria-describedby="${fid}-help"` : ''}>${selectOptions(f, val)}</select>`
       : `<input id="${fid}" data-key="${f.key}" type="${f.type || 'text'}" value="${escapeHtml(val)}" placeholder="${escapeHtml(f.placeholder || '')}"
-           ${f.required ? 'required aria-required="true"' : ''} ${f.suggest ? 'list="adv-models"' : ''} ${f.help ? `aria-describedby="${fid}-help"` : ''}
+           ${req} ${f.suggest ? 'list="adv-models"' : ''} ${f.help ? `aria-describedby="${fid}-help"` : ''}
            autocomplete="${f.type === 'password' ? 'new-password' : 'off'}" spellcheck="false">`;
-    return `<div class="field"><label for="${fid}">${escapeHtml(f.label)}${f.required ? '' : ' (optional)'}</label>${control}
+    return `<div class="field" ${f.showIf ? `data-show-if='${escapeHtml(JSON.stringify(f.showIf))}'` : ''}><label for="${fid}">${escapeHtml(f.label)}${f.required ? '' : ' (optional)'}</label>${control}
       ${f.help ? `<p class="field-help" id="${fid}-help">${escapeHtml(f.help)}</p>` : ''}</div>`;
   }).join('');
   host.style.display = host.innerHTML ? 'grid' : 'none';
   host.style.gap = '12px';
+  // fields that only apply to one choice (e.g. own model URL): shown while that choice is picked
+  const applyShowIf = () => {
+    const cur = readFields(host);
+    host.querySelectorAll('[data-show-if]').forEach((d) => {
+      d.hidden = !Object.entries(JSON.parse(d.dataset.showIf)).every(([k, v]) => cur[k] === v);
+    });
+  };
+  applyShowIf();
+  host.addEventListener('change', applyShowIf);
+  // a filter box narrows a long list; the chosen option always stays in it
+  host.querySelectorAll('[data-filter-for]').forEach((box) => {
+    const sel = $(box.dataset.filterFor);
+    const f = def.fields.find((x) => x.key === sel.dataset.key);
+    box.addEventListener('input', () => {
+      const q = box.value.trim().toLowerCase();
+      const cur = sel.value;
+      sel.innerHTML = selectOptions(f, cur, q);
+      // the count is announced once typing pauses
+      const n = sel.querySelectorAll('option').length - (q ? 1 : 0);
+      clearTimeout(box._t);
+      box._t = setTimeout(() => { $(`${box.id.replace(/-filter$/, '')}-count`).textContent = q ? (n > 0 ? `${n} other match${n > 1 ? 'es' : ''}. Press Enter to choose.` : 'No other matches.') : ''; }, 600);
+    });
+    box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); sel.focus(); } });
+  });
   // capabilities: saved 'on' / 'off' were confirmed by a test earlier; '' = not tested
   for (const f of def.fields || []) {
     if (f.type !== 'cap') continue;
@@ -432,6 +494,15 @@ function renderFields(host, def, saved) {
       }
     });
   }
+}
+
+/** <option>s of a select field; grouped fields (groups()) get <optgroup>s; q filters by label. */
+function selectOptions(f, val, q = '') {
+  const opt = (o) => `<option value="${escapeHtml(o.value)}" ${o.value === val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`;
+  const keep = (o) => !q || o.value === val || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q);
+  if (!f.groups) return f.options.filter(keep).map(opt).join('');
+  return f.groups().map((g) => ({ ...g, options: g.options.filter(keep) })).filter((g) => g.options.length)
+    .map((g) => `<optgroup label="${escapeHtml(g.group)}">${g.options.map(opt).join('')}</optgroup>`).join('');
 }
 
 function readFields(host) {
