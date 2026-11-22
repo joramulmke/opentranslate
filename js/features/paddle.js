@@ -451,8 +451,24 @@ export async function recognizePaddle(image, { single = false, onProgress } = {}
       bbox: { x0: Math.max(0, Math.min(...xs)), y0: Math.max(0, Math.min(...ys)), x1: Math.min(img.width, Math.max(...xs)), y1: Math.min(img.height, Math.max(...ys)) },
     });
   }
-  const confidence = lines.length ? lines.reduce((a, l) => a + l.confidence, 0) / lines.length : 0;
-  return { text: lines.map((l) => l.text).join('\n'), confidence, lines, words: [] };
+  // stray marks (page edges, dirt) can come out as one or two characters of another script, e.g. a
+  // Chinese character on an English page: such short lines in a script the rest of the page doesn't use go
+  const kept = single ? lines : dropStrays(lines);
+  const confidence = kept.length ? kept.reduce((a, l) => a + l.confidence, 0) / kept.length : 0;
+  return { text: kept.map((l) => l.text).join('\n'), confidence, lines: kept, words: [] };
+}
+
+const SCRIPTS = ['Latin', 'Han', 'Hiragana', 'Katakana', 'Greek'].map((n) => [n, new RegExp(`\\p{Script=${n}}`, 'gu')]);
+const scriptCounts = (t) => Object.fromEntries(SCRIPTS.map(([n, re]) => [n, (t.match(re) || []).length]));
+/** Lines of at most two letters, all in scripts that make up less than a tenth of the page's letters. */
+function dropStrays(lines) {
+  const total = scriptCounts(lines.map((l) => l.text).join(''));
+  const all = Object.values(total).reduce((a, b) => a + b, 0);
+  return lines.filter((l) => {
+    const c = scriptCounts(l.text);
+    const n = Object.values(c).reduce((a, b) => a + b, 0);
+    return n > 2 || !n || Object.entries(c).some(([k, v]) => v && total[k] >= all / 10);
+  });
 }
 
 refreshPaddle();

@@ -35,6 +35,25 @@ async function run(f, img, task, maxTokens) {
   return processor.post_process_generation(out, task, image.size)[task];
 }
 
+/**
+ * Handwriting (black ink on white, cropped): the text Florence-2 reads, lines joined by spaces.
+ * Florence-2 squeezes every image into a square, so a long line is first padded to a square with white:
+ * the letters then keep their shape instead of being squashed flat.
+ */
+export async function readHandwritingFlorence(canvas, { onStatus, square = true } = {}) {
+  const f = await getPipeline('florence', { onStatus });
+  let img = canvas;
+  if (square && canvas.width !== canvas.height) {
+    const n = Math.max(canvas.width, canvas.height);
+    img = Object.assign(document.createElement('canvas'), { width: n, height: n });
+    const g = img.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, n, n);
+    g.drawImage(canvas, (n - canvas.width) / 2, (n - canvas.height) / 2);
+  }
+  onStatus?.('Reading with Florence-2…');
+  return String(await run(f, img, '<OCR>', 128) || '').replace(/\s+/g, ' ').trim();
+}
+
 /** A line's four corners (top-left, top-right, bottom-right, bottom-left) as a turned box. */
 function boxOfQuad(q) {
   const [x0, y0, x1, y1, x2, y2, x3, y3] = q;
