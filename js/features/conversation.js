@@ -278,6 +278,7 @@ export function initConversation({ leave = () => {} } = {}) {
       const res = await translate(u.text, u.fromLang, u.toLang);
       u.translated = res.text;
       renderUtterance(u);
+      if (res.note) toast(res.note);   // e.g. Classic stood in for Advanced
       if (mode === 'conversation') speak(res.text, u.toLang).catch(() => {});
     } catch (e) {
       const { title, message } = describeError(e);

@@ -754,6 +754,16 @@ dialog.menu [role^="menuitem"]:focus-visible { outline: 3px solid var(--primary)
 .field select { background: var(--surface-low); }
 .field input:focus-visible, .field select:focus-visible { outline: 2px solid var(--primary); outline-offset: -1px; border-color: transparent; }
 .field-filter { margin-bottom: 4px; }
+/* Kokoro in the offline voices manager */
+.kokoro-box { border: 1px solid var(--outline-variant); border-radius: 12px; padding: 4px 8px 8px; margin: 4px 0 8px; }
+.kokoro-voices { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.kokoro-voice label { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.kokoro-voice label span { flex: 0 0 9.5em; }
+.kokoro-voice select { flex: 1; min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--outline); background: var(--surface-low); color: var(--on-surface); font: inherit; padding: 0 10px; }
+.voice-piper-head { margin: 8px 0 4px; font-size: 14px; font-weight: 500; }
+/* a model picker inside a Translation services row (e.g. Whisper size) */
+.svc-model { flex-basis: 100%; display: flex; align-items: center; gap: 8px; margin: -4px 0 8px; padding: 0 8px 0 34px; font-size: 13px; color: var(--on-surface-variant); }
+.svc-model select { flex: 1; min-width: 0; min-height: 44px; border-radius: 8px; border: 1px solid var(--outline); background: var(--surface-low); color: var(--on-surface); font: inherit; padding: 0 10px; }
 .field-help { margin: 0; font-size: 12px; color: var(--on-surface-variant); padding-left: 4px; overflow-wrap: anywhere; }
 .test-result { margin: 0; padding: 10px 14px; border-radius: 12px; font-size: 14px; background: var(--surface-container); overflow-wrap: anywhere; }
 .test-result.ok { background: var(--tertiary-container); color: var(--on-tertiary-container); }
@@ -1276,6 +1286,9 @@ dialog.menu.mode-menu [role^="menuitem"]:focus-visible { background: color-mix(i
 .svc-editor [aria-invalid="true"] { outline: 2px solid var(--error); }
 /* polish: Material 3 list rows, 40px+ targets, tinted row for the service used first */
 .svc-head { margin: 12px 12px 4px; font-size: 14px; letter-spacing: .1px; color: var(--primary); }
+/* Translation / Voice / Text recognition: the three groups of services */
+.svc-group-head { margin: 20px 4px 0; padding-top: 12px; border-top: 1px solid var(--outline-variant); font-size: 18px; font-weight: 500; color: var(--on-surface); }
+.svc-group-head:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
 .svc-list { gap: 0; border-radius: 16px; overflow: hidden; background: var(--surface-container); }
 .svc-row { min-height: 64px; padding: 4px 4px 4px 12px; border-radius: 0; gap: 2px; }
 .svc-row + .svc-row { border-top: 1px solid var(--outline-variant); }
@@ -1290,7 +1303,7 @@ dialog.menu.mode-menu [role^="menuitem"]:focus-visible { background: color-mix(i
 .svc-add .btn { height: 44px; }
 .svc-add .field-help { flex-basis: 100%; margin: 0; }
 /* where a download comes from: a full-width line under the row, lined up with the name */
-.svc-row:has(.svc-src) { flex-wrap: wrap; }
+.svc-row:has(.svc-src), .svc-row:has(.svc-model) { flex-wrap: wrap; }
 .svc-src { flex-basis: 100%; margin: -6px 0 8px; padding: 0 8px 0 34px; font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
 .svc-src a { color: var(--primary); }
 .svc-pick-static { cursor: default; padding-left: 34px; }
@@ -1389,3 +1402,9 @@ dialog.menu [data-blocked] strong { color: var(--on-surface-variant); }
 .offline-blocked:focus-visible { outline: 3px solid var(--primary); outline-offset: 4px; border-radius: 4px; }
 .svc-pick:has(input:disabled) { cursor: default; }
 .svc-pick:has(input:disabled) strong { color: var(--on-surface-variant); }
+
+/* Settings scrolls only inside its list. Browsers make a modal dialog its own scroll box, and a wheel over the
+   header (or past the end of the list) scrolled the dialog or the page behind it instead. */
+#settings-dialog { overflow: hidden; overscroll-behavior: contain; }
+.settings-form { min-height: 0; overscroll-behavior: contain; }
+html:has(dialog.sheet[open]) { overflow: hidden; }

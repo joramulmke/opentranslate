@@ -69,3 +69,14 @@ export function hide() {
   clearTimeout(timer); timer = null; remaining = 0;
   bar().classList.remove('show');
 }
+
+/** Copy text (e.g. a chrome:// address, which a page can't link to), then say so. */
+export async function copyToClipboard(text, done = 'Copied') {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = Object.assign(document.createElement('textarea'), { value: text });
+    document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  toast(done);
+}

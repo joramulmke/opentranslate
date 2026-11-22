@@ -14,10 +14,26 @@ export const SOURCES = {
 };
 
 export const HF_MODELS = {
+  // speech recognition: four sizes, picked in Settings (key 'whisper' = base, kept for earlier downloads)
+  'whisper-tiny': {
+    repo: 'Xenova/whisper-tiny', title: 'Whisper tiny', sizeMB: 41, licence: 'MIT', source: 'huggingface',
+    task: 'automatic-speech-recognition', options: { dtype: 'q8' },
+    what: 'speech model', okKey: 'sttModelOk', note: 'fastest, rough',
+  },
   whisper: {
     repo: 'Xenova/whisper-base', title: 'Whisper base', sizeMB: 80, licence: 'MIT', source: 'huggingface',
     task: 'automatic-speech-recognition', options: { dtype: 'q8' },
-    what: 'speech model', okKey: 'sttModelOk',
+    what: 'speech model', okKey: 'sttModelOk', note: 'good balance',
+  },
+  'whisper-small': {
+    repo: 'Xenova/whisper-small', title: 'Whisper small', sizeMB: 250, licence: 'MIT', source: 'huggingface',
+    task: 'automatic-speech-recognition', options: { dtype: 'q8' },
+    what: 'speech model', okKey: 'sttModelOk', note: 'clearly better outside English',
+  },
+  'whisper-turbo': {
+    repo: 'onnx-community/whisper-large-v3-turbo', title: 'Whisper large-v3 turbo', sizeMB: 563, licence: 'MIT', source: 'huggingface',
+    task: 'automatic-speech-recognition', options: { device: 'webgpu', dtype: { encoder_model: 'q4f16', decoder_model_merged: 'q4f16' } },
+    what: 'speech model', okKey: 'sttModelOk', note: 'best, needs WebGPU', webgpu: true,
   },
   trocr: {
     repo: 'Xenova/trocr-small-handwritten', title: 'TrOCR small, handwritten', sizeMB: 130, licence: 'MIT', source: 'huggingface',
@@ -27,6 +43,14 @@ export const HF_MODELS = {
     what: 'handwriting model', okKey: 'hwrModelOk',
   },
 };
+export const WHISPER_SIZES = ['whisper-tiny', 'whisper', 'whisper-small', 'whisper-turbo'];
+/** The Whisper size picked in Settings (base by default). */
+export const whisperKey = () => (WHISPER_SIZES.includes(settings.get().whisperModel) ? settings.get().whisperModel : 'whisper');
+/** Can this browser run the model? (large-v3 turbo needs WebGPU with 16-bit floats) */
+let f16 = null;
+globalThis.navigator?.gpu?.requestAdapter?.().then((a) => { f16 = !!a?.features?.has('shader-f16'); emit(); }, () => { f16 = false; });
+export const modelRunsHere = (key) => !HF_MODELS[key].webgpu || f16 === true;
+
 export const modelPage = (key) => `https://huggingface.co/${HF_MODELS[key].repo}`;
 /** "from Hugging Face (huggingface.co/Xenova/whisper-base)" */
 export const fromText = (key) => `from Hugging Face (huggingface.co/${HF_MODELS[key].repo})`;
@@ -81,6 +105,7 @@ export async function refreshModels() {
  */
 export function getPipeline(key, { onStatus, onProgress } = {}) {
   const m = HF_MODELS[key];
+  if (!modelRunsHere(key)) return Promise.reject(new Error(`${m.title} needs WebGPU with 16-bit support (a recent Chrome or Edge on a computer). Pick a smaller Whisper model.`));
   if (!pipes.has(key)) {
     const job = { progress: 0 };
     const p = (async () => {

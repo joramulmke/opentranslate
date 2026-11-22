@@ -379,7 +379,7 @@ registerProvider({
     { key: 'sttModel', label: 'Speech-to-text model', type: 'text', placeholder: 'e.g. whisper-1 (OpenAI), whisper-large-v3-turbo (Groq)',
       suggest: true, help: 'Optional. Used for voice input where the browser has no speech service (Brave, Firefox). Empty = on-device model.' },
     { key: 'ttsModel', label: 'Text-to-speech model', type: 'text', placeholder: 'e.g. gpt-4o-mini-tts or tts-1 (OpenAI)',
-      suggest: true, help: 'Optional. Reads translations aloud (Settings › Translation services › Read aloud).' },
+      suggest: true, help: 'Optional. Reads translations aloud (Settings › Voice › Read aloud).' },
     { key: 'ttsVoice', label: 'Voice', type: 'text', placeholder: 'alloy', default: 'alloy',
       help: 'A voice name of this service, e.g. alloy, nova, shimmer (OpenAI).' },
     // What the model can do besides text. The page can't know this from the name, so "Test connection"
@@ -423,7 +423,7 @@ export class OpenAICompatibleProvider {
     this.ttsName = String(ttsModel || '').trim();
     this.ttsModel = tts === 'on' ? this.ttsName : '';
     this.ttsVoice = String(ttsVoice || '').trim() || 'alloy';
-    if (vision !== 'on') this.recognizeImage = undefined;
+    if (vision !== 'on') { this.recognizeImage = undefined; this.readPhoto = undefined; }
   }
 
   async _req(path, body, { timeout = 60000, binary = false } = {}) {
@@ -524,6 +524,44 @@ export class OpenAICompatibleProvider {
     if (json) { try { list = JSON.parse(json[0]).candidates || []; } catch { /* fall through */ } }
     if (!list.length && raw) list = [raw.replace(/^["'`]+|["'`]+$/g, '')];
     return [...new Set(list.map((t) => String(t).replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 4);
+  }
+
+  /**
+   * Read the text in a photo (camera text) with a vision-capable model.
+   * @returns {Promise<Array<{ text: string, box: number[]|null }>>} lines in reading order; box is
+   *   [x0, y0, x1, y1] on a 0–1000 scale of the image, or null when the model gave none that makes sense
+   */
+  async readPhoto(dataUrl, langHint) {
+    const hint = langLabel(langHint);
+    const prompt = [
+      'Read all the text in this photo (for example a sign, menu, label or page).',
+      hint ? `It is most likely ${hint}.` : '',
+      'Transcribe it exactly, keeping the original language and script; do not translate or correct it.',
+      'Group it into lines as they appear, in reading order.',
+      'Reply with JSON only: {"lines": [{"text": "line text", "box": [x0, y0, x1, y1]}]} where box is the line\'s bounding box on a 0-1000 scale of the image width and height.',
+      'If there is no text, reply {"lines": []}.',
+    ].filter(Boolean).join(' ');
+    let data;
+    try {
+      data = await this._req('/chat/completions', {
+        model: this.model, temperature: 0, max_tokens: 2000,
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: dataUrl } }] }],
+      }, { timeout: 90000 });
+    } catch (e) {
+      if (e.code === 'SERVER' && /image|vision|multimodal|content.*type|not support/i.test(e.message)) {
+        throw new ProviderError('UNSUPPORTED_PAIR', `“${this.model}” can't read images. Choose a vision-capable model for camera text.`);
+      }
+      throw e;
+    }
+    const raw = String(data?.choices?.[0]?.message?.content || '').replace(/^\s*<think>[\s\S]*?<\/think>\s*/i, '').trim();
+    const json = raw.match(/\{[\s\S]*\}/);
+    let lines = null;
+    if (json) { try { lines = JSON.parse(json[0]).lines; } catch { /* plain text below */ } }
+    if (!Array.isArray(lines)) lines = raw.replace(/^```\w*|```$/g, '').split('\n').map((text) => ({ text }));
+    const okBox = (b) => Array.isArray(b) && b.length === 4 && b.every((n) => Number.isFinite(+n) && +n >= 0 && +n <= 1000) && +b[2] > +b[0] && +b[3] > +b[1];
+    return lines
+      .map((l) => ({ text: String(typeof l === 'string' ? l : l?.text || '').replace(/\s+/g, ' ').trim(), box: okBox(l?.box) ? l.box.map(Number) : null }))
+      .filter((l) => l.text);
   }
 
   /** Speech to text via /audio/transcriptions (Whisper-style). Needs sttModel. */

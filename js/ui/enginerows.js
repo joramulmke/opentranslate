@@ -8,13 +8,16 @@ import { icon } from './icons.js';
 import { toast } from './snackbar.js';
 import { formatMB } from './offlineui.js';
 import { sheet } from '../features/permissions.js';
-import { HF_MODELS, modelState, modelProgress, modelBytes, downloadModel, deleteModel, onModelsChange, modelPage } from '../features/models.js';
+import { HF_MODELS, modelState, modelProgress, modelBytes, downloadModel, deleteModel, onModelsChange, modelPage, WHISPER_SIZES, whisperKey, modelRunsHere } from '../features/models.js';
 import { SPEECH_ENGINES } from '../features/stt.js';
 import { canRecord } from '../features/stt.js';
 import { browserSpeechAvailable, TTS_ENGINES, ttsApiEntry, elevenEntry } from '../features/speech.js';
-import { piperVoices, voiceState, voiceProgress, voiceBytes, piperBytes, downloadedVoices, downloadVoice, deleteVoice, onVoicesChange, voiceLabel, voicePage, downloadSize, PIPER_SOURCE, ENGINE_MB } from '../features/piper.js';
+import { piperVoices, voiceState, voiceProgress, voiceBytes, piperBytes, downloadedVoices, downloadVoice, deleteVoice, onVoicesChange, voiceLabel, voicePage, downloadSize, PIPER_SOURCE, ENGINE_MB,
+  KOKORO_INFO, KOKORO_LANGS, kokoroState, kokoroProgress, kokoroSize, kokoroVoice, kokoroVoiceName, kokoroVoiceReady, downloadKokoro, downloadKokoroVoice, deleteKokoro } from '../features/piper.js';
 import { HWR_ENGINES, hwrPref } from '../features/hwr.js';
-import { ocrLanguages, ocrDownloaded, ocrDownload, ocrDelete, OCR_SOURCE } from '../features/ocr.js';
+import { ocrLanguages, ocrDownloaded, ocrDownload, ocrDelete, OCR_SOURCE, OCR_ENGINES, ocrPref } from '../features/ocr.js';
+import { PADDLE, paddleState, paddleProgress, paddleBytes, downloadPaddle, deletePaddle, onPaddleChange } from '../features/paddle.js';
+import { ORT_MB } from '../features/ort.js';
 import { langName } from '../state.js';
 
 const $ = (id) => document.getElementById(id);
@@ -51,16 +54,28 @@ function modelButton(key) {
 
 const modelSource = (key) => `From ${extLink(modelPage(key), `Hugging Face: ${HF_MODELS[key].repo}`)} · ${HF_MODELS[key].licence} licence · runs with transformers.js from jsDelivr`;
 
-function row({ group, value, title, sub, src, checked, disabled, actions = '' }) {
+/** Which Whisper size to use: tiny, base, small, large-v3 turbo (with size, and which are downloaded). */
+function whisperPicker() {
+  const opts = WHISPER_SIZES.map((k) => {
+    const m = HF_MODELS[k];
+    const st = modelState(k) === 'ready' ? ' · downloaded' : '';
+    const can = modelRunsHere(k);
+    return `<option value="${k}" ${k === whisperKey() ? 'selected' : ''} ${can ? '' : 'disabled'}>${esc(`${m.title.replace('Whisper ', '')} · ${m.sizeMB} MB · ${can ? m.note : 'needs WebGPU with 16-bit support'}${st}`)}</option>`;
+  }).join('');
+  return `<label class="svc-model"><span>Model</span><select data-act="whisper-size" aria-describedby="eng-speech-ondevice-sub">${opts}</select></label>`;
+}
+
+function row({ group, value, title, sub, src, checked, disabled, actions = '', extra = '' }) {
   const id = `eng-${group}-${value}`;
   return `<li class="svc-row" data-engine="${group}:${value}">
     <label class="svc-pick"><input type="radio" name="eng-${group}" value="${value}" aria-describedby="${id}-sub${src ? ` ${id}-src` : ''}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
       <span class="svc-copy"><strong>${esc(title)}</strong><small id="${id}-sub">${esc(sub)}</small></span></label>
     <span class="svc-actions">${actions}</span>
+    ${extra}
     ${src ? sourceLine(`${id}-src`, src) : ''}</li>`;
 }
 
-const elevenSub = (e, what) => (e ? `${e.label} · ${what}` : 'Add ElevenLabs under Voice services and press Test connection');
+const elevenSub = (e, what) => (e ? `${e.label} · ${what}` : 'Add ElevenLabs under Cloud voice services and press Test connection');
 const elevenSrc = (e) => (e ? 'Not a download: the text or your voice goes to api.elevenlabs.io.' : '');
 
 function speechRows() {
@@ -78,8 +93,8 @@ function speechRows() {
       src: stt ? `Not a download: your voice goes to ${esc(hostOf(stt))}.` : '' }),
     row({ group: 'speech', value: 'elevenlabs', title: 'ElevenLabs (Scribe)', checked: first === 'elevenlabs', disabled: !usable.elevenlabs,
       sub: elevenSub(eleven, eleven?.config?.sttModel || 'scribe_v1'), src: elevenSrc(eleven) }),
-    row({ group: 'speech', value: 'ondevice', title: 'On this device (Whisper)', checked: first === 'ondevice', disabled: !usable.ondevice,
-      sub: modelSub('whisper', ' · private'), src: modelSource('whisper'), actions: modelButton('whisper') }),
+    row({ group: 'speech', value: 'ondevice', title: `On this device (${HF_MODELS[whisperKey()].title})`, checked: first === 'ondevice', disabled: !usable.ondevice,
+      sub: modelSub(whisperKey(), ' · private'), src: modelSource(whisperKey()), actions: modelButton(whisperKey()), extra: whisperPicker() }),
   ].join('');
 }
 
@@ -88,6 +103,8 @@ const systemVoices = () => (typeof speechSynthesis !== 'undefined' ? speechSynth
 
 function piperSub() {
   const n = downloadedVoices().length;
+  if (kokoroState() === 'downloading') return `Downloading Kokoro… ${Math.round(kokoroProgress() * 100)}%`;
+  if (kokoroState() === 'ready') return `Kokoro (${Object.keys(KOKORO_LANGS).length} languages)${n ? ` + ${n} Piper voice${n > 1 ? 's' : ''}` : ''} · ${formatMB(piperBytes() + kokoroSize())} · private, works without internet`;
   const busy = piperVoices().find((v) => voiceState(v.lang) === 'downloading');
   if (busy) return `Downloading ${voiceLabel(busy.lang, langName)}… ${Math.round(voiceProgress(busy.lang) * 100)}%`;
   return n ? `${n} voice${n > 1 ? 's' : ''} · ${formatMB(piperBytes())} · private, works without internet`
@@ -120,7 +137,7 @@ function ttsRows() {
 
 function hwrRows() {
   const ai = aiEntries().find((e) => e.config?.vision === 'on') || null;
-  const usable = { vision: !!ai, ondevice: true, tesseract: true };
+  const usable = { vision: !!ai, ondevice: true, paddle: true, tesseract: true };
   const pref = hwrPref();
   const first = [pref, ...HWR_ENGINES].find((e) => usable[e]);
   return [
@@ -129,6 +146,8 @@ function hwrRows() {
       src: ai ? `Not a download: the drawing goes to ${esc(hostOf(ai))}.` : '' }),
     row({ group: 'hwr', value: 'ondevice', title: 'On-device model (TrOCR)', checked: first === 'ondevice',
       sub: modelSub('trocr', ' · Latin script only'), src: modelSource('trocr'), actions: modelButton('trocr') }),
+    row({ group: 'hwr', value: 'paddle', title: 'PP-OCRv6', checked: first === 'paddle',
+      sub: `${paddleSub()} · neat handwriting and print · Latin script, Chinese, Japanese, Greek`, src: paddleSource(), actions: paddleButton() }),
     row({ group: 'hwr', value: 'tesseract', title: 'Basic (Tesseract)', checked: first === 'tesseract',
       sub: 'Neat printed letters · uses the camera text languages below' }),
   ].join('');
@@ -139,13 +158,57 @@ const ocrJobs = new Map();         // tesseract code -> progress 0..1
 const ocrSum = () => [...ocrFiles.values()].reduce((a, b) => a + b, 0);
 const ocrSourceHtml = () => `Language files from ${extLink(OCR_SOURCE.page, 'jsDelivr (@tesseract.js-data)')}, trained by the Tesseract project · ${OCR_SOURCE.licence} licence · engine Tesseract.js from jsDelivr`;
 
-function ocrRow() {
+/* PP-OCRv6: one download (two models), shared by Camera text and Handwriting */
+function paddleSub() {
+  const st = paddleState();
+  if (st === 'downloading') return `Downloading… ${Math.round(paddleProgress() * 100)}%`;
+  if (st === 'ready') return `Downloaded · ${formatMB(paddleBytes())} · runs on this device`;
+  return `Not downloaded (${PADDLE.sizeMB} MB + ${ORT_MB} MB engine)`;
+}
+const paddleSource = () => `From ${extLink(PADDLE.page, 'Hugging Face: PaddlePaddle/PP-OCRv6_small')} (detection and recognition models) · ${PADDLE.licence} licence · engine ONNX Runtime from jsDelivr`;
+function paddleButton() {
+  const st = paddleState();
+  if (st === 'downloading') return `<button class="icon-btn sm" type="button" data-act="paddle-dl" aria-disabled="true" aria-label="Downloading PP-OCRv6, ${Math.round(paddleProgress() * 100)}%">${icon('download')}</button>`;
+  return st === 'ready'
+    ? `<button class="icon-btn sm" type="button" data-act="paddle-dl" aria-label="Delete the PP-OCRv6 download (${formatMB(paddleBytes())})">${icon('delete')}</button>`
+    : `<button class="icon-btn sm" type="button" data-act="paddle-dl" aria-label="Download PP-OCRv6 (${PADDLE.sizeMB + ORT_MB} MB) from Hugging Face">${icon('download')}</button>`;
+}
+
+function ocrRows() {
   const n = ocrFiles.size;
   const sub = n ? `${n} language${n > 1 ? 's' : ''} · ${formatMB(ocrSum())} · each downloaded the first time it's used` : 'No languages downloaded yet · each downloads the first time it’s used';
+  const ai = aiEntries().find((e) => e.config?.vision === 'on') || null;
+  const first = ocrPref() === 'vision' && !ai ? 'tesseract' : ocrPref();
   return `<li class="svc-row" data-engine="ocr:tesseract">
-    <span class="svc-pick svc-pick-static"><span class="svc-copy"><strong>Tesseract</strong><small id="eng-ocr-sub">${esc(sub)}</small></span></span>
+    <label class="svc-pick"><input type="radio" name="eng-ocr" value="tesseract" aria-describedby="eng-ocr-sub eng-ocr-src" ${first === 'tesseract' ? 'checked' : ''}>
+      <span class="svc-copy"><strong>Tesseract</strong><small id="eng-ocr-sub">${esc(sub)}</small></span></label>
     <span class="svc-actions"><button class="icon-btn sm" type="button" data-act="ocr-manage" aria-label="Manage camera text languages" aria-describedby="eng-ocr-sub">${icon('download')}</button></span>
-    ${sourceLine('eng-ocr-src', ocrSourceHtml())}</li>`;
+    ${sourceLine('eng-ocr-src', ocrSourceHtml())}</li>`
+    + row({ group: 'ocr', value: 'paddle', title: 'PP-OCRv6', checked: first === 'paddle',
+      sub: `${paddleSub()} · better on photos · Latin script, Chinese, Japanese, Greek (others use Tesseract)`, src: paddleSource(), actions: paddleButton() })
+    + row({ group: 'ocr', value: 'vision', title: 'AI vision', checked: first === 'vision' && !!ai, disabled: !ai,
+      sub: ai ? `${ai.label} reads the photo · any script, angled and curved text` : 'Needs an AI model that can read images: edit it under Advanced and press Test connection',
+      src: ai ? `Not a download: each photo goes to ${esc(hostOf(ai))}. If it doesn't answer, the photo is read on this device.` : '' });
+}
+
+async function onPaddleButton() {
+  const st = paddleState();
+  if (st === 'downloading') return;
+  if (st === 'ready') {
+    const ok = await sheet({
+      iconName: 'delete', title: 'Delete PP-OCRv6?',
+      body: `This frees ${formatMB(paddleBytes())}. Camera text and handwriting use Tesseract until you download it again.`,
+      allowLabel: 'Delete', cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+    await deletePaddle();
+    settings.set({ paddleOk: null });
+    toast('Deleted PP-OCRv6');
+    return;
+  }
+  settings.set({ paddleOk: true });
+  toast(`Downloading PP-OCRv6 (${PADDLE.sizeMB + ORT_MB} MB) from Hugging Face…`);
+  downloadPaddle().then(() => toast('PP-OCRv6 is downloaded and works without internet.'), (e) => toast(`Download failed: ${e.message}`));
 }
 
 /* ------------------------------------------------------------ render */
@@ -157,7 +220,7 @@ export function renderEngines() {
   $('svc-speech').innerHTML = speechRows();
   $('svc-tts').innerHTML = ttsRows();
   $('svc-hwr').innerHTML = hwrRows();
-  $('svc-ocr').innerHTML = ocrRow();
+  $('svc-ocr').innerHTML = ocrRows();
   if (hadKey && hadSel && !document.activeElement?.closest?.('[data-engine]')) {
     const r = document.querySelector(`[data-engine="${hadKey}"]`);
     (r?.querySelector(`${hadSel}:not(:disabled)`) || r?.querySelector('input:not(:disabled)'))?.focus();
@@ -168,7 +231,7 @@ export function renderEngines() {
 function renderProgress() {
   const ps = $('eng-tts-ondevice-sub');
   if (ps) ps.textContent = piperSub();
-  for (const [key, group] of [['whisper', 'speech'], ['trocr', 'hwr']]) {
+  for (const [key, group] of [[whisperKey(), 'speech'], ['trocr', 'hwr']]) {
     const sub = $(`eng-${group}-ondevice-sub`);
     if (sub && modelState(key) === 'downloading') sub.textContent = modelSub(key);
     const b = document.querySelector(`[data-model="${key}"]`);
@@ -301,7 +364,8 @@ function renderVoiceManager() {
   if ($('voice-manager').hidden) return;
   const q = $('voice-search').value.trim().toLowerCase();
   const n = downloadedVoices().length;
-  $('voice-usage').textContent = n ? `${n} downloaded · ${formatMB(piperBytes())} used on this device (voices and engine)` : 'Nothing downloaded yet.';
+  $('voice-usage').textContent = n || kokoroSize() ? `${n} Piper voice${n === 1 ? '' : 's'}${kokoroSize() ? ' and Kokoro' : ''} · ${formatMB(piperBytes() + kokoroSize())} used on this device (voices and engine)` : 'Nothing downloaded yet.';
+  renderKokoro();
   const rank = (l) => ({ ready: 0, downloading: 1, none: 2 }[voiceState(l)]);
   const rows = piperVoices().map((v) => ({ v, name: voiceLabel(v.lang, langName) }))
     .filter((r) => !q || r.name.toLowerCase().includes(q) || r.v.lang.toLowerCase().startsWith(q))
@@ -314,6 +378,61 @@ function renderVoiceManager() {
     return `<li class="offline-row"><span class="offline-copy"><span>${esc(name)}</span><small>${sub} · ${extLink(voicePage(v), 'model card')}</small></span>${voiceButton(v, name)}</li>`;
   }).join('') : '<li class="svc-empty">No languages match.</li>';
   if (focused) $('voice-list').querySelector(`[data-voice="${focused}"]`)?.focus();
+}
+
+/* Kokoro: one model for 7 languages, with a voice picker per language */
+const langLabel = (l) => voiceLabel(l, langName);
+function renderKokoro() {
+  const st = kokoroState();
+  const picked = settings.get().kokoroVoices || {};
+  $('kokoro-sub').textContent = st === 'downloading' ? `Downloading… ${Math.round(kokoroProgress() * 100)}%`
+    : st === 'ready' ? `Downloaded · ${formatMB(kokoroSize())} · used first for its languages`
+      : `${KOKORO_INFO.sizeMB} MB${downloadedVoices().length ? '' : ` + ${ENGINE_MB} MB voice engine, once`} · ${Object.keys(KOKORO_LANGS).map(langLabel).join(', ')}`;
+  const focused = document.activeElement?.id === 'kokoro-dl';
+  $('kokoro-btn').innerHTML = st === 'downloading'
+    ? `<button type="button" class="icon-btn lang-dl" id="kokoro-dl" aria-disabled="true" aria-label="Downloading Kokoro, ${Math.round(kokoroProgress() * 100)}%">${icon('download')}</button>`
+    : st === 'ready'
+      ? `<button type="button" class="icon-btn lang-dl" id="kokoro-dl" aria-label="Delete Kokoro (${formatMB(kokoroSize())})">${icon('delete')}</button>`
+      : `<button type="button" class="icon-btn lang-dl" id="kokoro-dl" aria-label="Download Kokoro (${KOKORO_INFO.sizeMB} MB) from Hugging Face" aria-describedby="kokoro-sub">${icon('download')}</button>`;
+  if (focused) $('kokoro-dl').focus();
+  $('kokoro-src').innerHTML = `From ${extLink(KOKORO_INFO.page, 'Hugging Face: onnx-community/Kokoro-82M-v1.0-ONNX')} · Kokoro 82M by hexgrad, ${KOKORO_INFO.licence} licence · pronunciation from eSpeak NG, so some words can sound off · not for Japanese and Chinese`;
+  // voice pickers only once Kokoro is here (choosing a voice may download it: 0.5 MB)
+  const hadSel = document.activeElement?.dataset?.kokoroLang;
+  $('kokoro-voices').hidden = st !== 'ready';
+  $('kokoro-voices').innerHTML = st !== 'ready' ? '' : Object.entries(KOKORO_LANGS).map(([l, L]) => {
+    const cur = kokoroVoice(l, picked);
+    return `<li class="kokoro-voice"><label><span>${esc(langLabel(l))}</span>
+      <select data-kokoro-lang="${l}">${L.voices.map((id) => `<option value="${id}" ${id === cur ? 'selected' : ''}>${esc(kokoroVoiceName(id))}${kokoroVoiceReady(id) ? '' : ' · 0.5 MB download'}</option>`).join('')}</select></label></li>`;
+  }).join('');
+  if (hadSel) document.querySelector(`[data-kokoro-lang="${hadSel}"]`)?.focus();
+}
+
+async function onKokoroButton() {
+  const st = kokoroState();
+  if (st === 'downloading') return;
+  if (st === 'ready') {
+    const ok = await sheet({
+      iconName: 'delete', title: 'Delete Kokoro?',
+      body: `This frees ${formatMB(kokoroSize())}. Read-aloud uses the Piper voices or the device's voices until you download it again.`,
+      allowLabel: 'Delete', cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+    await deleteKokoro();
+    toast('Deleted Kokoro');
+    return;
+  }
+  try {
+    await downloadKokoro({ picked: settings.get().kokoroVoices || {} });
+    toast('Kokoro is downloaded and works without internet.');
+  } catch (e) { toast(`Download failed: ${e.message || e}`); }
+}
+
+async function onKokoroVoice(sel) {
+  const { kokoroLang: lang } = sel.dataset;
+  settings.set({ kokoroVoices: { ...(settings.get().kokoroVoices || {}), [lang]: sel.value } });
+  if (!kokoroVoiceReady(sel.value)) {
+    try { await downloadKokoroVoice(sel.value); toast(`${kokoroVoiceName(sel.value)} is ready for ${langLabel(lang)}.`); } catch (e) { toast(`Download failed: ${e.message || e}`); }
+  } else toast(`${kokoroVoiceName(sel.value)} reads ${langLabel(lang)} now.`);
 }
 
 async function onVoiceButton(lang) {
@@ -346,12 +465,21 @@ async function onVoiceButton(lang) {
 export function initEngineRows({ isOpen, closeOthers }) {
   for (const id of ['svc-speech', 'svc-tts', 'svc-hwr', 'svc-ocr']) {
     $(id).addEventListener('change', (e) => {
+      if (e.target.matches('[data-act="whisper-size"]')) {
+        // another size: asked again before its download; the old one stays until deleted
+        settings.set({ whisperModel: e.target.value, sttModelOk: modelState(e.target.value) === 'ready' ? true : null });
+        renderEngines();
+        document.querySelector('[data-act="whisper-size"]')?.focus();
+        return;
+      }
       if (!e.target.matches('input[type=radio]')) return;
       const [group, value] = e.target.closest('[data-engine]').dataset.engine.split(':');
       // choosing the on-device model again also resets an earlier "Not now" to its download question
       if (group === 'speech') settings.set({ speechEngine: value, ...(value === 'ondevice' ? { sttModelOk: null } : {}) });
       // choosing Piper again also forgets earlier "Not now" answers to its download question
       if (group === 'tts') settings.set({ ttsEngine: value, ...(value === 'ondevice' ? { ttsDeclined: [] } : {}) });
+      if (group === 'ocr') settings.set({ ocrEngine: value, ...(value === 'paddle' ? { paddleOk: null } : {}) });
+      if (group === 'hwr' && value === 'paddle') settings.set({ paddleOk: null });
       if (group === 'hwr') settings.set({ hwrEngine: value, ...(value === 'ondevice' ? { hwrModelOk: null } : {}) });
       renderEngines();
     });
@@ -360,11 +488,14 @@ export function initEngineRows({ isOpen, closeOthers }) {
       if (m) { onModelButton(m.dataset.model); return; }
       if (e.target.closest('[data-act="ocr-manage"]')) openOcrManager({ onOpen: closeOthers });
       if (e.target.closest('[data-act="voice-manage"]')) openVoiceManager({ onOpen: closeOthers });
+      if (e.target.closest('[data-act="paddle-dl"]')) onPaddleButton();
     });
   }
   $('ocr-list').addEventListener('click', (e) => { const b = e.target.closest('[data-ocr]'); if (b) onOcrButton(b.dataset.ocr); });
   $('ocr-search').addEventListener('input', () => renderOcrManager());
   $('voice-list').addEventListener('click', (e) => { const b = e.target.closest('[data-voice]'); if (b) onVoiceButton(b.dataset.voice); });
+  $('kokoro-btn').addEventListener('click', () => onKokoroButton());
+  $('kokoro-voices').addEventListener('change', (e) => { if (e.target.matches('[data-kokoro-lang]')) onKokoroVoice(e.target); });
   $('voice-search').addEventListener('input', () => renderVoiceManager());
   $('btn-voice-done').addEventListener('click', () => closeVoiceManager());
   $('voice-manager').addEventListener('keydown', (e) => {
@@ -372,11 +503,19 @@ export function initEngineRows({ isOpen, closeOthers }) {
     e.preventDefault(); e.stopPropagation();
     if (e.target.id === 'voice-search' && e.target.value) { e.target.value = ''; renderVoiceManager(); } else closeVoiceManager();
   });
+  onPaddleChange((what) => {
+    if (!isOpen()) return;
+    if (what !== 'progress') { renderEngines(); return; }
+    // progress: only the subtitles and button labels change, so focus stays put
+    if ($('eng-ocr-paddle-sub')) $('eng-ocr-paddle-sub').textContent = `${paddleSub()} · better on photos · Latin script, Chinese, Japanese, Greek (others use Tesseract)`;
+    if ($('eng-hwr-paddle-sub')) $('eng-hwr-paddle-sub').textContent = `${paddleSub()} · neat handwriting and print · Latin script, Chinese, Japanese, Greek`;
+    document.querySelectorAll('[data-act="paddle-dl"]').forEach((b) => b.setAttribute('aria-label', `Downloading PP-OCRv6, ${Math.round(paddleProgress() * 100)}%`));
+  });
   onVoicesChange(() => {
     if (!isOpen()) return;
     renderVoiceManager();
     // while a voice downloads only the subtitle changes, so focus stays put
-    if (piperVoices().some((v) => voiceState(v.lang) === 'downloading')) renderProgress(); else renderEngines();
+    if (kokoroState() === 'downloading' || piperVoices().some((v) => voiceState(v.lang) === 'downloading')) renderProgress(); else renderEngines();
   });
   $('btn-ocr-done').addEventListener('click', () => closeOcrManager());
   $('ocr-manager').addEventListener('keydown', (e) => {

@@ -2,19 +2,21 @@
 // the others follow in this order):
 //   1. AI vision  - your AI model reads the drawing (any script, cursive); when chosen, or in Advanced mode
 //   2. On-device  - TrOCR handwriting model in the browser via transformers.js (Latin script; ~130 MB, once)
-//   3. Basic      - Tesseract (print-like letters; also the fallback for non-Latin scripts)
+//   3. PP-OCRv6   - PaddlePaddle's text recognition (50 languages, ~31 MB, once)
+//   4. Basic      - Tesseract (print-like letters; also the fallback for non-Latin scripts)
 import { state } from '../state.js';
 import { settings } from '../store.js';
-import { recognize as tesseract, ocrLangFor, describeOcrStatus } from './ocr.js';
+import { recognizeTesseract as tesseract, ocrLangFor, describeOcrStatus, paddleAllowed } from './ocr.js';
+import { recognizePaddle, paddleReads } from './paddle.js';
 import { sheet } from './permissions.js';
 import { getPipeline, modelState, fromText, HF_MODELS } from './models.js';
 const LATIN = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'nb', 'fi', 'pl', 'cs', 'sk', 'sl', 'hr', 'ro', 'hu', 'tr',
   'id', 'ms', 'tl', 'sw', 'ca', 'ga', 'et', 'lv', 'lt', 'eo', 'af', 'sq', 'eu', 'gl', 'cy', 'is', 'az', 'uz', 'vi']);
 
-export const HWR_ENGINES = ['vision', 'ondevice', 'tesseract'];
+export const HWR_ENGINES = ['vision', 'ondevice', 'paddle', 'tesseract'];
 /** Saved choice; older versions saved 'auto', which meant the same order with AI vision first. */
 export const hwrPref = () => (HWR_ENGINES.includes(settings.get().hwrEngine) ? settings.get().hwrEngine : 'vision');
-export const engineLabel = { vision: 'AI vision', ondevice: 'On-device model', tesseract: 'Basic' };
+export const engineLabel = { vision: 'AI vision', ondevice: 'On-device model', paddle: 'PP-OCRv6', tesseract: 'Basic' };
 
 
 /** Ask once before the ~130 MB download. Stored so we never nag again. */
@@ -24,7 +26,7 @@ async function onDeviceAllowed() {
   if (s.hwrModelOk === false) return false;
   const ok = await sheet({
     iconName: 'gesture', title: 'Better handwriting recognition?',
-    body: `Download an on-device handwriting model (about ${HF_MODELS.trocr.sizeMB} MB, once, ${fromText('trocr')})? It runs privately in your browser. Latin-script languages only. You can delete it in Settings › Translation services.`,
+    body: `Download an on-device handwriting model (about ${HF_MODELS.trocr.sizeMB} MB, once, ${fromText('trocr')})? It runs privately in your browser. Latin-script languages only. You can delete it in Settings › Text recognition › Handwriting.`,
     allowLabel: 'Download', cancelLabel: 'Use basic',
   });
   settings.set({ hwrModelOk: ok });
@@ -37,7 +39,8 @@ const visionReady = () => (hwrPref() === 'vision' || state.mode === 'advanced') 
 function pickEngines(lang) {
   const pref = hwrPref();
   const latin = LATIN.has(String(lang).split('-')[0]);
-  const usable = { vision: visionReady(), ondevice: latin, tesseract: true };
+  // PP-OCRv6 only when picked (it asks before its download); the others as before
+  const usable = { vision: visionReady(), ondevice: latin, paddle: pref === 'paddle' && paddleReads(lang), tesseract: true };
   // Basic is always the last resort
   return [pref, ...HWR_ENGINES.filter((e) => e !== pref), 'tesseract'].filter((e, i, a) => usable[e] && a.indexOf(e) === i);
 }
@@ -71,6 +74,11 @@ export async function recognizeHandwriting(canvas, { lang = 'en', single = false
       if (engine === 'vision') {
         onStatus?.('Reading with AI vision…');
         raw = await state.advanced.recognizeImage(canvas.toDataURL('image/png'), lang);
+      } else if (engine === 'paddle') {
+        if (!(await paddleAllowed())) continue;
+        onStatus?.('Reading with PP-OCRv6…');
+        const r = await recognizePaddle(canvas, { single });
+        raw = [r.text.replace(/\n/g, ' ')];
       } else if (engine === 'ondevice') {
         if (!(await onDeviceAllowed())) continue;
         raw = await runTrocr(canvas, onStatus);

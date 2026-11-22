@@ -7,6 +7,7 @@ import { STATIC_LANGUAGES } from '../languages.js';
 const T = () => globalThis.Translator;
 const D = () => globalThis.LanguageDetector;
 export const chromeTranslatorSupported = () => typeof T()?.availability === 'function';
+export const CHROME_TRANSLATOR_REASON = "Chrome's built-in translator is only in Chrome on computers, so it can't run in this browser. Open OpenTranslate in Chrome to use it, or use the other services here.";
 
 const code = (c) => (c === 'zh-Hant' ? 'zh-Hant' : String(c).split('-')[0]);
 

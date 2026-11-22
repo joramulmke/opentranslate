@@ -8,10 +8,10 @@ const formatMB = (bytes) => `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 
 const CACHE = 'ot-piper-v1';
 const HF = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/';
-const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+import { ORT_FILES, loadOrt, cachedFile } from './ort.js';
 const PHONEMIZE = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/';
 const ENGINE = [
-  ORT + 'ort.wasm.min.mjs', ORT + 'ort-wasm-simd-threaded.mjs', ORT + 'ort-wasm-simd-threaded.wasm',
+  ...ORT_FILES,
   PHONEMIZE + 'piper_phonemize.js', PHONEMIZE + 'piper_phonemize.wasm', PHONEMIZE + 'piper_phonemize.data',
 ];
 export const ENGINE_MB = 30;
@@ -88,6 +88,51 @@ const listeners = new Set();
 export const onVoicesChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 const emit = () => listeners.forEach((fn) => fn());
 
+/* ---------------------------------------------------------------- Kokoro */
+// Kokoro 82M (hexgrad, Apache-2.0; ONNX build from onnx-community): one model with natural voices for
+// several languages. It uses the same engine as Piper (eSpeak NG phonemes, ONNX Runtime). Languages whose
+// pronunciation Kokoro learned with other tools (Japanese, Chinese) aren't offered: eSpeak's phonemes
+// don't match them. For the others the pronunciation comes from eSpeak, so it can sound a bit off.
+const KOKORO = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/';
+const KOKORO_MODEL = KOKORO + 'onnx/model_quantized.onnx';
+const KOKORO_TOKENS = KOKORO + 'tokenizer.json';
+const kokoroVoiceUrl = (id) => `${KOKORO}voices/${id}.bin`;
+export const KOKORO_INFO = { title: 'Kokoro 82M', sizeMB: 92, licence: 'Apache-2.0', page: 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX' };
+/** lang -> { espeak voice, voices: [id], default } */
+export const KOKORO_LANGS = {
+  en: { espeak: 'en-us', voices: ['af_heart', 'af_bella', 'af_nicole', 'af_sarah', 'af_sky', 'af_nova', 'af_river', 'af_jessica', 'af_kore', 'af_aoede', 'af_alloy',
+    'am_michael', 'am_fenrir', 'am_puck', 'am_echo', 'am_eric', 'am_liam', 'am_onyx', 'am_adam'] },
+  'en-GB': { espeak: 'en-gb-x-rp', voices: ['bf_emma', 'bf_isabella', 'bf_alice', 'bf_lily', 'bm_george', 'bm_fable', 'bm_lewis', 'bm_daniel'] },
+  es: { espeak: 'es', voices: ['ef_dora', 'em_alex'] },
+  fr: { espeak: 'fr-fr', voices: ['ff_siwis'] },
+  hi: { espeak: 'hi', voices: ['hf_alpha', 'hf_beta', 'hm_omega', 'hm_psi'] },
+  it: { espeak: 'it', voices: ['if_sara', 'im_nicola'] },
+  pt: { espeak: 'pt-br', voices: ['pf_dora', 'pm_alex'] },
+};
+/** "Heart (female)" from "af_heart". */
+export const kokoroVoiceName = (id) => `${id.split('_')[1].replace(/^./, (c) => c.toUpperCase())} (${id[1] === 'f' ? 'female' : 'male'})`;
+// Piper's phonemizer answers with phoneme ids; this turns them back into the IPA symbols Kokoro reads
+const PIPER_IDS = ["_", "^", "$", " ", "!", "'", "(", ")", ",", "-", ".", ":", ";", "?", "a", "b", "c", "d", "e", "f", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "æ", "ç", "ð", "ø", "ħ", "ŋ", "œ", "ǀ", "ǁ", "ǂ", "ǃ", "ɐ", "ɑ", "ɒ", "ɓ", "ɔ", "ɕ", "ɖ", "ɗ", "ɘ", "ə", "ɚ", "ɛ", "ɜ", "ɞ", "ɟ", "ɠ", "ɡ", "ɢ", "ɣ", "ɤ", "ɥ", "ɦ", "ɧ", "ɨ", "ɪ", "ɫ", "ɬ", "ɭ", "ɮ", "ɯ", "ɰ", "ɱ", "ɲ", "ɳ", "ɴ", "ɵ", "ɶ", "ɸ", "ɹ", "ɺ", "ɻ", "ɽ", "ɾ", "ʀ", "ʁ", "ʂ", "ʃ", "ʄ", "ʈ", "ʉ", "ʊ", "ʋ", "ʌ", "ʍ", "ʎ", "ʏ", "ʐ", "ʑ", "ʒ", "ʔ", "ʕ", "ʘ", "ʙ", "ʛ", "ʜ", "ʝ", "ʟ", "ʡ", "ʢ", "ʲ", "ˈ", "ˌ", "ː", "ˑ", "˞", "β", "θ", "χ", "ᵻ", "ⱱ", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "̧", "̃", "̪", "̯", "̩", "ʰ", "ˤ", "ε", "↓", "#", "\"", "↑", "̺", "̻", "g", "ʦ", "X", "̝", "̊", "ɝ", "ʷ", "aɪ", "aʊ", "ɔɪ", "eɪ", "oʊ"];
+
+let kokoroBytes = 0;        // model + tokens + voices (0 = not downloaded)
+const kokoroVoicesHere = new Set();
+let kokoroJob = null;       // { progress, promise }
+export const kokoroState = () => (kokoroJob ? 'downloading' : kokoroBytes ? 'ready' : 'none');
+export const kokoroProgress = () => kokoroJob?.progress ?? 0;
+export const kokoroSize = () => kokoroBytes;
+const isKokoroUrl = (u) => u.startsWith(KOKORO);
+
+/** The Kokoro language for an app language, or null (Kokoro doesn't speak it). */
+const kokoroLang = (lang) => (KOKORO_LANGS[lang] ? lang : KOKORO_LANGS[String(lang).split('-')[0]] && lang !== 'en-GB' ? String(lang).split('-')[0] : null);
+/** The voice picked for a language (Settings), or the first one. */
+export const kokoroVoice = (lang, picked = {}) => { const L = KOKORO_LANGS[lang]; return L.voices.includes(picked[lang]) ? picked[lang] : L.voices[0]; };
+/** Will read-aloud use Kokoro for this language? (downloaded, and the picked voice is here) */
+export const kokoroFor = (lang, picked) => {
+  const k = kokoroLang(lang);
+  return kokoroState() === 'ready' && k && kokoroVoicesHere.has(kokoroVoice(k, picked)) ? { lang: k, voice: kokoroVoice(k, picked) } : null;
+};
+export const kokoroVoiceReady = (id) => kokoroVoicesHere.has(id);
+
 const present = new Map();   // lang -> bytes of a downloaded voice
 const jobs = new Map();      // lang -> progress 0..1
 let engineBytes = 0;
@@ -97,15 +142,16 @@ export const voiceProgress = (lang) => jobs.get(lang) ?? 0;
 export const voiceBytes = (lang) => present.get(lang) || 0;
 export const downloadedVoices = () => [...present.keys()];
 /** Bytes used on this device: voices plus the engine. */
-export const piperBytes = () => [...present.values()].reduce((a, b) => a + b, 0) + (present.size ? engineBytes : 0);
+export const piperBytes = () => [...present.values()].reduce((a, b) => a + b, 0) + (present.size || kokoroBytes ? engineBytes : 0);
 
 const canCache = () => typeof caches !== 'undefined';
 const sizeOf = async (res) => Number(res.headers.get('content-length')) || (await res.clone().blob()).size;
 
 /** Which voices (and engine files) are in the cache. */
 export async function refreshVoices() {
-  present.clear(); engineBytes = 0;
-  if (!canCache()) { emit(); return; }
+  present.clear(); engineBytes = 0; kokoroVoicesHere.clear();
+  let kokoroAll = 0; let kokoroModel = false;
+  if (!canCache()) { kokoroBytes = 0; emit(); return; }
   try {
     const c = await caches.open(CACHE);
     for (const req of await c.keys()) {
@@ -113,10 +159,52 @@ export async function refreshVoices() {
       const bytes = res ? await sizeOf(res) : 0;
       const v = VOICES.find((x) => req.url === HF + encodeURI(x.file));
       if (v) present.set(v.lang, bytes);
-      else if (!req.url.endsWith('.onnx.json')) engineBytes += bytes;
+      else if (isKokoroUrl(req.url)) {
+        kokoroAll += bytes;
+        if (req.url === KOKORO_MODEL) kokoroModel = true;
+        const id = req.url.match(/voices\/(\w+)\.bin$/)?.[1];
+        if (id) kokoroVoicesHere.add(id);
+      } else if (!req.url.endsWith('.onnx.json')) engineBytes += bytes;
     }
   } catch { /* no cache storage */ }
+  kokoroBytes = kokoroModel ? kokoroAll : 0;
   emit();
+}
+
+/** Anything that needs the engine (Piper voices or Kokoro)? */
+const engineUsed = () => present.size > 0 || kokoroBytes > 0;
+
+/** Download Kokoro: the model, its symbol list and the picked voice of every language (each 0.5 MB). */
+export function downloadKokoro({ picked = {}, onProgress } = {}) {
+  if (kokoroJob) return kokoroJob.promise;
+  kokoroJob = { progress: 0 };
+  kokoroJob.promise = (async () => {
+    const c = await caches.open(CACHE);
+    const missing = [];
+    for (const u of ENGINE) if (!(await c.match(u))) missing.push(u);
+    const voices = Object.keys(KOKORO_LANGS).map((l) => kokoroVoiceUrl(kokoroVoice(l, picked)));
+    const total = (KOKORO_INFO.sizeMB + (missing.length ? ENGINE_MB : 0)) * 1e6;
+    let done = 0;
+    const tick = (n) => { kokoroJob.progress = Math.min(0.99, (done + n) / total); onProgress?.(kokoroJob.progress); emit(); };
+    for (const u of [...missing, KOKORO_TOKENS, ...voices, KOKORO_MODEL]) { const r = await cachedFetch(u, tick); done += await sizeOf(r); }
+  })().finally(async () => { kokoroJob = null; await refreshVoices(); });
+  emit();
+  return kokoroJob.promise;
+}
+
+/** Another voice for a language (0.5 MB, needs internet once). */
+export async function downloadKokoroVoice(id) {
+  await cachedFetch(kokoroVoiceUrl(id));
+  await refreshVoices();
+}
+
+/** Delete Kokoro (model and voices); the engine goes too when no Piper voice is left. */
+export async function deleteKokoro() {
+  const c = await caches.open(CACHE);
+  for (const req of await c.keys()) if (isKokoroUrl(req.url)) await c.delete(req);
+  kokoro = null; kokoroBytes = 0;
+  if (!present.size) { for (const u of ENGINE) await c.delete(u); engine = null; }
+  await refreshVoices();
 }
 
 /** The downloaded voice to use for a language (exact match first, then same language). */
@@ -135,22 +223,7 @@ export function offerFor(lang) {
 }
 
 /** Fetch a file into the cache (with progress), or return the cached copy. */
-async function cachedFetch(url, onBytes) {
-  const c = await caches.open(CACHE);
-  const hit = await c.match(url);
-  if (hit) return hit;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Download failed (${res.status})`);
-  let body = res.body;
-  if (onBytes && body) {
-    let n = 0;
-    body = body.pipeThrough(new TransformStream({ transform(chunk, ctl) { n += chunk.byteLength; onBytes(n); ctl.enqueue(chunk); } }));
-  }
-  const blob = await new Response(body).blob();
-  const copy = new Response(blob, { headers: { 'content-type': res.headers.get('content-type') || '', 'content-length': String(blob.size) } });
-  await c.put(url, copy.clone());
-  return copy;
-}
+const cachedFetch = (url, onBytes) => cachedFile(url, CACHE, onBytes);
 
 /** Download a voice (and the engine, the first time). onProgress gets 0..1. */
 export async function downloadVoice(lang, { onProgress } = {}) {
@@ -183,7 +256,7 @@ export async function deleteVoice(lang) {
   await c.delete(HF + encodeURI(v.file) + '.json');
   sessions.delete(lang);
   present.delete(lang);
-  if (!present.size) { for (const u of ENGINE) await c.delete(u); engine = null; }
+  if (!engineUsed()) { for (const u of ENGINE) await c.delete(u); engine = null; }
   await refreshVoices();
 }
 
@@ -196,11 +269,7 @@ const blobUrl = async (url, type) => URL.createObjectURL(new Blob([await (await 
 
 function loadEngine() {
   engine ??= (async () => {
-    const [ortMjs, glueMjs] = await Promise.all([blobUrl(ENGINE[0], 'text/javascript'), blobUrl(ENGINE[1], 'text/javascript')]);
-    const ortWasm = await blobUrl(ENGINE[2], 'application/wasm');
-    const ort = await import(/* webpackIgnore: true */ ortMjs);
-    ort.env.wasm.numThreads = 1;      // no cross-origin isolation here, so no threads
-    ort.env.wasm.wasmPaths = { mjs: glueMjs, wasm: ortWasm };
+    const ort = await loadOrt(CACHE);
     // the phonemizer is a classic script that defines createPiperPhonemize
     if (!window.createPiperPhonemize) {
       const src = await blobUrl(ENGINE[3], 'text/javascript');
@@ -271,8 +340,57 @@ function wav(pcm, rate) {
   return new Blob([b], { type: 'audio/wav' });
 }
 
-/** Speak text with a downloaded voice: resolves to a WAV blob. */
-export async function synthesize(text, lang) {
+let kokoro = null;   // Promise<{ session, vocab }>
+function kokoroSession() {
+  kokoro ??= (async () => {
+    const { ort } = await loadEngine();
+    const vocab = (await (await cachedFetch(KOKORO_TOKENS)).json()).model.vocab;
+    const model = await (await cachedFetch(KOKORO_MODEL)).arrayBuffer();
+    return { session: await ort.InferenceSession.create(model, { executionProviders: ['wasm'] }), vocab };
+  })();
+  kokoro.catch(() => { kokoro = null; });
+  return kokoro;
+}
+
+/** eSpeak phonemes (via Piper's ids) as the symbols Kokoro was trained on. */
+export function kokoroSymbols(ids, lang) {
+  let ipa = ids.map((i) => PIPER_IDS[i] ?? '').filter((p) => p !== '_' && p !== '^' && p !== '$').join('');
+  ipa = ipa.replace(/ʲ/g, 'j').replace(/x/g, 'k').replace(/ɬ/g, 'l').replace(/g/g, 'ɡ').replace(/ɝ/g, 'ɜɹ').replace(/ʦ/g, 'ʦ');
+  if (lang === 'en' || lang === 'en-GB') ipa = ipa.replace(/r/g, 'ɹ');
+  return ipa;
+}
+
+async function kokoroSpeak(text, k) {
+  const { ort } = await loadEngine();
+  const { session: s, vocab } = await kokoroSession();
+  const voice = new Float32Array(await (await cachedFetch(kokoroVoiceUrl(k.voice))).arrayBuffer());
+  const parts = [];
+  for (const piece of chunks(text)) {
+    const ipa = kokoroSymbols(await phonemeIds(piece, KOKORO_LANGS[k.lang].espeak), k.lang);
+    const tokens = [...ipa].map((ch) => vocab[ch]).filter((t) => t !== undefined).slice(0, 510);
+    if (!tokens.length) continue;
+    const ids = [0, ...tokens, 0];
+    const row = Math.min(tokens.length, 509);   // each voice has a style per input length
+    const name = (re, i) => s.inputNames.find((n) => re.test(n)) || s.inputNames[i];
+    const feeds = {
+      [name(/input|token/i, 0)]: new ort.Tensor('int64', BigInt64Array.from(ids.map(BigInt)), [1, ids.length]),
+      [name(/style|ref/i, 1)]: new ort.Tensor('float32', voice.slice(row * 256, row * 256 + 256), [1, 256]),
+      [name(/speed/i, 2)]: new ort.Tensor('float32', Float32Array.from([1]), [1]),
+    };
+    parts.push((await s.run(feeds))[s.outputNames[0]].data);
+  }
+  const all = new Float32Array(parts.reduce((a, p) => a + p.length, 0));
+  let o = 0; for (const p of parts) { all.set(p, o); o += p.length; }
+  return wav(all, 24000);
+}
+
+/**
+ * Speak text with a downloaded voice: resolves to a WAV blob. Kokoro first (when downloaded and it speaks
+ * the language), else the language's Piper voice. picked: the Kokoro voice chosen per language.
+ */
+export async function synthesize(text, lang, picked = {}) {
+  const k = kokoroFor(lang, picked);
+  if (k) return kokoroSpeak(text, k);
   const v = voiceFor(lang);
   if (!v) throw new Error('NO_VOICE');
   const { ort } = await loadEngine();

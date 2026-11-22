@@ -1,8 +1,8 @@
 // Shared app state + provider access. UI modules subscribe; they never touch providers directly.
 import { createProvider, ProviderError, getProviderDef } from './providers.js';
 import { offlineUnusable } from './features/offline.js';   // registers the on-device service
-import './features/localllm.js';
-import './features/chrometranslator.js';                    // registers Chrome's built-in translator                           // registers the on-device AI model
+import { llmSpec, nanoUsable, onLlmChange } from './features/localllm.js';                  // registers the on-device AI model
+import { chromeTranslatorSupported } from './features/chrometranslator.js';     // registers Chrome's built-in translator
 import { STATIC_LANGUAGES } from './languages.js';
 import { settings, recentLangs } from './store.js';
 
@@ -74,6 +74,9 @@ export class ProviderChain {
     if (members.some((m) => typeof m.recognizeImage === 'function')) {
       this.recognizeImage = (...a) => this._run('recognizeImage', a).then(([r]) => r);
     }
+    if (members.some((m) => typeof m.readPhoto === 'function')) {
+      this.readPhoto = (...a) => this._run('readPhoto', a, (m) => typeof m.readPhoto === 'function').then(([r]) => r);
+    }
   }
 
   async _run(method, args, canTry = () => true) {
@@ -140,7 +143,9 @@ export class ProviderChain {
 
 function buildChain(kind, entryList, activeId) {
   // the on-device service is left out where it can't work (see offline.js)
-  const ofKind = entryList.filter((e) => kindOf(e) === kind && !(e.type === 'offline' && offlineUnusable()));
+  const ofKind = entryList.filter((e) => kindOf(e) === kind && !(e.type === 'offline' && offlineUnusable())
+    && !(e.type === 'chrome-translator' && !chromeTranslatorSupported())
+    && !(e.type === 'webllm' && llmSpec(e.config).kind === 'nano' && !nanoUsable()));
   const lead = ofKind.find((e) => e.id === activeId) || ofKind.find((e) => e.type !== 'mock') || ofKind[0];
   if (!lead) {
     return [null, new ProviderError('NO_PROVIDER', kind === 'advanced' ? 'No AI model is set up.' : 'No translation service is set up.')];
@@ -159,6 +164,11 @@ const active = (mode, s = state) => (mode === 'advanced'
   : { provider: s.classic, providerError: s.classicError });
 
 /** (Re)build the Classic and Advanced chains from settings; `provider` = the one for the current mode. */
+// Gemini Nano starting or stopping to work (Chrome reports it ready, or it failed to start): rebuild the chains,
+// so a broken one isn't tried again and a fixed one comes back
+let nanoWas = nanoUsable();
+onLlmChange(() => { if (nanoUsable() !== nanoWas) { nanoWas = nanoUsable(); initProvider(); } });
+
 export function initProvider() {
   const s = settings.get();
   const [classic, classicError] = buildChain('classic', s.entries, s.activeClassic);
@@ -225,13 +235,53 @@ function requireProvider() {
 const wrap = (e) => (e instanceof ProviderError ? e : new ProviderError('SERVER', e?.message || String(e), e));
 
 export async function detect(text) {
+  // no service in this mode: the other mode's can still tell the language
+  if (!state.provider) {
+    const other = state.mode === 'advanced' ? state.classic : state.advanced;
+    if (other && !other.isMock) { try { return await other.detect(text); } catch { /* report below */ } }
+  }
   const p = requireProvider();
   try { return await p.detect(text); } catch (e) { throw wrap(e); }
 }
 
+/** Why the chosen mode didn't translate, as the end of "… because …". */
+function becauseOf(err, mode) {
+  switch (err?.code) {
+    case 'NO_PROVIDER': return mode === 'advanced' ? 'no AI model is set up' : 'no Classic service is set up';
+    case 'NEEDS_DOWNLOAD': return mode === 'advanced' ? "the on-device AI model isn't downloaded yet" : "the offline languages aren't downloaded yet";
+    case 'NETWORK': return `${mode === 'advanced' ? 'the AI service' : 'the Classic service'} isn't reachable`;
+    case 'UNSUPPORTED_PAIR': return `${mode === 'advanced' ? 'Advanced' : 'Classic'} can't do this language pair`;
+    case 'AUTH': return 'the API key was refused';
+    case 'RATE_LIMIT': return 'its rate limit or quota is reached';
+    case 'BROWSER_BLOCKED': return `${mode === 'advanced' ? 'the AI model' : 'the Classic service'} can't run in this browser`;
+    default: return `${mode === 'advanced' ? 'Advanced' : 'Classic'} failed`;
+  }
+}
+
+/**
+ * Translate with the current mode's services; if none of them can, with the other mode's (Classic ⇄
+ * Advanced), and say so in the result. The offline demo never stands in: its output isn't a translation.
+ */
 export async function translate(text, source, target) {
-  const p = requireProvider();
-  try { return await p.translate(text, source, target); } catch (e) { throw wrap(e); }
+  const mode = state.mode;
+  const otherMode = mode === 'advanced' ? 'classic' : 'advanced';
+  const other = otherMode === 'advanced' ? state.advanced : state.classic;
+  let err;
+  if (state.provider) {
+    try { return await state.provider.translate(text, source, target); } catch (e) { err = wrap(e); }
+  } else {
+    err = state.providerError || new ProviderError('NO_PROVIDER', 'No translation provider is set up.');
+  }
+  const otherName = otherMode === 'advanced' ? 'Advanced' : 'Classic';
+  if (other && !other.isMock) {
+    try {
+      const r = await other.translate(text, source, target);
+      return { ...r, via: undefined, note: `Translated with ${other.entryLabel} (${otherName}) because ${becauseOf(err, mode)}.`, otherMode };
+    } catch { /* the other mode can't either: report this mode's error */ }
+  }
+  // a button can switch modes when the other one has something to offer (even the demo)
+  if (other && err.code === 'NO_PROVIDER') err.detail = { ...(err.detail || {}), switchTo: otherMode };
+  throw err;
 }
 
 /** Human-facing copy for each error code. */

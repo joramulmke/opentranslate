@@ -4,7 +4,7 @@
 // no UI changes here.
 import { getProviderDef, createProvider } from '../providers.js';
 import { settings, entries, entryLabel, newEntryId, MOCK_ENTRY, BUILT_IN } from '../store.js';
-import { installedLanguages, usedBytes, offlineLanguages, packState, packSize, onOfflineChange, loadRegistry, downloadsBlocked, offlineUnusable, BLOCKED_REASON } from '../features/offline.js';
+import { installedLanguages, usedBytes, offlineLanguages, packState, packSize, onOfflineChange, loadRegistry, downloadsBlocked, offlineUnusable, BLOCKED_REASON, usesMirror, MIRROR } from '../features/offline.js';
 import { dlButton, updateDownloadButtons, onDownloadClick, formatMB } from './offlineui.js';
 import { langName } from '../state.js';
 import { initProvider, kindOf, useEntry, state } from '../state.js';
@@ -13,8 +13,9 @@ import { escapeHtml } from './langpicker.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
 import { initEngineRows, renderEngines, closeOcrManager, closeVoiceManager, sourceLine, extLink } from './enginerows.js';
-import { chromeTranslatorSupported } from '../features/chrometranslator.js';
-import { llmSpec, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, nanoSupported, NANO } from '../features/localllm.js';
+import { chromeTranslatorSupported, CHROME_TRANSLATOR_REASON } from '../features/chrometranslator.js';
+import { llmSpec, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, nanoUsable, nanoReason, NANO, NANO_INTERNALS } from '../features/localllm.js';
+import { copyToClipboard } from './snackbar.js';
 
 const $ = (id) => document.getElementById(id);
 let dlg, form;
@@ -67,6 +68,12 @@ export function initSettingsSheet({ onThemeChange }) {
       const act = btn.dataset.act;
       if (act === 'edit') openEditor({ id });
       if (act === 'manage') openManager();
+      if (act === 'why') {
+        const e = entries.get(id);
+        const why = whyBlocked(e);
+        // a chrome:// address can't be a link (Chrome won't open it from a page): offer to copy it instead
+        toast(why, why.includes(NANO_INTERNALS) ? { action: 'Copy address', onAction: () => copyToClipboard(NANO_INTERNALS, 'Copied. Paste it into Chrome’s address bar.') } : { duration: 10000 });
+      }
       if (act === 'llm-dl') llmDownloadToggle(entries.get(id));
       if (act === 'up' || act === 'down') {
         entries.move(id, act === 'up' ? -1 : 1, kindOf);
@@ -151,7 +158,7 @@ export function openSettings(focus) {
   form.querySelectorAll('input[name="theme"]').forEach((r) => { r.checked = r.value === s.theme; });
   checkGpu().then((g) => {
     // Gemini Nano (Chrome) needs no WebGPU
-    const ok = g.ok || nanoSupported();
+    const ok = g.ok || nanoUsable();
     $('btn-add-llm').disabled = !ok;
     $('llm-unavailable').hidden = ok;
     $('llm-unavailable').textContent = ok ? '' : `On-device AI: ${g.reason}`;
@@ -178,14 +185,14 @@ function subtitle(e) {
     const spec = llmSpec(c);
     const st = llmState(spec.key);
     if (spec.kind === 'nano') {
-      if (!nanoSupported()) return `${spec.title} · Not available in this browser`;
+      if (!nanoUsable()) return `${spec.title} · Not available: ${nanoReason().split('. ')[0].replace(/\.$/, '')}`;
       return st === 'ready' ? `${spec.title} · Ready · runs on this device` : st === 'downloading' ? `${spec.title} · Chrome is downloading it…` : `${spec.title} · Chrome downloads it when you press Download`;
     }
     if (st === 'downloading') return `${spec.title} · Downloading… ${Math.round(llmProgress(spec.key) * 100)}%`;
     if (st === 'ready') return `${spec.title} · Downloaded · runs on this device`;
     return `${spec.title} · Not downloaded${spec.sizeMB ? ` (${formatMB(spec.sizeMB * 1e6)})` : ''}`;
   }
-  if (e.type === 'chrome-translator') return chromeTranslatorSupported() ? 'Built into Chrome · runs on this device · each language pair downloaded by Chrome' : 'Only in Chrome on computers';
+  if (e.type === 'chrome-translator') return chromeTranslatorSupported() ? 'Built into Chrome · runs on this device · each language pair downloaded by Chrome' : 'Not available in this browser: only in Chrome on computers';
   let host = c.baseUrl || '';
   try { host = new URL(c.baseUrl).host; } catch { /* keep raw */ }
   if (e.type === 'openai') return [host, c.model].filter(Boolean).join(' · ');
@@ -196,10 +203,15 @@ function subtitle(e) {
   return host;
 }
 
+/** Where offline language files come from: Mozilla, or (Chromium browsers) the mirror on Hugging Face. */
+const offlineSourceHtml = () => (usesMirror
+  ? `From ${extLink(MIRROR.page, `Hugging Face: ${MIRROR.repo}`)}, a byte-for-byte mirror of ${extLink('https://github.com/mozilla/translations', "Mozilla's Firefox translation models")} (Mozilla's server doesn't serve Chromium browsers). Each file is checked against Mozilla's list · engine Bergamot, included in the app`
+  : `From ${extLink('https://github.com/mozilla/translations', 'Mozilla')} (firefox-settings-attachments.cdn.mozilla.net) · Firefox translation models · engine Bergamot, included in the app`);
+
 /** Where a service's downloads come from (on-device ones only; online services say their host already). */
 function sourceOf(e) {
   if (e.type === 'offline') {
-    return sourceLine(`svc-src-${e.id}`, `From ${extLink('https://github.com/mozilla/translations', 'Mozilla')} (firefox-settings-attachments.cdn.mozilla.net) · Firefox translation models · engine Bergamot, included in the app`);
+    return sourceLine(`svc-src-${e.id}`, offlineSourceHtml());
   }
   if (e.type === 'webllm') {
     const spec = llmSpec(e.config);
@@ -213,7 +225,11 @@ function sourceOf(e) {
   return '';
 }
 
-const blocked = (e) => e.type === 'offline' && offlineUnusable();
+/** Services this browser can't run (they stay listed, explained, and can't be picked). */
+const blocked = (e) => (e.type === 'offline' && offlineUnusable())
+  || (e.type === 'chrome-translator' && !chromeTranslatorSupported())
+  || (e.type === 'webllm' && llmSpec(e.config).kind === 'nano' && !nanoUsable());
+const whyBlocked = (e) => (e?.type === 'chrome-translator' ? CHROME_TRANSLATOR_REASON : nanoReason());
 
 function renderLists() {
   const s = settings.get();
@@ -223,8 +239,12 @@ function renderLists() {
   const hadAct = document.activeElement?.dataset?.act;
   const lead = { classic: null, advanced: null };
   renderVoiceList(s);
-  // Chrome's translator: offered only where it exists, once
-  $('btn-add-chrome').hidden = !chromeTranslatorSupported() || s.entries.some((e) => e.type === 'chrome-translator');
+  // Chrome's translator: offered once; elsewhere the button is off and says why (like on-device AI without WebGPU)
+  const chromeOk = chromeTranslatorSupported();
+  $('btn-add-chrome').hidden = s.entries.some((e) => e.type === 'chrome-translator');
+  $('btn-add-chrome').disabled = !chromeOk;
+  $('chrome-unavailable').hidden = chromeOk || $('btn-add-chrome').hidden;
+  $('chrome-unavailable').textContent = chromeOk ? '' : `Chrome translator: ${CHROME_TRANSLATOR_REASON}`;
   for (const kind of ['classic', 'advanced']) {
     const list = s.entries.filter((e) => kindOf(e) === kind);
     const activeId = kind === 'advanced' ? s.activeAdvanced : s.activeClassic;
@@ -243,7 +263,10 @@ function renderLists() {
         <span class="svc-actions">
           ${isMock ? '' : `<button class="icon-btn sm" type="button" data-act="up" aria-label="Move ${name} up" ${i <= 0 ? 'disabled' : ''}>${icon('up')}</button>
           <button class="icon-btn sm" type="button" data-act="down" aria-label="Move ${name} down" ${i >= movable.length - 1 ? 'disabled' : ''}>${icon('down')}</button>`}
-          ${e.type === 'webllm' && llmState(llmSpec(e.config).key) !== 'ready' && !(llmSpec(e.config).kind === 'nano' && !nanoSupported()) ? llmButton(e) : ''}
+          ${e.type === 'webllm' && llmState(llmSpec(e.config).key) !== 'ready' && !(llmSpec(e.config).kind === 'nano' && !nanoUsable()) ? llmButton(e) : ''}
+          ${blocked(e) && e.type !== 'offline'
+    ? `<button class="icon-btn sm" type="button" data-act="why" aria-label="Why ${name} isn't available" aria-describedby="svc-sub-${e.id}">${icon('info')}</button>`
+    : ''}
           ${e.type === 'offline'
     ? (blocked(e)
       ? `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Why offline languages aren't available" aria-describedby="svc-sub-${e.id}">${icon('info')}</button>`
@@ -365,7 +388,7 @@ function openEditor({ id, type }) {
   $('btn-test').hidden = editing.type === 'mock' || editing.type === 'webllm';
   const saveLabel = () => {
     const spec = editing?.type === 'webllm' ? llmSpec(readFields($('svc-fields'))) : null;
-    $('btn-svc-save').textContent = spec && !isDownloaded(spec.key) && !(spec.kind === 'nano' && !nanoSupported())
+    $('btn-svc-save').textContent = spec && !isDownloaded(spec.key) && !(spec.kind === 'nano' && !nanoUsable())
       ? `${editing.isNew ? 'Add' : 'Save'} and download` : 'Save';
   };
   saveLabel();
@@ -399,6 +422,12 @@ function closeEditor({ silent = false } = {}) {
 function saveEditor() {
   const def = getProviderDef(editing.type);
   const config = readFields($('svc-fields'));
+  // a choice this browser can't run isn't saved (the option is greyed out; this catches an old saved choice)
+  if (editing.type === 'webllm' && config.model === NANO && !nanoUsable()) {
+    toast(nanoReason(), { duration: 10000 });
+    $('svc-fields').querySelector('[data-key="model"]')?.focus();
+    return;
+  }
   for (const f of def.fields || []) {
     const shown = !f.showIf || Object.entries(f.showIf).every(([k, v]) => config[k] === v);
     if (shown && f.required && !config[f.key]) {
@@ -425,7 +454,7 @@ function saveEditor() {
   renderLists();
   closeEditor();
   const spec = def.id === 'webllm' ? llmSpec(config) : null;
-  if (spec && llmState(spec.key) === 'none' && !(spec.kind === 'nano' && !nanoSupported())) startLlmDownload({ label, config });
+  if (spec && llmState(spec.key) === 'none' && !(spec.kind === 'nano' && !nanoUsable())) startLlmDownload({ label, config });
   else toast(isNew ? `Added ${label}${state.mode === kind && kind === 'advanced' ? ' · Advanced translation is on' : ''}` : `Saved ${label}`);
 }
 
@@ -498,7 +527,7 @@ function renderFields(host, def, saved) {
 
 /** <option>s of a select field; grouped fields (groups()) get <optgroup>s; q filters by label. */
 function selectOptions(f, val, q = '') {
-  const opt = (o) => `<option value="${escapeHtml(o.value)}" ${o.value === val ? 'selected' : ''}>${escapeHtml(o.label)}</option>`;
+  const opt = (o) => `<option value="${escapeHtml(o.value)}" ${o.value === val ? 'selected' : ''} ${o.disabled ? 'disabled' : ''}>${escapeHtml(o.label)}</option>`;
   const keep = (o) => !q || o.value === val || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q);
   if (!f.groups) return f.options.filter(keep).map(opt).join('');
   return f.groups().map((g) => ({ ...g, options: g.options.filter(keep) })).filter((g) => g.options.length)
@@ -567,9 +596,10 @@ function closeManager({ silent = false } = {}) {
 function renderManager() {
   // blocked: a heading and the reason, read once when focus lands on it (no live region)
   $('offline-title').textContent = downloadsBlocked ? "Offline languages aren't available" : 'Offline languages';
-  for (const id of ['offline-help', 'offline-usage', 'offline-search', 'offline-list']) $(id).hidden = downloadsBlocked;
+  for (const id of ['offline-help', 'offline-source', 'offline-usage', 'offline-search', 'offline-list']) $(id).hidden = downloadsBlocked;
   $('offline-blocked').hidden = !downloadsBlocked;
   if (downloadsBlocked) { $('offline-blocked').textContent = BLOCKED_REASON; return; }
+  $('offline-source').innerHTML = offlineSourceHtml();
   const q = $('offline-search').value.trim().toLowerCase();
   const n = installedLanguages().length;
   $('offline-usage').textContent = n ? `${n} downloaded · ${formatMB(usedBytes())} used on this device` : 'Nothing downloaded yet.';

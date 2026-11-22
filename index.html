@@ -324,34 +324,38 @@
     </div>
     <form class="settings-form" id="settings-form" novalidate>
       <fieldset class="settings-group" id="services-group" aria-describedby="svc-help">
-        <legend>Translation services</legend>
+        <legend>Services and downloads</legend>
         <p class="setup-hint" id="setup-hint" hidden><span data-hint="demo"><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server or an AI model below for real translations.</span><span data-hint="none" hidden><strong>No translation service yet.</strong> Add a LibreTranslate server or an AI model below to start translating.</span></p>
         <p class="field-help" id="svc-help">The checked service is used first. If it fails or doesn't have a language, the next one in the same group is tried. Keys stay in this browser. Each download says where it comes from and can be deleted here.</p>
-        <h3 class="svc-head" id="svc-classic-head">Classic</h3>
+        <h3 class="svc-group-head" id="svc-group-translation">Translation</h3>
+        <h4 class="svc-head" id="svc-classic-head">Classic</h4>
         <ul class="svc-list" id="svc-classic" aria-labelledby="svc-classic-head"></ul>
         <div class="row-gap svc-add" id="svc-add-classic">
           <button class="btn btn-tonal" type="button" id="btn-add-lt" aria-controls="svc-editor"><i data-icon="add"></i>Add LibreTranslate</button>
-          <button class="btn btn-tonal" type="button" id="btn-add-chrome" aria-controls="svc-editor" hidden><i data-icon="add"></i>Add Chrome translator</button>
+          <button class="btn btn-tonal" type="button" id="btn-add-chrome" aria-controls="svc-editor" aria-describedby="chrome-unavailable" hidden><i data-icon="add"></i>Add Chrome translator</button>
+          <p class="field-help" id="chrome-unavailable" hidden></p>
         </div>
-        <h3 class="svc-head" id="svc-advanced-head">Advanced (AI model)</h3>
+        <h4 class="svc-head" id="svc-advanced-head">Advanced (AI model)</h4>
         <ul class="svc-list" id="svc-advanced" aria-labelledby="svc-advanced-head"></ul>
         <div class="row-gap svc-add" id="svc-add-advanced">
           <button class="btn btn-tonal" type="button" id="btn-add-ai" aria-controls="svc-editor"><i data-icon="add"></i>Add AI model</button>
           <button class="btn btn-tonal" type="button" id="btn-add-llm" aria-controls="svc-editor" aria-describedby="llm-unavailable"><i data-icon="add"></i>Add on-device AI</button>
           <p class="field-help" id="llm-unavailable" hidden></p>
         </div>
-        <h3 class="svc-head" id="svc-speech-head">Speech recognition</h3>
+        <h3 class="svc-group-head" id="svc-group-voice">Voice</h3>
+        <h4 class="svc-head" id="svc-speech-head">Speech recognition</h4>
         <ul class="svc-list" id="svc-speech" aria-labelledby="svc-speech-head"></ul>
-        <h3 class="svc-head" id="svc-tts-head">Read aloud</h3>
+        <h4 class="svc-head" id="svc-tts-head">Read aloud</h4>
         <ul class="svc-list" id="svc-tts" aria-labelledby="svc-tts-head"></ul>
-        <h3 class="svc-head" id="svc-voice-head">Voice services</h3>
+        <h4 class="svc-head" id="svc-voice-head">Cloud voice services</h4>
         <ul class="svc-list" id="svc-voice" aria-labelledby="svc-voice-head"></ul>
         <div class="row-gap svc-add" id="svc-add-voice">
           <button class="btn btn-tonal" type="button" id="btn-add-eleven" aria-controls="svc-editor"><i data-icon="add"></i>Add ElevenLabs</button>
         </div>
-        <h3 class="svc-head" id="svc-hwr-head">Handwriting</h3>
+        <h3 class="svc-group-head" id="svc-group-text">Text recognition</h3>
+        <h4 class="svc-head" id="svc-hwr-head">Handwriting</h4>
         <ul class="svc-list" id="svc-hwr" aria-labelledby="svc-hwr-head"></ul>
-        <h3 class="svc-head" id="svc-ocr-head">Camera text (OCR)</h3>
+        <h4 class="svc-head" id="svc-ocr-head">Camera text (OCR)</h4>
         <ul class="svc-list" id="svc-ocr" aria-labelledby="svc-ocr-head"></ul>
         <section class="svc-editor" id="svc-editor" aria-labelledby="svc-editor-title" hidden>
           <h3 id="svc-editor-title">Add service</h3>
@@ -372,7 +376,8 @@
             <h3 id="offline-title">Offline languages</h3>
             <button class="btn btn-text" type="button" id="btn-offline-done">Done</button>
           </div>
-          <p class="field-help" id="offline-help">Translate without internet, privately in your browser. Each language is a one-time download (English is included). Models come from the Firefox translation project, downloaded from Mozilla (firefox-settings-attachments.cdn.mozilla.net).</p>
+          <p class="field-help" id="offline-help">Translate without internet, privately in your browser. Each language is a one-time download (English is included). Models come from the Firefox translation project.</p>
+          <p class="field-help" id="offline-source"></p>
           <p class="offline-usage" id="offline-usage" role="status"></p>
           <p class="offline-blocked" id="offline-blocked" tabindex="-1" hidden></p>
           <input type="search" id="offline-search" placeholder="Search languages" aria-label="Search offline languages" autocomplete="off" spellcheck="false">
@@ -397,6 +402,15 @@
           <p class="field-help">Natural-sounding voices that read translations aloud privately in your browser, also without internet. One voice per language; the first one also downloads the voice engine (30 MB, once).</p>
           <p class="field-help" id="voice-source"></p>
           <p class="offline-usage" id="voice-usage" role="status"></p>
+          <section class="kokoro-box" id="kokoro-box" aria-labelledby="kokoro-title">
+            <div class="offline-row">
+              <span class="offline-copy"><span id="kokoro-title">Kokoro: most natural voices</span><small id="kokoro-sub"></small></span>
+              <span id="kokoro-btn"></span>
+            </div>
+            <p class="field-help" id="kokoro-src"></p>
+            <ul class="kokoro-voices" id="kokoro-voices" aria-label="Kokoro voice per language"></ul>
+          </section>
+          <h4 class="voice-piper-head" id="voice-piper-head">Piper: one voice per language</h4>
           <input type="search" id="voice-search" placeholder="Search languages" aria-label="Search offline voices" autocomplete="off" spellcheck="false">
           <ul class="offline-list" id="voice-list" aria-labelledby="voice-title"></ul>
         </section>

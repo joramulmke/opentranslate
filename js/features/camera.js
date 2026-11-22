@@ -131,7 +131,7 @@ export function initCamera({ sendToText }) {
     const ocrSource = state.source === 'auto' ? (state.detected?.language || 'en') : state.source;
     let ocr;
     try {
-      ocr = await recognize(canvas, { lang: ocrLangFor(ocrSource), psm: '3', onProgress: (m) => id === job && status(describeOcrStatus(m)) });
+      ocr = await recognize(canvas, { lang: ocrLangFor(ocrSource), iso: state.source === 'auto' ? null : ocrSource, psm: '3', onProgress: (m) => id === job && status(describeOcrStatus(m)) });
     } catch (e) {
       if (id !== job) return;
       status('');
@@ -141,7 +141,8 @@ export function initCamera({ sendToText }) {
     if (id !== job) return;
     shot.lines = ocr.lines.filter((l) => l.confidence > 30 && /[\p{L}\p{N}]/u.test(l.text));
     shot.ocrText = shot.lines.map((l) => l.text).join('\n');
-    if (!shot.ocrText) { status(''); toast('No text found. Try moving closer or improving the light.'); return; }
+    shot.note = ocr.note || '';   // e.g. AI vision didn't work and the device read the photo
+    if (!shot.ocrText) { status(''); toast(`No text found. Try moving closer or improving the light.${shot.note ? ' ' + shot.note : ''}`); return; }
     await translateShot(id);
   }
 
@@ -157,6 +158,8 @@ export function initCamera({ sendToText }) {
       const res = await translate(shot.ocrText, source, state.target);
       if (id !== job) return;
       shot.translated = res.text;
+      const note = [shot.note, res.note].filter(Boolean).join(' ');   // e.g. Classic stood in for Advanced
+      if (note) toast(note);
       drawOverlays();
       status('');
     } catch (e) {
@@ -164,7 +167,7 @@ export function initCamera({ sendToText }) {
       status('');
       drawOverlays(true);
       const { title, message } = describeError(e);
-      toast(`${title}: ${message}`);
+      toast(`${title}: ${message}${shot.note ? ' ' + shot.note : ''}`);
     }
   }
 

@@ -17,9 +17,14 @@ browsers block ES modules there (the page shows a hint). Camera and microphone n
 
 ## Translation services
 
-Open **Settings** (gear icon) → **Translation services**. Services are a list in two groups; add as many as
+Open **Settings** (gear icon) → **Services and downloads**. It has three parts: **Translation** (Classic,
+Advanced), **Voice** (Speech recognition, Read aloud, Cloud voice services) and **Text recognition** (Handwriting,
+Camera text). Translation services are a list in two groups; add as many as
 you like with **+ Add LibreTranslate** (under Classic) and **+ Add AI model** / **+ Add on-device AI** (under
-Advanced), edit, reorder (↑ ↓) or remove them (with Undo). An AI model's form has two boxes, **Read images
+Advanced), edit, reorder (↑ ↓) or remove them (with Undo). If the chosen mode can't translate (nothing set up, server down, no download yet), the other mode
+stands in and the result says so, e.g. *"Translated with LibreTranslate · joram.eu (Classic) because no AI model is set
+up."* When neither can, the error offers **Use Classic** / **Use Advanced**. The offline demo never stands in.
+An AI model's form has two boxes, **Read images
 (handwriting)** and **Speech to text**. The page can't tell from a model's name what it can do, so both stay off until
 **Test connection** has tried it (a small red square, half a second of silence); then you decide whether to use it.
 
@@ -61,13 +66,21 @@ Mozilla serves the models from two addresses:
   `https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/translations-models/records`
 - model files: `https://firefox-settings-attachments.cdn.mozilla.net/` + each record's `attachment.location`
 
-**Chrome, Edge, Brave and other Chromium-based browsers can't download models:** the file server answers
-HTTP 406 to any browser whose User-Agent contains "Chrome", and a web page can't change that header. In those
-browsers the app switches the on-device service off (download buttons hidden, the service shown as "Not
-available in this browser", translations go to the next service) and explains why. Safari, Firefox and Chrome
-on iPhone work. To check:
+**Chrome, Edge, Brave and other Chromium-based browsers download the files from a mirror:** Mozilla's file
+server answers HTTP 406 to any browser whose User-Agent contains "Chrome", and a web page can't change that
+header. To check:
 `curl -s -o /dev/null -w "%{http_code}\n" -r 0-15 -A Chrome https://firefox-settings-attachments.cdn.mozilla.net/main-workspace/translations-models/23db71e7-b6d9-45eb-a47d-0290d7d8ef63.bin`
-(406; without `-A Chrome` it is 206).
+(406; without `-A Chrome` it is 206). So in those browsers:
+
+- the model list still comes from Mozilla (it serves every browser) and decides the version;
+- the files come from [midudev/firefox-translations](https://huggingface.co/midudev/firefox-translations) on
+  Hugging Face, a byte-for-byte MPL-2.0 mirror of Mozilla's models (Hugging Face lists each file's SHA-256);
+- a model version is offered only if the mirror has all its files with the SHA-256 from Mozilla's list, and every
+  downloaded file is checked again, so the mirror can't hand out anything else;
+- languages the mirror lacks aren't offered there (in November 2026: Belarusian, Chinese (Simplified), Croatian,
+  Korean, Maltese, Norwegian Nynorsk, Tagalog, Uyghur; the mirror's Chinese model is an older one Mozilla no
+  longer lists). Safari, Firefox and Chrome on iPhone keep downloading from Mozilla;
+- if the mirror disappears, the app goes back to switching the on-device service off and explaining why.
 
 ### On-device AI (Advanced mode)
 
@@ -104,7 +117,7 @@ LanguageDetector.
 
 ### Downloads on this device
 
-Everything the app downloads is listed in Settings → **Translation services**, with its size, status, where it
+Everything the app downloads is listed in Settings → **Services and downloads**, with its size, status, where it
 comes from (host and a link to the model page) and buttons to download ahead of time (e.g. before travelling) or
 delete it to free space. Every download prompt and error also names the source.
 
@@ -112,8 +125,10 @@ delete it to free space. Every download prompt and error also names the source.
 | --- | --- | --- | --- |
 | Classic › On this device | offline languages, ~45–75 MB each | Mozilla (`firefox-settings-attachments.cdn.mozilla.net`) | Cache Storage `ot-offline-*` |
 | Advanced › On-device AI | WebLLM model, ~0.2–7 GB (your pick), or your own model | Hugging Face (`huggingface.co/mlc-ai`) or your model URL | Cache Storage `webllm/*` |
-| Speech recognition › On this device | Whisper base, ~80 MB | Hugging Face (`huggingface.co/Xenova/whisper-base`) | Cache Storage `transformers-cache` |
+| Speech recognition › On this device | Whisper tiny / base / small / large-v3 turbo, 41–563 MB | Hugging Face (`huggingface.co/Xenova/whisper-base`) | Cache Storage `transformers-cache` |
 | Read aloud › Offline voices | Piper voice, ~63 MB per language (+ 30 MB engine, once); manager with search | Hugging Face (`huggingface.co/rhasspy/piper-voices`), engine from jsDelivr | Cache Storage `ot-piper-v1` |
+| Read aloud › Offline voices › Kokoro | Kokoro 82M (quantised), 92 MB + 0.5 MB per voice | Hugging Face (`huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX`) | Cache Storage `ot-piper-v1` |
+| Camera text / Handwriting › PP-OCRv6 | detection + recognition, 31 MB (+ 11 MB ONNX Runtime, shared with the voices) | Hugging Face (`huggingface.co/PaddlePaddle`) | Cache Storage `ot-paddle-v1` |
 | Handwriting › On-device model | TrOCR small handwritten, ~130 MB | Hugging Face (`huggingface.co/Xenova/trocr-small-handwritten`) | Cache Storage `transformers-cache` |
 | Camera text (OCR) › Tesseract | one file per language, ~1–15 MB; manager with search | jsDelivr (`cdn.jsdelivr.net/npm/@tesseract.js-data`) | IndexedDB `keyval-store` |
 
@@ -171,33 +186,47 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
      phonemizers that don't run in the browser;
   3. **AI service**: your AI model's `/audio/speech` (set *Text-to-speech model*, e.g. `gpt-4o-mini-tts`, `tts-1`,
      and a *Voice*), once *Test connection* confirmed it;
-  4. **ElevenLabs** (Settings → Voice services → *Add ElevenLabs*): your API key, voice and model (Flash v2.5 or
+  4. **ElevenLabs** (Settings → Voice → Cloud voice services → *Add ElevenLabs*): your API key, voice and model (Flash v2.5 or
      Multilingual v2). The key stays in this browser and goes only to `api.elevenlabs.io`.
+
+  **Kokoro 82M** (hexgrad, Apache-2.0; `onnx-community/Kokoro-82M-v1.0-ONNX`, 92 MB) sits at the top of the
+  Offline voices manager: one model for English (US, UK), Spanish, French, Hindi, Italian and Portuguese (Brazil),
+  with a voice picker per language (each further voice 0.5 MB). When downloaded it reads those languages instead of
+  Piper. Its pronunciation comes from eSpeak NG (through Piper's phonemizer), not from the tools Kokoro was trained
+  with, so some words can sound off; Japanese and Chinese aren't offered for that reason.
 
   A replay of the same text uses the recording it already has (no second request or charge).
 - **Voice input** works in every browser that can record audio. Four engines; the one checked in
-  Settings → Translation services → **Speech recognition** goes first, the others follow:
+  Settings → Voice → **Speech recognition** goes first, the others follow:
   1. the **browser's speech service** with live text (Chrome, Edge, Safari; your voice goes to Google, Microsoft
      or Apple). Not in Brave or Firefox; if it fails, the app switches to recording;
   2. **AI service (Whisper API)**: the app records the microphone itself (stops after ~1.5 s of silence) and sends
      it to your AI service's `/audio/transcriptions` (set *Speech-to-text model*, e.g. `whisper-1`,
      `whisper-large-v3-turbo`). Used when chosen, or in Advanced mode;
-  3. **ElevenLabs (Scribe)**, with an ElevenLabs entry under Voice services;
-  4. **On this device (Whisper)**: `whisper-base` in the browser, asks before a one-time ~80 MB download, detects
+  3. **ElevenLabs (Scribe)**, with an ElevenLabs entry under Voice › Cloud voice services;
+  4. **On this device (Whisper)**, in four sizes picked in the row: tiny (41 MB), base (80 MB, default), small
+     (250 MB, much better outside English) and large-v3 turbo (563 MB, needs WebGPU with 16-bit support): `whisper-base` in the browser, asks before a one-time ~80 MB download, detects
      the language.
 - **Languages** your services can't translate stay visible but greyed out; tapping one explains why
   (e.g. not installed on your LibreTranslate server). Languages that can be downloaded show a download icon.
 - **Camera:** live preview or imported photo; OCR with [Tesseract.js](https://tesseract.projectnaptha.com/)
-  (loaded from jsDelivr on first use; one language file per language, see below); translated text drawn over the photo.
+  (loaded from jsDelivr on first use; one language file per language, see below), or **PP-OCRv6** (PaddlePaddle,
+  Apache-2.0) when picked in Settings → Text recognition → Camera text: two small ONNX models (31 MB, once, from
+  `huggingface.co/PaddlePaddle`), much better on photos, for Latin-script languages, Chinese, Japanese and Greek
+  (other scripts go to Tesseract automatically), or **AI vision**: your AI model reads the photo (any script,
+  angled or curved text; needs a model whose **Read images** box is ticked; only when picked, since the photo is
+  sent to that service; if it fails, the photo is read on the device and a notice says so). Translated text is
+  drawn over the photo: line by line where the model gives line boxes, otherwise as one block.
 - **Conversation:** two people, one language each, turns alternate; translations can be read aloud.
 - **Handwriting:** draw on a pad (undo, clear, stroke width), pick a suggestion, edit, then translate.
-  Three engines; the one checked in Settings → Translation services → **Handwriting** goes first, the others follow:
+  Four engines; the one checked in Settings → Text recognition → **Handwriting** goes first, the others follow:
   1. **AI vision**: your AI model reads the drawing (any script, cursive), when chosen or in Advanced mode. Needs a
      model whose **Read images** box is ticked (after Test connection); one API call per recognition.
   2. **On-device model**: TrOCR handwriting model in the browser via
      [transformers.js](https://github.com/huggingface/transformers.js); asks before a one-time ~130 MB download,
      Latin-script languages only, private.
-  3. **Basic**: Tesseract; fallback for everything else, best with neat printed letters.
+  3. **PP-OCRv6**: the camera text model (see Camera), when picked; Latin script, Chinese, Japanese, Greek;
+  4. **Basic**: Tesseract; fallback for everything else, best with neat printed letters.
 - **Permissions:** camera and microphone are explained first; the browser prompt only appears after you tap
   *Allow*. If access is blocked, the app shows browser-specific steps to re-enable it.
 - Light/dark theme (follows the system, or set it in Settings / the top bar), keyboard operation, ARIA labels,

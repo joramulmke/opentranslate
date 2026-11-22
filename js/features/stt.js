@@ -7,10 +7,10 @@
 import { state } from '../state.js';
 import { settings } from '../store.js';
 import { sheet } from './permissions.js';
-import { HF_MODELS, getPipeline, transformers, modelState, fromText } from './models.js';
+import { HF_MODELS, getPipeline, transformers, modelState, fromText, whisperKey } from './models.js';
 import { createProvider } from '../providers.js';
 
-export const WHISPER = { model: HF_MODELS.whisper.repo, sizeMB: HF_MODELS.whisper.sizeMB };
+
 
 /** Speech engines in the order to try: the chosen one first, then the others. */
 export const SPEECH_ENGINES = ['browser', 'api', 'elevenlabs', 'ondevice'];
@@ -95,11 +95,13 @@ async function detectLanguage(asr, pcm) {
 
 async function onDeviceAllowed() {
   const s = settings.get();
-  if (modelState('whisper') === 'ready' || s.sttModelOk === true) return true;
+  const key = whisperKey();
+  const m = HF_MODELS[key];
+  if (modelState(key) === 'ready' || s.sttModelOk === true) return true;
   if (s.sttModelOk === false) return false;
   const ok = await sheet({
     iconName: 'mic', title: 'Voice input on this device?',
-    body: `Download a speech-recognition model (about ${WHISPER.sizeMB} MB, once, ${fromText('whisper')})? It runs privately in your browser and understands many languages. You can delete it in Settings › Translation services.`,
+    body: `Download a speech-recognition model (${m.title}, about ${m.sizeMB} MB, once, ${fromText(key)})? It runs privately in your browser and understands many languages. You can pick a smaller or larger one, or delete it, in Settings › Voice › Speech recognition.`,
     allowLabel: 'Download', cancelLabel: 'Not now',
   });
   settings.set({ sttModelOk: ok });
@@ -147,7 +149,7 @@ export async function transcribe(blob, lang, { onStatus } = {}) {
     for (const e of order.slice(order.indexOf('ondevice') + 1)) { const r = await cloud[e](); if (r) return r; }
     throw new Error(apiError ? `Speech service failed: ${apiError.message}` : 'NO_ENGINE');
   }
-  const asr = await getPipeline('whisper', { onStatus });
+  const asr = await getPipeline(whisperKey(), { onStatus });
   onStatus?.('Transcribing…');
   const pcm = await toPcm16k(blob);
   const language = code || await detectLanguage(asr, pcm);

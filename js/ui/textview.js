@@ -2,13 +2,13 @@
 // On phones it also drives the home ↔ typing ("edit") states of the reference layout:
 //   home: big "Translate text" sheet + language pills + Conversation · Mic · Camera
 //   edit: input focused or holding text; top bar becomes back · history/clear · pen · more
-import { state, subscribe, set, langName, detect, translate, describeError, setSource } from '../state.js';
+import { state, subscribe, set, langName, detect, translate, describeError, setSource, setMode } from '../state.js';
 import { settings, history, phrasebook, onChange } from '../store.js';
 import { isRtl } from '../languages.js';
 import { createLangBar } from './langbar.js';
 import { pickLanguage } from './langpicker.js';
 import { icon } from './icons.js';
-import { toast } from './snackbar.js';
+import { toast, copyToClipboard } from './snackbar.js';
 import { isPhone } from './layout.js';
 import { speak, stopSpeaking, nextIsSlow, canDictate, dictate, dictationMessage } from '../features/speech.js';
 import { ensureMicrophone } from '../features/permissions.js';
@@ -142,7 +142,8 @@ function onInput() {
   clearTimeout(debounceTimer);
   clearTimeout(historyTimer);
   if (!el.input.value.trim()) { clearOutput(); if (state.source === 'auto') set({ detected: null }); return; }
-  if (settings.get().liveTranslate && state.provider) {
+  // live translation also when only the other mode has a service (it stands in, and says so)
+  if (settings.get().liveTranslate && (state.provider || state.classic || state.advanced)) {
     debounceTimer = setTimeout(() => runTranslate(), DEBOUNCE_MS);
   }
 }
@@ -213,7 +214,7 @@ async function runTranslate({ commit = false } = {}) {
       set({ detected: { language: res.detected, confidence: 1 } });
       source = res.detected;
     }
-    showResult({ text: res.text, source, target: state.target, input: text, mock: !!state.provider?.isMock, via: res.via });
+    showResult({ text: res.text, source, target: state.target, input: text, mock: !!state.provider?.isMock && !res.note, via: res.via, note: res.note });
     if (commit) commitHistory(); else commitHistorySoon();
   } catch (err) {
     if (id !== reqId) return;
@@ -256,8 +257,8 @@ function showResult(r) {
   el.out.classList.remove('stale');
   el.out.classList.toggle('long', r.text.length > 120);
   // "Offline demo translation", or which service answered when the first choice couldn't
-  el.mockChip.textContent = r.mock ? 'Offline demo translation' : r.via ? `Translated with ${r.via}` : '';
-  el.mockChip.hidden = !r.mock && !r.via;
+  el.mockChip.textContent = r.mock ? 'Offline demo translation' : r.note || (r.via ? `Translated with ${r.via}` : '');
+  el.mockChip.hidden = !r.mock && !r.via && !r.note;
   // one short polite announcement instead of a live region around the whole card
   if (el.live) {
     const t = document.createElement('span');
@@ -294,9 +295,17 @@ function showError(err) {
       btn.disabled = true;
       const onProgress = (p) => { btn.textContent = `Downloading… ${Math.round(p * 100)}%`; };
       // offline language packs, or another download the error brings along (the on-device AI model)
-      (download ? download(onProgress) : downloadPacks(langs, { onProgress })).then(() => runTranslate({ commit: true }), (er) => { btn.disabled = false; btn.textContent = 'Try again'; toast(er.message); });
+      (download ? download(onProgress) : downloadPacks(langs, { onProgress })).then(() => runTranslate({ commit: true }), (er) => {
+        btn.disabled = false; btn.textContent = 'Try again';
+        // e.g. Gemini Nano: the reason names an address to paste into Chrome, which a page can't link to
+        const copy = er.detail?.copy;
+        toast(er.message, copy ? { action: 'Copy address', onAction: () => copyToClipboard(copy, 'Copied. Paste it into Chrome’s address bar.') } : {});
+      });
     });
   }
+  if (err?.detail?.copy) action(`Copy ${err.detail.copy}`, () => copyToClipboard(err.detail.copy, 'Copied. Paste it into Chrome’s address bar.'));
+  const switchTo = err?.detail?.switchTo;
+  if (switchTo) action(`Use ${switchTo === 'advanced' ? 'Advanced' : 'Classic'}`, () => { setMode(switchTo); runTranslate({ commit: true }); });
   if (code === 'NO_PROVIDER' || code === 'AUTH' || code === 'BROWSER_BLOCKED') action('Open settings', openSettings);
   if (code === 'UNSUPPORTED_PAIR') action('Change language', async () => {
     const c = await pickLanguage({ side: 'target', selected: state.target });

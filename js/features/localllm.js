@@ -7,6 +7,10 @@ import { registerProvider, ProviderError, OpenAICompatibleProvider } from '../pr
 import { LLM_CATALOG, LLM_CURATED, prettyName } from './llmcatalog.js';
 
 export const NANO = 'gemini-nano';
+export const NANO_INTERNALS = 'chrome://on-device-internals';
+/** Languages Gemini Nano reads and writes (Chrome 149, per Chrome's docs). Chrome is asked per pair anyway. */
+export const NANO_LANGS = ['en', 'es', 'ja', 'de', 'fr'];
+const NANO_MIN_CHROME = 148;   // first Chrome that offers the Prompt API to web pages (not only extensions)
 export const CUSTOM = 'custom';
 const DEFAULT = 'Qwen2.5-1.5B-Instruct';
 // entries saved by earlier versions
@@ -46,7 +50,10 @@ export function llmOptions() {
   const picked = new Set(LLM_CURATED.map(([k]) => k));
   return [
     { group: 'Recommended for translating', options: LLM_CURATED.map(([k, note]) => ({ value: k, label: label(LLM_CATALOG.find((c) => c.key === k), note) })) },
-    { group: 'Built into this browser', options: [{ value: NANO, label: 'Gemini Nano (Chrome) · downloaded and managed by Chrome' }] },
+    // elsewhere it stays in the list (so people know it exists) but can't be picked
+    { group: 'Built into this browser', options: [nanoUsable()
+      ? { value: NANO, label: `Gemini Nano (Chrome) · downloaded and managed by Chrome · ${NANO_LANGS.length} languages` }
+      : { value: NANO, label: `Gemini Nano · ${!nanoSupported() && chromeMajor() && chromeMajor() < NANO_MIN_CHROME ? `needs Chrome ${NANO_MIN_CHROME} or later` : nanoSupported() ? "didn't start in this Chrome" : 'only in Chrome on computers'}`, disabled: true }] },
     { group: 'All WebLLM models', options: LLM_CATALOG.filter((c) => !picked.has(c.key)).sort((a, b) => a.key.localeCompare(b.key, 'en', { sensitivity: 'base' }))
       .map((c) => ({ value: c.key, label: label(c) })) },
     { group: 'Your own model', options: [{ value: CUSTOM, label: 'Own model by URL (MLC format)…' }] },
@@ -115,21 +122,79 @@ const LM = () => globalThis.LanguageModel;
 /** Is Gemini Nano there at all (Chrome with the Prompt API)? */
 export const nanoSupported = () => typeof LM()?.availability === 'function';
 export const nanoAvailability = () => nanoState;
+
+/** Chrome's major version, or 0 when this isn't Chrome (Edge, Opera and Brave say Chrome too, and that's fine). */
+const chromeMajor = () => {
+  const b = globalThis.navigator?.userAgentData?.brands?.find((x) => /Chromium|Google Chrome/.test(x.brand));
+  return Number(b?.version) || Number(String(globalThis.navigator?.userAgent || '').match(/Chrome\/(\d+)/)?.[1]) || 0;
+};
+
+// "Chrome said downloadable, but the model can't start here" (e.g. "the service is not running"):
+// remembered in this browser so Gemini Nano isn't offered again until Chrome reports it ready.
+const BROKEN = 'ot.nano.broken.v1';
+const readBroken = () => { try { return JSON.parse(localStorage.getItem(BROKEN)); } catch { return null; } };
+const setBroken = (msg) => { try { if (msg) localStorage.setItem(BROKEN, JSON.stringify({ msg, at: Date.now() })); else localStorage.removeItem(BROKEN); } catch { /* private mode */ } };
+
+/** Can Gemini Nano be offered here: the API exists and it didn't fail before. */
+export const nanoUsable = () => nanoSupported() && !readBroken();
+
+/** Why Gemini Nano isn't offered here, in words a user can act on ('' when it is). */
+export function nanoReason() {
+  const v = chromeMajor();
+  if (!nanoSupported()) {
+    if (v && v < NANO_MIN_CHROME) return `Gemini Nano needs Chrome ${NANO_MIN_CHROME} or later; this is Chrome ${v}. Update Chrome (menu › Help › About Google Chrome), or pick a WebLLM model.`;
+    if (v) return "This browser doesn't offer Gemini Nano to web pages. It's built into Chrome on Windows, macOS, Linux and Chromebook Plus, not on phones. Pick a WebLLM model instead.";
+    return "Gemini Nano is built into Chrome on computers only, so it can't run in this browser. Open OpenTranslate in Chrome to use it, or pick a WebLLM model.";
+  }
+  const b = readBroken();
+  if (b) {
+    return `Gemini Nano didn't start in this Chrome: “${b.msg}”. Chrome needs at least 22 GB of free disk space, a graphics chip with more than 4 GB of memory `
+      + `(or 16 GB of RAM and 4 CPU cores), and may still be setting it up. Paste ${NANO_INTERNALS} into the address bar and open “Model Status” and “Broker State” to see why. `
+      + "It's offered again once Chrome reports it ready.";
+  }
+  return '';
+}
+
 export async function refreshNano() {
   if (!nanoSupported()) { nanoState = 'unavailable'; return nanoState; }
   try { nanoState = await LM().availability(); } catch { nanoState = 'unavailable'; }
+  if (nanoState === 'available' && readBroken()) setBroken(null);   // fixed since: offer it again
   emit();
   return nanoState;
 }
 refreshNano();
+
+/** Can Gemini Nano translate source → target? Chrome answers per language (it only knows a few). */
+async function nanoPair(source, target) {
+  const lang = (c) => String(c).split('-')[0];
+  try {
+    return await LM().availability({
+      ...(source && source !== 'auto' ? { expectedInputs: [{ type: 'text', languages: [lang(source)] }] } : {}),
+      expectedOutputs: [{ type: 'text', languages: [lang(target)] }],
+    });
+  } catch { return 'unavailable'; }
+}
+const nanoLangNames = () => { try { const d = new Intl.DisplayNames(['en'], { type: 'language' }); return NANO_LANGS.map((c) => d.of(c)).join(', '); } catch { return NANO_LANGS.join(', '); } };
+
+/** Chrome's errors about Gemini Nano, in words a user can act on. */
+function nanoError(e) {
+  const msg = String(e?.message || e).replace(/\.\s*$/, '');
+  if (e?.name === 'NotAllowedError') return new ProviderError('NEEDS_DOWNLOAD', 'Chrome only downloads Gemini Nano after a click. Press Download again.');
+  if (/not running|service|crash|unavailable|not supported|NotSupported/i.test(msg) || e?.name === 'NotSupportedError' || e?.name === 'InvalidStateError') {
+    setBroken(msg);
+    emit();
+    return new ProviderError('BROWSER_BLOCKED', nanoReason(), { copy: NANO_INTERNALS });
+  }
+  return new ProviderError('SERVER', `Gemini Nano didn't start: ${msg}`);
+}
 
 async function nanoChat(system, user, outLang) {
   const opts = { initialPrompts: [{ role: 'system', content: system }],
     ...(outLang ? { expectedOutputs: [{ type: 'text', languages: [outLang] }] } : {}) };
   let session;
   try { session = await LM().create(opts); } catch (e) {
-    if (e?.name === 'NotSupportedError') throw new ProviderError('UNSUPPORTED_PAIR', `Gemini Nano can't write ${outLang} yet.`);
-    throw new ProviderError('SERVER', `Gemini Nano didn't start: ${e?.message || e}`);
+    if (e?.name === 'NotSupportedError' && outLang && !/not running|service/i.test(e?.message || '')) throw new ProviderError('UNSUPPORTED_PAIR', `Gemini Nano can't write ${outLang} yet.`);
+    throw nanoError(e);
   }
   try { return await session.prompt(user); } finally { session.destroy?.(); }
 }
@@ -195,9 +260,12 @@ export function downloadModel(key, { onProgress } = {}) {
   const job = { progress: 0, phase: 'download' };
   job.promise = (async () => {
     if (spec.kind === 'nano') {
-      if (!nanoSupported()) throw new ProviderError('BROWSER_BLOCKED', 'Gemini Nano is only built into Chrome on computers.');
+      if (!nanoSupported()) throw new ProviderError('BROWSER_BLOCKED', nanoReason());
       // Chrome downloads the model when a session is first created (needs a click, which this is)
-      const s = await LM().create({ monitor(m) { m.addEventListener('downloadprogress', (e) => { job.progress = e.loaded; onProgress?.(e.loaded); emit('progress'); }); } });
+      let s;
+      try {
+        s = await LM().create({ monitor(m) { m.addEventListener('downloadprogress', (e) => { job.progress = e.loaded; onProgress?.(e.loaded); emit('progress'); }); } });
+      } catch (e) { await refreshNano(); throw nanoError(e); }
       s.destroy?.();
       await refreshNano();
       return;
@@ -234,7 +302,9 @@ export async function deleteModel(key) {
 }
 
 const needsDownload = (spec) => new ProviderError('NEEDS_DOWNLOAD',
-  `The on-device AI model ${spec.title} isn't downloaded yet. It comes from ${spec.custom ? new URL(spec.custom.url).host : 'Hugging Face (huggingface.co/mlc-ai)'}.`,
+  spec.kind === 'nano'
+    ? "Gemini Nano isn't on this device yet. Chrome downloads it from Google (a few GB, once) and keeps it up to date."
+    : `The on-device AI model ${spec.title} isn't downloaded yet. It comes from ${spec.custom ? new URL(spec.custom.url).host : 'Hugging Face (huggingface.co/mlc-ai)'}.`,
   { size: spec.sizeMB * 1e6, download: (onProgress) => downloadModel(spec.key, { onProgress }) });
 
 async function chat(spec, messages, maxTokens) {
@@ -260,15 +330,23 @@ class LocalLLMProvider extends OpenAICompatibleProvider {
     this.isOnDevice = true;
     // small text models: no handwriting (vision) and no speech-to-text
     this.recognizeImage = undefined;
+    this.readPhoto = undefined;
     this.transcribe = undefined;
     this.sttModel = '';
     this._target = null;
   }
 
   /** For the fallback chain: usable right now without a download? */
-  ready() { return this.spec.kind === 'nano' ? nanoState === 'available' : gpuOk !== false && isDownloaded(this.key); }
+  ready() { return this.spec.kind === 'nano' ? nanoState === 'available' && !readBroken() : gpuOk !== false && isDownloaded(this.key); }
 
   async translate(text, source, target) {
+    if (this.spec.kind === 'nano' && nanoState === 'available' && target) {
+      const st = await nanoPair(source, target);
+      if (st === 'unavailable') {
+        let name = target; try { name = new Intl.DisplayNames(['en'], { type: 'language' }).of(target.split('-')[0]); } catch { /* code */ }
+        throw new ProviderError('UNSUPPORTED_PAIR', `Gemini Nano can't translate into ${name}. It handles ${nanoLangNames()}.`);
+      }
+    }
     this._target = target;
     try { return await super.translate(text, source, target); } finally { this._target = null; }
   }
@@ -285,7 +363,8 @@ class LocalLLMProvider extends OpenAICompatibleProvider {
   async test() {
     if (this.spec.kind === 'nano') {
       const st = await refreshNano();
-      if (st === 'unavailable') return { ok: false, message: nanoSupported() ? "Gemini Nano isn't available on this device (Chrome needs about 22 GB free disk space and a capable computer)." : 'Gemini Nano is only built into Chrome on computers.' };
+      if (!nanoUsable()) return { ok: false, message: nanoReason() };
+      if (st === 'unavailable') return { ok: false, message: "Chrome says Gemini Nano can't run on this device: it needs at least 22 GB of free disk space and a graphics chip with more than 4 GB of memory (or 16 GB of RAM and 4 CPU cores)." };
       if (st !== 'available') return { ok: false, message: 'Chrome hasn’t downloaded Gemini Nano yet. Save, then use the download button.' };
     } else {
       const g = await checkGpu();

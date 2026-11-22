@@ -25,9 +25,13 @@ const DEFAULT_SETTINGS = {
   hwrEngine: 'vision',         // first handwriting engine: vision | ondevice | tesseract (old 'auto' = vision)
   speechEngine: 'browser',     // first speech engine: browser | api | elevenlabs | ondevice
   ttsEngine: 'system',         // first read-aloud engine: system | ondevice (Piper) | api | elevenlabs
-  ttsDeclined: [],             // languages where "Download a voice?" was answered "Not now"
+  ttsDeclined: [],
+  kokoroVoices: {},            // Kokoro voice picked per language, e.g. { en: 'af_heart' }             // languages where "Download a voice?" was answered "Not now"
   hwrModelOk: null,            // null = not asked yet, true/false = answer to the model download prompt
   sttModelOk: null,            // same, for the on-device speech model
+  ocrEngine: 'tesseract',      // first camera text engine: tesseract | paddle (PP-OCRv6)
+  paddleOk: null,              // answer to the PP-OCRv6 download question
+  whisperModel: 'whisper',     // on-device speech model size: whisper-tiny | whisper (base) | whisper-small | whisper-turbo
 };
 
 export const MOCK_ENTRY = { id: 'mock', type: 'mock', label: 'Offline demo', config: {} };

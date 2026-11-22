@@ -1,5 +1,5 @@
 // Service worker: precache the app shell; never cache API responses or CDN OCR assets.
-const CACHE_NAME = 'ot-shell-v9';
+const CACHE_NAME = 'ot-shell-v14';
 const SHELL = [
   './',
   './index.html',
@@ -43,6 +43,8 @@ const SHELL = [
   './js/features/chrometranslator.js',
   './js/features/models.js',
   './js/features/piper.js',
+  './js/features/ort.js',
+  './js/features/paddle.js',
   './js/ui/enginerows.js',
   './js/features/llm-worker.js',
   './js/ui/offlineui.js',

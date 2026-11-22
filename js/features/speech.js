@@ -4,8 +4,8 @@ import { settings } from '../store.js';
 import { createProvider } from '../providers.js';
 import { langName } from '../state.js';
 import { sheet } from './permissions.js';
-import { voiceFor as piperVoice, offerFor, synthesize, downloadVoice, downloadSize, voiceLabel } from './piper.js';
-// Read-aloud with the engines chosen in Settings › Translation services › Read aloud:
+import { voiceFor as piperVoice, offerFor, synthesize, downloadVoice, downloadSize, voiceLabel, kokoroFor } from './piper.js';
+// Read-aloud with the engines chosen in Settings › Voice › Read aloud:
 //   system     the device's own voices (speechSynthesis)
 //   ondevice   Piper voices downloaded to this browser (piper.js)
 //   api        your AI service's /audio/speech
@@ -54,7 +54,7 @@ async function offerVoice(lang) {
   const name = voiceLabel(v.lang, langName);
   const ok = await sheet({
     iconName: 'volume', title: `Download a ${name} voice?`,
-    body: `To read ${name} aloud, download a natural-sounding voice (${downloadSize(v)}) from Hugging Face (huggingface.co/rhasspy/piper-voices). It runs privately in your browser and works without internet. You can delete it in Settings › Translation services › Read aloud.`,
+    body: `To read ${name} aloud, download a natural-sounding voice (${downloadSize(v)}) from Hugging Face (huggingface.co/rhasspy/piper-voices). It runs privately in your browser and works without internet. You can delete it in Settings › Voice › Read aloud.`,
     allowLabel: 'Download', cancelLabel: 'Not now',
   });
   if (!ok) { settings.set({ ttsDeclined: [...(s.ttsDeclined || []), v.lang] }); return false; }
@@ -140,8 +140,11 @@ async function pickEngine(text, lang) {
         // some engines load their voices late: with no list at all, let the browser try
         if (systemTts() && (systemVoice(lang) || !voices.length)) return { engine };
       } else if (engine === 'ondevice') {
-        if (piperVoice(lang) || await offerVoice(lang)) {
-          return { engine, blob: await recording(engine, text, lang, () => synthesize(text, lang)) };
+        // Kokoro (when downloaded and it speaks the language), else the language's Piper voice
+        const picked = settings.get().kokoroVoices || {};
+        const k = kokoroFor(lang, picked);
+        if (k || piperVoice(lang) || await offerVoice(lang)) {
+          return { engine, blob: await recording(k ? `kokoro:${k.voice}` : engine, text, lang, () => synthesize(text, lang, picked)) };
         }
       } else if (engine === 'api') {
         const e = ttsApiEntry();

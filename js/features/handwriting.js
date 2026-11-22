@@ -216,6 +216,7 @@ export function initHandwriting({ sendToText }) {
       const res = await translate(text, source, state.target);
       if (id !== tReq) return;
       lastResult = { text: res.text, target: state.target, input: text, source };
+      if (res.note) toast(res.note);   // e.g. Classic stood in for Advanced
       el.result.hidden = false;
       el.out.textContent = res.text;
       el.out.lang = state.target;

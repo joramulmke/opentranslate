@@ -16,10 +16,22 @@ const MAX_LOADED = 2;         // the engine's memory is capped at 2 GB; a pivot 
 const PIVOT = 'en';
 
 // Mozilla's model server answers HTTP 406 to every browser whose User-Agent contains "Chrome"
-// (Chrome, Edge, Brave, Opera, Chrome on Android). A page can't change that header, so in those
-// browsers downloads are switched off and the app says why.
-export const downloadsBlocked = /Chrome/.test(globalThis.navigator?.userAgent || '');
-export const BLOCKED_REASON = "This browser can't download offline languages: Mozilla's model server doesn't serve Chrome, Edge, Brave or other Chromium-based browsers. Open OpenTranslate in Safari or Firefox to use them, or translate with a LibreTranslate server.";
+// (Chrome, Edge, Brave, Opera, Chrome on Android), and a page can't change that header. Those browsers
+// get the same files from a byte-for-byte mirror on Hugging Face. The model list still comes from
+// Mozilla (it serves every browser) and decides which version to use; every downloaded file is checked
+// against the SHA-256 in that list, so the mirror can't hand out anything else. Only versions the
+// mirror has completely are offered.
+export const usesMirror = /Chrome/.test(globalThis.navigator?.userAgent || '');
+export const MIRROR = { repo: 'midudev/firefox-translations', page: 'https://huggingface.co/midudev/firefox-translations' };
+const MIRROR_TREE = `https://huggingface.co/api/models/${MIRROR.repo}/tree/main?recursive=true`;
+const MIRROR_FILES = `https://huggingface.co/${MIRROR.repo}/resolve/main/`;
+/** Where the model files come from in this browser, for every message that names the source. */
+export const MODEL_SOURCE = usesMirror
+  ? { name: 'Hugging Face', where: `Hugging Face (huggingface.co/${MIRROR.repo}, a mirror of Mozilla's models)` }
+  : { name: 'Mozilla', where: 'Mozilla (firefox-settings-attachments.cdn.mozilla.net)' };
+/** true only when this browser has no way to get the files (Chromium and the mirror is gone). */
+export let downloadsBlocked = false;
+export const BLOCKED_REASON = "This browser can't download offline languages: Mozilla's model server doesn't serve Chrome, Edge, Brave or other Chromium-based browsers, and the mirror on Hugging Face isn't available. Open OpenTranslate in Safari or Firefox to use them, or translate with a LibreTranslate server.";
 /** True when the on-device service can't do anything here (blocked browser, nothing downloaded). */
 export const offlineUnusable = () => downloadsBlocked && !installedLanguages().length;
 
@@ -97,18 +109,27 @@ function filterOk(expr) {
 const vkey = (v) => { const [a, b] = String(v).split('.'); return [/a/.test(v) ? 0 : 1, parseInt(a) || 0, parseInt(b) || 0, parseInt(String(v).split('a')[1] || 0)]; };
 const newer = (a, b) => { const [x, y] = [vkey(a), vkey(b)]; for (let i = 0; i < 4; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
 
-function buildRegistry(records) {
-  const best = new Map();
+/**
+ * mirror: Map of SHA-256 -> file path in the mirror (Chromium browsers), or null (files from Mozilla).
+ * With a mirror, a model version counts only if the mirror has every one of its files.
+ */
+function buildRegistry(records, mirror = null) {
+  const versions = new Map();   // "from|to@version" -> { from, to, version, files, complete }
   for (const r of records) {
-    if (!filterOk(r.filter_expression) || vkey(r.version)[1] > MAX_MAJOR) continue;
-    const k = pairKey(r.fromLang, r.toLang);
-    if (!best.has(k) || newer(r.version, best.get(k).version)) best.set(k, { from: r.fromLang, to: r.toLang, version: r.version, files: [] });
+    if (!filterOk(r.filter_expression) || vkey(r.version)[1] > MAX_MAJOR || !r.attachment) continue;
+    const id = `${pairKey(r.fromLang, r.toLang)}@${r.version}`;
+    const v = versions.get(id) || { from: r.fromLang, to: r.toLang, version: r.version, files: [], complete: true };
+    const path = mirror?.get(r.attachment.hash);
+    if (mirror && !path) v.complete = false;
+    v.files.push({ part: r.fileType, name: r.name, size: r.attachment.size, hash: r.attachment.hash,
+      url: path ? MIRROR_FILES + path.split('/').map(encodeURIComponent).join('/') : FILES + r.attachment.location });
+    versions.set(id, v);
   }
-  for (const r of records) {
-    const m = best.get(pairKey(r.fromLang, r.toLang));
-    if (m && m.version === r.version && r.attachment) {
-      m.files.push({ part: r.fileType, name: r.name, url: FILES + r.attachment.location, size: r.attachment.size, hash: r.attachment.hash });
-    }
+  const best = new Map();
+  for (const v of versions.values()) {
+    if (!v.complete) continue;
+    const k = pairKey(v.from, v.to);
+    if (!best.has(k) || newer(v.version, best.get(k).version)) best.set(k, { from: v.from, to: v.to, version: v.version, files: v.files });
   }
   const packs = new Map();
   for (const [k, m] of best) {
@@ -121,6 +142,42 @@ function buildRegistry(records) {
   return { models: best, packs };
 }
 
+/** JSON from the network (kept for offline use), or the copy from last time. */
+async function cachedJson(cache, url, load) {
+  try {
+    const data = await load();
+    cache.put(url, new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } })).catch(() => {});
+    return data;
+  } catch (e) {
+    const hit = await cache.match(url);
+    if (!hit) throw e;
+    return hit.json();
+  }
+}
+
+async function getJson(url) {
+  const res = await fetch(url, { credentials: 'omit' });
+  if (!res.ok) { const e = new Error(`HTTP ${res.status}`); e.status = res.status; throw e; }
+  return { data: await res.json(), next: res.headers.get('link')?.match(/<([^>]+)>;\s*rel="next"/)?.[1] };
+}
+
+/** The mirror's files as SHA-256 -> path (Hugging Face lists each file's SHA-256). */
+async function loadMirror(cache) {
+  let list;
+  try {
+    list = await cachedJson(cache, MIRROR_TREE, async () => {
+      const all = []; let url = MIRROR_TREE;
+      while (url) { const { data, next } = await getJson(url); all.push(...data); url = next; }
+      return all;
+    });
+  } catch (e) {
+    // the mirror is gone (not just offline): say so instead of offering downloads that can't work
+    if (e?.status === 401 || e?.status === 404) { downloadsBlocked = true; emit(); throw new ProviderError('BROWSER_BLOCKED', BLOCKED_REASON, e); }
+    throw new ProviderError('NETWORK', "Can't load the list of offline languages. Connect to the internet once.", e);
+  }
+  return new Map(list.filter((f) => f.type === 'file' && f.lfs?.oid).map((f) => [f.lfs.oid, f.path]));
+}
+
 /** The list of downloadable languages (needs the network once; then cached). */
 export function loadRegistry() {
   if (registryCache) return Promise.resolve(registryCache);
@@ -128,16 +185,12 @@ export function loadRegistry() {
     const cache = await caches.open(CACHE);
     let data;
     try {
-      const res = await fetch(RECORDS, { credentials: 'omit' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      data = await res.json();
-      cache.put(RECORDS, new Response(JSON.stringify(data), { headers: { 'content-type': 'application/json' } })).catch(() => {});
+      data = await cachedJson(cache, RECORDS, async () => (await getJson(RECORDS)).data);
     } catch (e) {
-      const hit = await cache.match(RECORDS);
-      if (!hit) throw new ProviderError('NETWORK', "Can't load the list of offline languages. Connect to the internet once.", e);
-      data = await hit.json();
+      throw new ProviderError('NETWORK', "Can't load the list of offline languages. Connect to the internet once.", e);
     }
-    registryCache = buildRegistry(data.data || []);
+    const mirror = usesMirror ? await loadMirror(cache) : null;
+    registryCache = buildRegistry(data.data || [], mirror);
     emit();
     return registryCache;
   })();
@@ -415,7 +468,7 @@ registerProvider({
           await loadRegistry().catch(() => {});
           const size = missing.reduce((a, l) => a + (packSize(l) || 0), 0);
           throw new ProviderError('NEEDS_DOWNLOAD',
-            `${missing.map(nameOf).join(' and ')} ${missing.length > 1 ? "aren't" : "isn't"} downloaded to this device yet. ${missing.length > 1 ? 'They come' : 'It comes'} from Mozilla (firefox-settings-attachments.cdn.mozilla.net).`,
+            `${missing.map(nameOf).join(' and ')} ${missing.length > 1 ? "aren't" : "isn't"} downloaded to this device yet. ${missing.length > 1 ? 'They come' : 'It comes'} from ${MODEL_SOURCE.where}.`,
             { langs: missing, size });
         }
         const models = route(source, target);

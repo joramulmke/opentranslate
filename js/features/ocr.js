@@ -2,6 +2,31 @@
 // Language files come from jsDelivr (npm package @tesseract.js-data/<lang>, from the Tesseract project's
 // trained data) and Tesseract.js keeps them in IndexedDB ("keyval-store"), so each is downloaded once.
 import { TESSERACT_LANGS } from '../languages.js';
+import { settings } from '../store.js';
+import { sheet } from './permissions.js';
+import { PADDLE, paddleState, downloadPaddle, recognizePaddle, paddleReads } from './paddle.js';
+import { ORT_MB } from './ort.js';
+import { state } from '../state.js';
+
+/** Camera text engines (Settings › Text recognition › Camera text): the chosen one first, Tesseract last. */
+export const OCR_ENGINES = ['tesseract', 'paddle', 'vision'];
+export const ocrPref = () => (OCR_ENGINES.includes(settings.get().ocrEngine) ? settings.get().ocrEngine : 'tesseract');
+
+/** PP-OCRv6 chosen but not downloaded: ask once (like the other on-device models). true = ready to use. */
+export async function paddleAllowed() {
+  if (paddleState() === 'ready') return true;
+  const s = settings.get();
+  if (s.paddleOk === false) return false;
+  const ok = await sheet({
+    iconName: 'camera', title: 'Download PP-OCRv6?',
+    body: `Better text recognition for photos (${PADDLE.scripts}): download PP-OCRv6 (about ${PADDLE.sizeMB} MB, plus ${ORT_MB} MB for its engine unless the offline voices already have it), once, from Hugging Face (huggingface.co/PaddlePaddle). It runs privately in your browser. You can delete it in Settings › Text recognition.`,
+    allowLabel: 'Download', cancelLabel: 'Use Tesseract',
+  });
+  settings.set({ paddleOk: ok });
+  if (!ok) return false;
+  await downloadPaddle();
+  return true;
+}
 
 export const OCR_SOURCE = { host: 'cdn.jsdelivr.net/npm/@tesseract.js-data', page: 'https://github.com/naptha/tessdata', licence: 'Apache-2.0' };
 
@@ -48,7 +73,65 @@ const progressHandlers = new Set();
  * @param {{ lang?: string, psm?: '3'|'6'|'7'|'8'|'10', onProgress?: (p:{status:string,progress:number})=>void }} opts
  * @returns {Promise<{ text: string, lines: Array<{text:string,bbox:{x0:number,y0:number,x1:number,y1:number},confidence:number}>, words: any[] }>}
  */
-export async function recognize(image, { lang = 'eng', psm = '3', onProgress = () => {} } = {}) {
+export async function recognize(image, opts = {}) {
+  // AI vision only when chosen: the photo goes to the AI service, so it's never used without asking
+  if (ocrPref() === 'vision') {
+    if (typeof state.advanced?.readPhoto === 'function') {
+      try {
+        opts.onProgress?.({ status: 'vision', progress: 0 });
+        return await recognizeVision(image, opts.iso);
+      } catch (e) {
+        opts.onProgress?.({ status: 'fallback-vision', progress: 0 });
+        const res = await recognizeLocal(image, opts);
+        return { ...res, note: `AI vision didn't work (${e.message || e}), so it was read on this device instead.` };
+      }
+    }
+    const res = await recognizeLocal(image, opts);
+    return { ...res, note: 'AI vision needs an AI model that can read images (Settings › Translation › Advanced), so this was read on the device.' };
+  }
+  return recognizeLocal(image, opts);
+}
+
+/** The photo, at most 1600 px on its longer side, as JPEG (smaller upload, same readability). */
+function photoUrl(image) {
+  const w = image.width || image.naturalWidth, h = image.height || image.naturalHeight;
+  const k = Math.min(1, 1600 / Math.max(w, h));
+  if (k === 1 && typeof image.toDataURL === 'function') return image.toDataURL('image/jpeg', 0.9);
+  const c = document.createElement('canvas');
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext('2d').drawImage(image, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.9);
+}
+
+/** AI vision in the shape Tesseract returns. Without a usable box for every line, the text is one block over the whole photo. */
+async function recognizeVision(image, iso) {
+  const w = image.width || image.naturalWidth, h = image.height || image.naturalHeight;
+  const lines = await state.advanced.readPhoto(photoUrl(image), iso);
+  const boxed = lines.length && lines.every((l) => l.box);
+  const out = boxed
+    ? lines.map((l) => ({ text: l.text, confidence: 100,
+      bbox: { x0: l.box[0] / 1000 * w, y0: l.box[1] / 1000 * h, x1: l.box[2] / 1000 * w, y1: l.box[3] / 1000 * h } }))
+    : lines.length ? [{ text: lines.map((l) => l.text).join('\n'), confidence: 100, bbox: { x0: 0, y0: 0, x1: w, y1: h } }] : [];
+  return { text: out.map((l) => l.text).join('\n'), confidence: 100, lines: out, words: [] };
+}
+
+async function recognizeLocal(image, opts) {
+  // PP-OCRv6 has no Cyrillic, Arabic, Indic, Thai or Korean script: Tesseract reads those
+  // (also when AI vision didn't work and PP-OCRv6 is already downloaded)
+  const paddle = ocrPref() === 'paddle' || (ocrPref() === 'vision' && paddleState() === 'ready');
+  if (paddle && paddleReads(opts.iso)) {
+    try {
+      if (await paddleAllowed()) return await recognizePaddle(image, { onProgress: opts.onProgress });
+    } catch (e) {
+      // PP-OCRv6 failed (e.g. download interrupted): Tesseract still reads the photo
+      opts.onProgress?.({ status: 'fallback', progress: 0, note: e.message });
+    }
+  }
+  return recognizeTesseract(image, opts);
+}
+
+/** Tesseract only (also Basic handwriting). */
+export async function recognizeTesseract(image, { lang = 'eng', psm = '3', onProgress = () => {} } = {}) {
   const worker = await getWorker(lang, onProgress);
   try {
     await worker.setParameters({ tessedit_pageseg_mode: psm, preserve_interword_spaces: '1' });
@@ -69,6 +152,10 @@ export function describeOcrStatus(m) {
   if (/loading tesseract core|initializing tesseract|initializing api/.test(m.status)) return 'Starting text recognition…';
   if (/loading language traineddata/.test(m.status)) return `Downloading language file from jsDelivr (cdn.jsdelivr.net)… ${pct}%`;
   if (/recognizing text/.test(m.status)) return `Reading text… ${pct}%`;
+  if (m.status === 'starting') return 'Starting PP-OCRv6…';
+  if (m.status === 'fallback') return 'PP-OCRv6 didn’t work, reading with Tesseract…';
+  if (m.status === 'vision') return 'Reading with AI vision…';
+  if (m.status === 'fallback-vision') return 'AI vision didn’t work, reading on this device…';
   return 'Preparing…';
 }
 
