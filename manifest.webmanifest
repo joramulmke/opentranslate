@@ -42,6 +42,36 @@
       "purpose": "maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "icons/screenshots/phone-text.png",
+      "sizes": "824x1830",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Translate text, with read aloud and saved phrases"
+    },
+    {
+      "src": "icons/screenshots/phone-conversation.png",
+      "sizes": "824x1830",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Conversation: two people, two languages, one phone"
+    },
+    {
+      "src": "icons/screenshots/phone-handwriting.png",
+      "sizes": "824x1830",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Handwriting: draw what you can't type"
+    },
+    {
+      "src": "icons/screenshots/desktop-text.png",
+      "sizes": "1280x800",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "OpenTranslate on a computer"
+    }
+  ],
   "shortcuts": [
     {
       "name": "Camera",
