@@ -104,7 +104,7 @@ export const settings = {
     // older versions saved the on-device service as plain "On this device"
     const off = raw.entries.find((e) => e.id === OFFLINE_ENTRY.id);
     if (off && off.label === 'On this device') { off.label = OFFLINE_ENTRY.label; write(KEY.settings, raw); }
-    // the offline demo: left out when change-me.md says demo_mode = false, back (last) when it's on again
+    // the offline demo: left out when change-me.txt says demo_mode = false, back (last) when it's on again
     if (!demoEnabled()) raw.entries = raw.entries.filter((e) => e.type !== 'mock');
     else if (!raw.entries.some((e) => e.id === MOCK_ENTRY.id)) { raw.entries.push({ ...MOCK_ENTRY }); write(KEY.settings, raw); }
     return { ...DEFAULT_SETTINGS, ...raw };

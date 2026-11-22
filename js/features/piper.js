@@ -8,7 +8,8 @@ const formatMB = (bytes) => `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 
 const CACHE = 'ot-piper-v1';
 const HF = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/';
-import { ORT_FILES, loadOrt, cachedFile } from './ort.js';
+import { ORT_FILES, loadOrt, cachedFile, haveFile } from './ort.js';
+import { bgDownload, bgResume, langLabel } from './bgfetch.js';
 const PHONEMIZE = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/';
 const ENGINE = [
   ...ORT_FILES,
@@ -184,9 +185,20 @@ export function downloadKokoro({ picked = {}, onProgress } = {}) {
     for (const u of ENGINE) if (!(await c.match(u))) missing.push(u);
     const voices = Object.keys(KOKORO_LANGS).map((l) => kokoroVoiceUrl(kokoroVoice(l, picked)));
     const total = (KOKORO_INFO.sizeMB + (missing.length ? ENGINE_MB : 0)) * 1e6;
+    const all = [...missing, KOKORO_TOKENS, ...voices, KOKORO_MODEL];
+    const bg = await bgDownload('kokoro', {
+      title: 'Offline voices (Kokoro)', doneTitle: 'Offline voices (Kokoro) are ready',
+      failTitle: "Offline voices didn't finish downloading. Open OpenTranslate to try again.",
+      files: await stillMissing(all), estimate: total,
+    });
+    if (bg) {
+      bg.onProgress = (p) => { kokoroJob.progress = p; onProgress?.(p); emit(); };
+      await bg.promise;
+      return;
+    }
     let done = 0;
     const tick = (n) => { kokoroJob.progress = Math.min(0.99, (done + n) / total); onProgress?.(kokoroJob.progress); emit(); };
-    for (const u of [...missing, KOKORO_TOKENS, ...voices, KOKORO_MODEL]) { const r = await cachedFetch(u, tick); done += await sizeOf(r); }
+    for (const u of all) { const r = await cachedFetch(u, tick); done += await sizeOf(r); }
   })().finally(async () => { kokoroJob = null; await refreshVoices(); });
   emit();
   return kokoroJob.promise;
@@ -222,6 +234,28 @@ export function offerFor(lang) {
   return VOICES.find((v) => v.lang === want) || VOICES.find((v) => v.lang === want.split('-')[0]) || null;
 }
 
+/** The files of a list that still have to be downloaded, for a background download. */
+async function stillMissing(urls) {
+  const out = [];
+  for (const url of urls) if (!(await haveFile(url, CACHE))) out.push({ url, cache: CACHE });
+  return out;
+}
+
+// background downloads from an earlier visit: still running (show the progress) or finished meanwhile
+bgResume('voice:', (lang, bg) => {
+  if (jobs.has(lang)) return;
+  jobs.set(lang, bg.progress());
+  bg.onProgress = (p) => { jobs.set(lang, p); emit(); };
+  bg.promise.catch(() => {}).finally(async () => { jobs.delete(lang); await refreshVoices(); });
+  emit();
+});
+bgResume('kokoro', (_, bg) => {
+  if (kokoroJob) return;
+  kokoroJob = { progress: bg.progress(), promise: bg.promise.catch(() => {}).finally(async () => { kokoroJob = null; await refreshVoices(); }) };
+  bg.onProgress = (p) => { if (kokoroJob) kokoroJob.progress = p; emit(); };
+  emit();
+});
+
 /** Fetch a file into the cache (with progress), or return the cached copy. */
 const cachedFetch = (url, onBytes) => cachedFile(url, CACHE, onBytes);
 
@@ -236,6 +270,17 @@ export async function downloadVoice(lang, { onProgress } = {}) {
     const missing = [];
     for (const u of ENGINE) if (!(await c.match(u))) missing.push(u);
     const total = v.sizeMB * 1e6 + (missing.length ? ENGINE_MB * 1e6 : 0);
+    const name = langLabel(lang);
+    const bg = await bgDownload(`voice:${lang}`, {
+      title: `Offline voice for ${name}`, doneTitle: `The ${name} voice is ready`,
+      failTitle: `The ${name} voice didn't finish downloading. Open OpenTranslate to try again.`,
+      files: await stillMissing([...missing, HF + encodeURI(v.file) + '.json', HF + encodeURI(v.file)]), estimate: total,
+    });
+    if (bg) {
+      bg.onProgress = (p) => { jobs.set(lang, p); onProgress?.(p); emit(); };
+      await bg.promise;
+      return;
+    }
     let done = 0;
     const tick = (n) => { const p = Math.min(0.99, (done + n) / total); jobs.set(lang, p); onProgress?.(p); emit(); };
     for (const u of missing) { const r = await cachedFetch(u, tick); done += await sizeOf(r); }

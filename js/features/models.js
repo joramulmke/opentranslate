@@ -2,6 +2,7 @@
 // one place that loads them, knows whether they are downloaded, how big they are, where they come
 // from, and can delete them. transformers.js keeps the files in Cache Storage ("transformers-cache").
 import { settings } from '../store.js';
+import { bgDownload, bgResume } from './bgfetch.js';
 
 export const TRANSFORMERS = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
 const CACHE = 'transformers-cache';
@@ -141,11 +142,68 @@ export function getPipeline(key, { onStatus, onProgress } = {}) {
   return pipes.get(key);
 }
 
+// transformers.js file names: <part><suffix>.onnx in onnx/, the suffix from the precision (dtype)
+const SUFFIX = { fp32: '', fp16: '_fp16', int8: '_int8', uint8: '_uint8', q8: '_quantized', q4: '_q4', q4f16: '_q4f16', bnb4: '_bnb4' };
+const PARTS = ['encoder_model', 'decoder_model_merged'];
+
+/**
+ * The files transformers.js will ask for, as it names and caches them (Hugging Face URL as the key):
+ * the JSON files next to the model (configs, tokenizer) and both model halves in the chosen precision.
+ * Read from the model's file list, so nothing has to start; null when the list can't be loaded.
+ */
+async function modelFiles(key) {
+  const m = HF_MODELS[key];
+  try {
+    const res = await fetch(`https://huggingface.co/api/models/${m.repo}/tree/main?recursive=true`, { credentials: 'omit' });
+    if (!res.ok) return null;
+    const tree = await res.json();
+    const dtype = (part) => (typeof m.options?.dtype === 'string' ? m.options.dtype : m.options?.dtype?.[part]) || (m.options?.device === 'webgpu' ? 'fp32' : 'q8');
+    const wanted = (path) => (!path.includes('/') && path.endsWith('.json'))
+      || PARTS.some((part) => path === `onnx/${part}${SUFFIX[dtype(part)]}.onnx` || path === `onnx/${part}${SUFFIX[dtype(part)]}.onnx_data`);
+    const files = tree.filter((f) => f.type === 'file' && wanted(f.path))
+      .map((f) => ({ url: `https://huggingface.co/${m.repo}/resolve/main/${f.path}`, cache: CACHE, size: f.lfs?.size || f.size }));
+    return files.filter((f) => /\.onnx$/.test(f.url)).length === PARTS.length ? files : null;
+  } catch { return null; }
+}
+
 /** Download ahead of time (Settings). Counts as a yes to the "download?" question. */
 export async function downloadModel(key, { onProgress } = {}) {
-  settings.set({ [HF_MODELS[key].okKey]: true });
+  const m = HF_MODELS[key];
+  settings.set({ [m.okKey]: true });
+  if (present.has(key) || jobs.has(key) || pipes.has(key) || !modelRunsHere(key)) { await getPipeline(key, { onProgress }); return; }
+  // keeps going when the app is closed, where the browser can (Chrome on Android); it isn't loaded yet then
+  const job = { progress: 0 };
+  jobs.set(key, job); emit();
+  try {
+    const files = await modelFiles(key);
+    const c = files && await caches.open(CACHE);
+    const todo = [];
+    for (const f of files || []) if (!(await c.match(f.url))) todo.push(f);
+    const bg = todo.length ? await bgDownload(`model:${key}`, {
+      title: `${m.title} (${m.what})`, doneTitle: `${m.title} is ready to use offline`,
+      failTitle: `${m.title} didn't finish downloading. Open OpenTranslate to try again.`, files: todo, estimate: m.sizeMB * 1e6,
+    }) : null;
+    if (bg) {
+      bg.onProgress = (p) => { job.progress = p; onProgress?.(p); emit('progress'); };
+      await bg.promise;
+      await refreshModels();
+      return;
+    }
+  } finally {
+    jobs.delete(key); emit();
+  }
   await getPipeline(key, { onProgress });
 }
+
+// background downloads from an earlier visit: still running (show the progress) or finished meanwhile
+bgResume('model:', (key, bg) => {
+  if (!HF_MODELS[key] || jobs.has(key)) return;
+  const job = { progress: bg.progress() };
+  bg.onProgress = (p) => { job.progress = p; emit('progress'); };
+  jobs.set(key, job);
+  bg.promise.catch(() => {}).finally(async () => { if (jobs.get(key) === job) jobs.delete(key); await refreshModels(); });
+  emit();
+});
 
 export async function deleteModel(key) {
   const p = pipes.get(key);

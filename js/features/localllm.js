@@ -5,6 +5,7 @@
 //   - Gemini Nano, built into Chrome (Prompt API): Chrome downloads and manages the model itself.
 import { registerProvider, ProviderError, OpenAICompatibleProvider } from '../providers.js';
 import { LLM_CATALOG, LLM_CURATED, prettyName } from './llmcatalog.js';
+import { bgDownload, bgResume } from './bgfetch.js';
 
 export const NANO = 'gemini-nano';
 export const NANO_INTERNALS = 'chrome://on-device-internals';
@@ -273,6 +274,21 @@ export function downloadModel(key, { onProgress } = {}) {
       return;
     }
     const t = await target(spec);
+    // keeps going when the app is closed, where the browser can (Chrome on Android): only the download,
+    // the model is put on the graphics chip at the first translation
+    const files = await call('plan', t).catch(() => null);
+    const bg = files?.length ? await bgDownload(`llm:${key}`, {
+      title: `${spec.title} (on-device AI)`, doneTitle: `${spec.title} is ready to use offline`,
+      failTitle: `${spec.title} didn't finish downloading. Open OpenTranslate to try again.`,
+      files: files.map((f) => ({ ...f, cache: 'webllm/model' })), estimate: spec.sizeMB * 1e6, data: { key },
+    }) : null;
+    if (bg) {
+      job.cancel = bg.cancel;
+      bg.onProgress = (p) => { job.progress = p; onProgress?.(p); emit('progress'); };
+      await bg.promise;
+      mark(key, true);
+      return;
+    }
     await call('load', t, (r) => {
       // WebLLM reports fetching first, then loading onto the GPU
       job.phase = /fetch/i.test(r.text || '') ? 'download' : 'load';
@@ -291,8 +307,19 @@ export function downloadModel(key, { onProgress } = {}) {
 /** Stop a running download. What was already fetched stays cached, so it resumes later. */
 export function cancelModelDownload() {
   if (![...jobs.keys()].some((k) => k !== NANO)) return;
-  stopWorker(new ProviderError('SERVER', 'Download cancelled.'));
+  for (const j of jobs.values()) j.cancel?.();          // background downloads
+  if ([...jobs].some(([k, j]) => k !== NANO && !j.cancel)) stopWorker(new ProviderError('SERVER', 'Download cancelled.'));
 }
+
+// background downloads from an earlier visit: still running (show the progress) or finished meanwhile
+bgResume('llm:', (key, bg) => {
+  if (jobs.has(key)) return;
+  const job = { progress: bg.progress(), phase: 'download', cancel: bg.cancel };
+  bg.onProgress = (p) => { job.progress = p; emit('progress'); };
+  job.promise = bg.promise.then(() => mark(key, true)).catch(() => {}).finally(() => { if (jobs.get(key) === job) jobs.delete(key); emit(); });
+  jobs.set(key, job);
+  emit();
+});
 
 export async function deleteModel(key) {
   if (key === NANO) return;   // Chrome manages Gemini Nano (chrome://on-device-internals)

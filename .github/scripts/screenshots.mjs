@@ -15,9 +15,9 @@ const PHRASE = 'Where is the bathroom?';
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css',
   '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml',
-  '.png': 'image/png', '.wasm': 'application/wasm', '.md': 'text/markdown' };
+  '.png': 'image/png', '.wasm': 'application/wasm', '.md': 'text/markdown', '.txt': 'text/plain' };
 
-// a tiny static server; change-me.md gets the demo switched on (only here, the file isn't changed)
+// a tiny static server; change-me.txt gets the demo switched on (only here, the file isn't changed)
 const server = http.createServer(async (req, res) => {
   try {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
@@ -25,7 +25,7 @@ const server = http.createServer(async (req, res) => {
     const file = path.join(ROOT, p);
     if (!file.startsWith(ROOT)) throw new Error('outside');
     let body = await fs.readFile(file);
-    if (p === '/change-me.md') body = String(body).replace(/^demo_mode\s*=.*$/m, 'demo_mode = true');
+    if (p === '/change-me.txt') body = String(body).replace(/^demo_mode\s*=.*$/m, 'demo_mode = true');
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(p)] || 'application/octet-stream' });
     res.end(body);
   } catch {

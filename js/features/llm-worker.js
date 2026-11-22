@@ -28,8 +28,34 @@ async function ensure(model, id, record) {
   }
 }
 
+/**
+ * For a download in the background: the small files (settings, tokenizer, model library, list of weights)
+ * go straight into WebLLM's caches, under the names WebLLM looks for; the answer lists the weight files
+ * still missing [{ url, size }]. null when the model is packaged in a way this doesn't cover.
+ */
+async function plan(model, record) {
+  const rec = appConfig(record).model_list.find((m) => m.model_id === model);
+  if (!rec || rec.model_manifest !== undefined || !/^https:\/\//.test(rec.model_lib || '')) return null;
+  // the same address WebLLM uses (cleanModelUrl): …/resolve/main/ unless the URL names a revision
+  let base = rec.model.endsWith('/') ? rec.model : `${rec.model}/`;
+  if (!/.+\/resolve\/.+\//.test(base)) base += 'resolve/main/';
+  base = new URL(base).href;
+  const put = async (scope, url) => {
+    const c = await caches.open(scope);
+    if (!(await c.match(new Request(url)))) await c.add(new Request(url));
+    return (await c.match(new Request(url))).clone();
+  };
+  const config = await (await put('webllm/config', new URL('mlc-chat-config.json', base).href)).json();
+  await put('webllm/model', new URL(config.tokenizer_files?.includes('tokenizer.json') ? 'tokenizer.json' : 'tokenizer.model', base).href);
+  await put('webllm/wasm', rec.model_lib);
+  const list = await (await put('webllm/model', new URL('tensor-cache.json', base).href)).json();
+  const have = new Set((await (await caches.open('webllm/model')).keys()).map((r) => r.url));
+  return list.records.map((r) => ({ url: new URL(r.dataPath, base).href, size: r.nbytes })).filter((f) => !have.has(f.url));
+}
+
 async function run({ id, op, model, record, messages, maxTokens, noThinking }) {
   if (op === 'has') return webllm.hasModelInCache(model, appConfig(record));
+  if (op === 'plan') return plan(model, record);
   if (op === 'delete') {
     if (loaded === model) { await engine.unload(); loaded = null; }
     await webllm.deleteModelAllInfoInCache(model, appConfig(record));

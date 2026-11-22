@@ -1,13 +1,13 @@
 // Service worker: the app always opens from its cache (fast, works offline). A new version is downloaded
 // whole, in the background, into its own cache, and only takes over at the next start (js/app.js), so the
 // page never runs with a mix of old and new files. API responses and CDN assets are never cached here.
-const CACHE_NAME = 'ot-shell-v22';
+const CACHE_NAME = 'ot-shell-v23';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './manifest.webmanifest',
-  './change-me.md',
+  './change-me.txt',
   './icons/icon.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -53,6 +53,7 @@ const SHELL = [
   './js/ui/settingssearch.js',
   './js/ui/tags.js',
   './js/share.js',
+  './js/features/bgfetch.js',
   './js/features/llm-worker.js',
   './js/ui/offlineui.js',
   './vendor/bergamot/translator-worker.js',
@@ -97,6 +98,58 @@ async function receiveShare(req) {
   } catch { /* nothing readable: just open the app */ }
   return Response.redirect(new URL(photo ? './?share=photo#text' : './?share=text#text', scope).href, 303);
 }
+
+// Downloads that went on in the background (js/features/bgfetch.js): put each file into the cache its
+// feature reads from, mark the job done (or failed) for the app, and update the download notification.
+const BG_META = 'ot-bg-v1';
+const bgMetaUrl = (id) => new URL(`__bg/${encodeURIComponent(id)}`, self.registration.scope).href;
+const bgChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ot-bg') : null;
+async function bgMeta(id) {
+  const r = await (await caches.open(BG_META)).match(bgMetaUrl(id));
+  return r ? r.json() : null;
+}
+async function bgMark(meta, state) {
+  meta.state = state;
+  await (await caches.open(BG_META)).put(bgMetaUrl(meta.id), new Response(JSON.stringify(meta), { headers: { 'content-type': 'application/json' } }));
+  bgChannel?.postMessage({ bg: meta.id, state });
+}
+const sha256 = async (buf) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map((b) => b.toString(16).padStart(2, '0')).join('');
+
+async function bgStore(reg) {
+  const meta = await bgMeta(reg.id);
+  if (!meta) return null;
+  const files = new Map(meta.files.map((f) => [f.url, f]));
+  let ok = reg.result === 'success';
+  // files that did arrive are kept even if others failed: the next try only fetches what's missing
+  for (const rec of await reg.matchAll()) {
+    const f = files.get(rec.request.url);
+    try {
+      const res = await rec.responseReady;
+      if (!f || !res.ok) { ok = false; continue; }
+      const cache = await caches.open(f.cache);
+      if (f.hash) {
+        const buf = await res.arrayBuffer();
+        if ((await sha256(buf)) !== f.hash) { ok = false; continue; }
+        await cache.put(f.url, new Response(buf, { headers: { 'content-type': 'application/octet-stream', 'content-length': String(buf.byteLength) } }));
+      } else {
+        await cache.put(f.url, res);
+      }
+    } catch { ok = false; }
+  }
+  await bgMark(meta, ok ? 'done' : 'failed');
+  return meta;
+}
+const bgFinished = (e) => e.waitUntil(bgStore(e.registration).then((meta) => meta
+  && e.updateUI({ title: meta.state === 'done' ? meta.doneTitle : meta.failTitle }).catch(() => {})));
+self.addEventListener('backgroundfetchsuccess', bgFinished);
+self.addEventListener('backgroundfetchfail', bgFinished);
+self.addEventListener('backgroundfetchabort', (e) => e.waitUntil(bgMeta(e.registration.id).then((meta) => meta && bgMark(meta, 'cancelled'))));
+// tapping the notification opens the app (or brings it to the front)
+self.addEventListener('backgroundfetchclick', (e) => e.waitUntil((async () => {
+  const open = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  if (open.length) return open[0].focus();
+  return self.clients.openWindow(self.registration.scope);
+})()));
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;

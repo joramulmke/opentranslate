@@ -33,6 +33,18 @@ export async function cachedFile(url, cacheName, onBytes) {
   return copy;
 }
 
+/** Is the file in cacheName already (copied over from another feature's cache if that has it)? */
+export async function haveFile(url, cacheName) {
+  const c = await caches.open(cacheName);
+  if (await c.match(url)) return true;
+  for (const other of CACHES) {
+    if (other === cacheName) continue;
+    const res = await (await caches.open(other)).match(url);
+    if (res) { await c.put(url, res); return true; }
+  }
+  return false;
+}
+
 let ort = null;
 /** The runtime (loaded once per page), from cached files so it also starts without internet. */
 export function loadOrt(cacheName) {

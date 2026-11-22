@@ -206,7 +206,7 @@ function boot() {
   initModeMenu({ openSettings });
   initSetupBadge();
   initSiteFooter();
-  // change-me.md changed since the last start (e.g. demo_mode): rebuild the service list
+  // change-me.txt changed since the last start (e.g. demo_mode): rebuild the service list
   loadSiteConfig().then((changed) => { if (changed) { settings.set({}); initProvider(); } });
   initMenu('more-menu', {
     history: () => openHistory('history'),

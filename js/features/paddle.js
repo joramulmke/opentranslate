@@ -2,7 +2,8 @@
 // with ONNX Runtime: one finds the text lines (detection), one reads each line (recognition: Latin-script
 // languages, Chinese, Japanese and Greek in one model; no Cyrillic, Arabic, Indic, Thai or Korean script). Downloaded once from Hugging Face (huggingface.co/PaddlePaddle) and kept in Cache
 // Storage ("ot-paddle-v1"). Same result shape as Tesseract (ocr.js), so camera and handwriting can use either.
-import { ORT_FILES, ORT_MB, loadOrt, cachedFile } from './ort.js';
+import { ORT_FILES, ORT_MB, loadOrt, cachedFile, haveFile } from './ort.js';
+import { bgDownload, bgResume } from './bgfetch.js';
 
 const CACHE = 'ot-paddle-v1';
 const HF = 'https://huggingface.co/PaddlePaddle/';
@@ -61,6 +62,17 @@ export function downloadPaddle({ onProgress } = {}) {
   job = { progress: 0 };
   job.promise = (async () => {
     const total = (PADDLE.sizeMB + ORT_MB) * 1e6;
+    const files = [];
+    for (const url of [...ORT_FILES, ...MODEL_FILES]) if (!(await haveFile(url, CACHE))) files.push({ url, cache: CACHE });
+    const bg = await bgDownload('paddle', {
+      title: 'Text recognition (PP-OCRv6)', doneTitle: 'Text recognition (PP-OCRv6) is ready',
+      failTitle: "Text recognition didn't finish downloading. Open OpenTranslate to try again.", files, estimate: total,
+    });
+    if (bg) {
+      bg.onProgress = (p) => { job.progress = p; onProgress?.(p); emit('progress'); };
+      await bg.promise;
+      return;
+    }
     let done = 0;
     for (const u of [...ORT_FILES, ...MODEL_FILES]) {
       const r = await cachedFile(u, CACHE, (n) => { job.progress = Math.min(0.99, (done + n) / total); onProgress?.(job.progress); emit('progress'); });
@@ -70,6 +82,14 @@ export function downloadPaddle({ onProgress } = {}) {
   emit();
   return job.promise;
 }
+
+// a background download from an earlier visit: still running (show the progress) or finished meanwhile
+bgResume('paddle', (_, bg) => {
+  if (job) return;
+  job = { progress: bg.progress(), promise: bg.promise.catch(() => {}).finally(async () => { job = null; await refreshPaddle(); }) };
+  bg.onProgress = (p) => { if (job) job.progress = p; emit('progress'); };
+  emit();
+});
 
 export async function deletePaddle() {
   sessions = null;

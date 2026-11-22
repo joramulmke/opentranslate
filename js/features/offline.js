@@ -4,6 +4,7 @@
 // Models are stored in Cache Storage and work without a network once downloaded.
 import { registerProvider, ProviderError } from '../providers.js';
 import { STATIC_LANGUAGES } from '../languages.js';
+import { bgDownload, bgResume, langLabel } from './bgfetch.js';
 
 const RECORDS = 'https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/translations-models/records';
 const FILES = 'https://firefox-settings-attachments.cdn.mozilla.net/';
@@ -266,19 +267,34 @@ export async function downloadPack(lang) {
       const models = pack.pairs.map((k) => reg.models.get(k));
       d.total = pack.size;
       const cache = await caches.open(CACHE);
-      let tick = 0;
+      const todo = [];
       for (const m of models) {
         for (const f of m.files) {
-          if (await cache.match(f.url)) { d.loaded += f.size; continue; }
+          if (await cache.match(f.url)) d.loaded += f.size; else todo.push(f);
+        }
+      }
+      // keeps going when the app is closed, where the browser can (Chrome on Android)
+      const name = langLabel(lang);
+      const bg = await bgDownload(`pack:${lang}`, {
+        title: `${name} for offline translation`, doneTitle: `${name} is ready to use offline`,
+        failTitle: `${name} didn't finish downloading. Open OpenTranslate to try again.`,
+        files: todo.map((f) => ({ url: f.url, cache: CACHE, hash: f.hash, size: f.size })), data: { models },
+      });
+      if (bg) {
+        const before = d.loaded;
+        d.abort = bg.cancel;
+        bg.onProgress = () => { d.loaded = before + bg.loaded; emit(); };
+        await bg.promise;
+      } else {
+        let tick = 0;
+        for (const f of todo) {
           await fetchFile(cache, f, ctrl.signal, (n) => {
             d.loaded += n;
             if (++tick % 20 === 0) emit();
           });
         }
       }
-      const ix = readIndex();
-      for (const m of models) ix.pairs[pairKey(m.from, m.to)] = m;
-      writeIndex(ix);
+      packInstalled(models);
     } catch (e) {
       if (e?.name === 'AbortError') throw new ProviderError('NETWORK', 'Download cancelled.');
       if (e instanceof ProviderError) throw e;
@@ -292,6 +308,23 @@ export async function downloadPack(lang) {
 }
 
 export function cancelDownload(lang) { downloads.get(lang)?.abort(); }
+
+function packInstalled(models) {
+  const ix = readIndex();
+  for (const m of models) ix.pairs[pairKey(m.from, m.to)] = m;
+  writeIndex(ix);
+}
+
+// background downloads from an earlier visit: still running (show the progress) or finished meanwhile
+bgResume('pack:', (lang, bg) => {
+  if (downloads.has(lang)) return;
+  const d = { loaded: bg.loaded, total: bg.total, abort: bg.cancel };
+  bg.onProgress = () => { d.loaded = bg.loaded; emit(); };
+  d.promise = bg.promise.then((data) => { if (data?.models) packInstalled(data.models); })
+    .catch(() => {}).finally(() => { downloads.delete(lang); emit(); });
+  downloads.set(lang, d);
+  emit();
+});
 
 /** Remove a language pack from this device. */
 export async function deletePack(lang) {

@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#faf8ff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
-  <!-- Full addresses: link previews (WhatsApp, LinkedIn, …) need them. Self-hosting? See change-me.md. -->
+  <!-- Full addresses: link previews (WhatsApp, LinkedIn, …) need them. Self-hosting? See change-me.txt. -->
   <link rel="canonical" href="https://joram.eu/opentranslate/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="OpenTranslate">
@@ -553,11 +553,15 @@
   <div class="snackbar" id="snackbar"><span id="snackbar-text" role="status"></span><button class="text-btn" id="snackbar-action" type="button" hidden></button><button class="icon-btn snackbar-close" id="snackbar-close" type="button" aria-label="Dismiss message" hidden><i data-icon="close"></i></button></div>
 
   <noscript><p class="boot-msg">OpenTranslate needs JavaScript.</p></noscript>
-  <!-- Below the app: visible only after scrolling past it. Links come from change-me.md -->
-  <footer class="site-footer" id="site-footer" hidden>
-    <a id="imprint-link" href="#" rel="noopener" lang="de">Impressum</a>
-    <span aria-hidden="true">·</span>
-    <a id="privacy-link" href="#" rel="noopener" lang="de">Datenschutzerklärung</a>
+  <!-- Below the app: visible only after scrolling past it. Legal links come from change-me.txt (shown when set) -->
+  <footer class="site-footer" id="site-footer">
+    <span class="legal-links" id="legal-links" hidden>
+      <a id="imprint-link" href="#" rel="noopener" lang="de">Impressum</a>
+      <span aria-hidden="true">·</span>
+      <a id="privacy-link" href="#" rel="noopener" lang="de">Datenschutzerklärung</a>
+      <span aria-hidden="true">·</span>
+    </span>
+    <a href="https://github.com/joramulmke/opentranslate" rel="noopener">OpenTranslate on GitHub</a>
   </footer>
 
   <div class="boot-msg" id="boot-msg" hidden>
