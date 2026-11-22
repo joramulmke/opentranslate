@@ -1503,3 +1503,9 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 .fb-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .fb-actions .spacer { flex: 1; }
 @media (max-width: 480px) { .fb-summary { grid-template-columns: 1fr; } .fb-summary dd { margin-bottom: 6px; } }
+.fb-shot { display: grid; gap: 8px; }
+.fb-shot .switch-row { padding: 0; }
+.fb-shot .switch-row small { display: block; font-size: 12px; color: var(--on-surface-variant); }
+.fb-shot-img { display: block; justify-self: start; border: 1px solid var(--outline-variant); border-radius: 12px; overflow: hidden; }
+.fb-shot-img img { display: block; max-width: min(100%, 240px); max-height: 240px; width: auto; height: auto; }
+.fb-diag-head { margin: 10px 0 4px; font-size: 13px; font-weight: 500; color: var(--primary); }
