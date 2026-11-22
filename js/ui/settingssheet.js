@@ -12,7 +12,8 @@ import { setupDialog, openDialog, closeDialog } from './sheet.js';
 import { escapeHtml } from './langpicker.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
-import { initEngineRows, renderEngines, closeOcrManager, closeVoiceManager, sourceLine, extLink } from './enginerows.js';
+import { initEngineRows, renderEngines, closeOcrManager, closeVoiceManager, extLink } from './enginerows.js';
+import { tagLine, infoButton, initInfo, details, PRIVATE, sends, OFFLINE, ONLINE, NO_DOWNLOAD, READY, download, downloading, quality, UNAVAILABLE } from './tags.js';
 import { chromeTranslatorSupported, CHROME_TRANSLATOR_REASON } from '../features/chrometranslator.js';
 import { llmSpec, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, nanoUsable, nanoReason, NANO, NANO_INTERNALS } from '../features/localllm.js';
 import { copyToClipboard } from './snackbar.js';
@@ -37,7 +38,7 @@ export function initSettingsSheet({ onThemeChange }) {
     if (!dlg?.open) return;
     if (what !== 'progress') { renderLists(); return; }
     // progress: only the row's subtitle changes (re-rendering would move focus)
-    for (const e of settings.get().entries) if (e.type === 'webllm') { const sub = $(`svc-sub-${e.id}`); if (sub) sub.textContent = subtitle(e); }
+    for (const e of settings.get().entries) if (e.type === 'webllm') { const t = $(`svc-tags-${e.id}`); if (t) t.outerHTML = tagLine(`svc-tags-${e.id}`, svcTags(e)); }
   });
   $('btn-svc-cancel').addEventListener('click', () => closeEditor());
   $('svc-fields').addEventListener('input', (e) => e.target.removeAttribute('aria-invalid'));
@@ -113,6 +114,7 @@ export function initSettingsSheet({ onThemeChange }) {
   $('set-live').addEventListener('change', (e) => settings.set({ liveTranslate: e.target.checked }));
   $('set-speak').addEventListener('change', (e) => settings.set({ speakConversation: e.target.checked }));
   initStorage();
+  initInfo();
   initSettingsSearch();
   initEngineRows({ isOpen: () => !!dlg?.open, closeOthers: () => {
     closeEditor({ silent: true }); closeManager({ silent: true }); closeOcrManager({ silent: true }); closeVoiceManager({ silent: true });
@@ -179,57 +181,74 @@ export function openSettings(focus) {
 
 /* ---------------------------------------------------------------- list */
 
+const hostOfEntry = (e) => { try { return new URL(e.config.baseUrl).host; } catch { return e.config?.baseUrl || ''; } };
+
+/** The short line under a service's name (the tags say private / internet / size). */
 function subtitle(e) {
   const c = e.config || {};
   if (e.type === 'mock') return 'A few phrases only, for trying the app';
   if (e.type === 'offline') {
     if (offlineUnusable()) return 'Not available in this browser';
     const n = installedLanguages().length;
-    return n ? `${n} language${n > 1 ? 's' : ''} + English · ${formatMB(usedBytes())} · works without internet` : 'No languages downloaded yet';
+    return n ? `${n} language${n > 1 ? 's' : ''} + English · ${formatMB(usedBytes())}` : 'No languages downloaded yet';
   }
   if (e.type === 'webllm') {
     const spec = llmSpec(c);
-    const st = llmState(spec.key);
-    if (spec.kind === 'nano') {
-      if (!nanoUsable()) return `${spec.title} · Not available: ${nanoReason().split('. ')[0].replace(/\.$/, '')}`;
-      return st === 'ready' ? `${spec.title} · Ready · runs on this device` : st === 'downloading' ? `${spec.title} · Chrome is downloading it…` : `${spec.title} · Chrome downloads it when you press Download`;
-    }
-    if (st === 'downloading') return `${spec.title} · Downloading… ${Math.round(llmProgress(spec.key) * 100)}%`;
-    if (st === 'ready') return `${spec.title} · Downloaded · runs on this device`;
-    return `${spec.title} · Not downloaded${spec.sizeMB ? ` (${formatMB(spec.sizeMB * 1e6)})` : ''}`;
+    if (spec.kind === 'nano' && !nanoUsable()) return `${spec.title} · Not available: ${nanoReason().split('. ')[0].replace(/\.$/, '')}`;
+    return spec.title;
   }
-  if (e.type === 'chrome-translator') return chromeTranslatorSupported() ? 'Built into Chrome · runs on this device · each language pair downloaded by Chrome' : 'Not available in this browser: only in Chrome on computers';
-  let host = c.baseUrl || '';
-  try { host = new URL(c.baseUrl).host; } catch { /* keep raw */ }
-  if (e.type === 'openai') return [host, c.model].filter(Boolean).join(' · ');
+  if (e.type === 'chrome-translator') return chromeTranslatorSupported() ? 'Built into Chrome · Chrome downloads each language pair' : 'Not available in this browser: only in Chrome on computers';
+  if (e.type === 'openai') return c.model || '';
   if (e.type === 'elevenlabs') {
-    const can = [c.tts === 'on' && 'reads aloud', c.audio === 'on' && 'voice input'].filter(Boolean);
-    return `api.elevenlabs.io · ${can.length ? can.join(' and ') : 'press Edit, then Test connection'}`;
+    const can = [c.tts === 'on' && 'Reads aloud', c.audio === 'on' && 'voice input'].filter(Boolean);
+    return can.length ? can.join(' and ') : 'Press Edit, then Test connection';
   }
-  return host;
+  return '';
+}
+
+/** Privacy, internet, size (and quality where it differs) of a service. */
+function svcTags(e) {
+  const c = e.config || {};
+  if (blocked(e)) return [UNAVAILABLE];
+  if (e.type === 'mock') return [PRIVATE, OFFLINE, NO_DOWNLOAD];
+  if (e.type === 'offline') return [PRIVATE, OFFLINE, installedLanguages().some((l) => l !== 'en') ? READY : download('About 45–75 MB per language'), quality('Good')];
+  if (e.type === 'chrome-translator') return [PRIVATE, OFFLINE, { kind: 'size', text: 'Chrome downloads it' }];
+  if (e.type === 'webllm') {
+    const spec = llmSpec(c);
+    const st = llmState(spec.key);
+    const size = st === 'ready' ? READY
+      : st === 'downloading' ? (spec.kind === 'nano' ? { kind: 'busy', text: 'Chrome is downloading' } : downloading(llmProgress(spec.key)))
+        : spec.kind === 'nano' ? { kind: 'size', text: 'Chrome downloads it' } : spec.sizeMB ? download(spec.sizeMB) : { kind: 'size', text: 'Download' };
+    return [PRIVATE, OFFLINE, size];
+  }
+  if (e.type === 'elevenlabs') return [sends('api.elevenlabs.io'), ONLINE, NO_DOWNLOAD];
+  return [sends(hostOfEntry(e) || 'your server'), ONLINE, NO_DOWNLOAD];
+}
+
+/** What the ⓘ shows: where it comes from, licence, where your text goes. */
+function svcInfo(e) {
+  const host = hostOfEntry(e);
+  if (e.type === 'mock') return details('A built-in demo that knows a few phrases, so you can try the app without setting anything up. It never stands in for a real service.');
+  if (e.type === 'offline') return details(offlineSourceHtml(), 'Translates in your browser: nothing you type leaves this device. Manage the languages with the download button.');
+  if (e.type === 'chrome-translator') return details("Chrome's built-in translator. Chrome downloads each language pair and runs it on this device.");
+  if (e.type === 'webllm') {
+    const spec = llmSpec(e.config);
+    if (spec.kind === 'nano') return details(`Built into Chrome: Google's Gemini Nano, downloaded and updated by Chrome (see ${extLink('https://developer.chrome.com/docs/ai/prompt-api', 'Prompt API')}).`, 'Runs on this device.');
+    if (spec.custom) {
+      let h = spec.custom.url; try { h = new URL(spec.custom.url).host; } catch { /* keep */ }
+      return details(`From ${extLink(spec.custom.url, h)} (your own model).`, 'Engine WebLLM from jsDelivr. Runs on this device with WebGPU.');
+    }
+    return details(`From ${extLink(`https://huggingface.co/mlc-ai?search_models=${encodeURIComponent(spec.key)}`, `Hugging Face: mlc-ai/${spec.key}`)}${spec.sizeMB ? `, about ${formatMB(spec.sizeMB * 1e6)}` : ''}.`,
+      'Engine WebLLM from jsDelivr and GitHub (raw.githubusercontent.com). Runs on this device with WebGPU; nothing you type leaves it.');
+  }
+  if (e.type === 'elevenlabs') return details('Not a download: the text or your voice goes to ElevenLabs (api.elevenlabs.io).', 'Your key stays in this browser.');
+  return details(`Not a download: the text goes to ${escapeHtml(host || 'your server')}${e.config?.model ? ` (model ${escapeHtml(e.config.model)})` : ''}.`, e.config?.apiKey ? 'Your key stays in this browser.' : '');
 }
 
 /** Where offline language files come from: Mozilla, or (Chromium browsers) the mirror on Hugging Face. */
 const offlineSourceHtml = () => (usesMirror
   ? `From ${extLink(MIRROR.page, `Hugging Face: ${MIRROR.repo}`)}, a byte-for-byte mirror of ${extLink('https://github.com/mozilla/translations', "Mozilla's Firefox translation models")} (Mozilla's server doesn't serve Chromium browsers). Each file is checked against Mozilla's list · engine Bergamot, included in the app`
   : `From ${extLink('https://github.com/mozilla/translations', 'Mozilla')} (firefox-settings-attachments.cdn.mozilla.net) · Firefox translation models · engine Bergamot, included in the app`);
-
-/** Where a service's downloads come from (on-device ones only; online services say their host already). */
-function sourceOf(e) {
-  if (e.type === 'offline') {
-    return sourceLine(`svc-src-${e.id}`, offlineSourceHtml());
-  }
-  if (e.type === 'webllm') {
-    const spec = llmSpec(e.config);
-    if (spec.kind === 'nano') return sourceLine(`svc-src-${e.id}`, `Built into Chrome: Google's Gemini Nano, downloaded and updated by Chrome (see ${extLink('https://developer.chrome.com/docs/ai/prompt-api', 'Prompt API')})`);
-    if (spec.custom) {
-      let host = spec.custom.url; try { host = new URL(spec.custom.url).host; } catch { /* keep */ }
-      return sourceLine(`svc-src-${e.id}`, `From ${extLink(spec.custom.url, host)} (your own model) · engine WebLLM from jsDelivr`);
-    }
-    return sourceLine(`svc-src-${e.id}`, `From ${extLink(`https://huggingface.co/mlc-ai?search_models=${encodeURIComponent(spec.key)}`, `Hugging Face: mlc-ai/${spec.key}`)} · engine WebLLM from jsDelivr and GitHub (raw.githubusercontent.com)`);
-  }
-  return '';
-}
 
 /** Services this browser can't run (they stay listed, explained, and can't be picked). */
 const blocked = (e) => (e.type === 'offline' && offlineUnusable())
@@ -264,9 +283,10 @@ function renderLists() {
       const builtIn = BUILT_IN.has(e.id);
       const isMock = e.id === MOCK_ENTRY.id;
       return `<li class="svc-row" data-id="${e.id}">
-        <label class="svc-pick"><input type="radio" name="svc-${kind}" value="${e.id}" aria-describedby="svc-sub-${e.id}${sourceOf(e) ? ` svc-src-${e.id}` : ''}" ${e === lead[kind] ? 'checked' : ''} ${blocked(e) ? 'disabled' : ''}>
-          <span class="svc-copy"><strong title="${name}">${name}</strong><small id="svc-sub-${e.id}">${escapeHtml(subtitle(e))}</small></span></label>
+        <label class="svc-pick"><input type="radio" name="svc-${kind}" value="${e.id}" aria-describedby="svc-tags-${e.id} svc-sub-${e.id}" ${e === lead[kind] ? 'checked' : ''} ${blocked(e) ? 'disabled' : ''}>
+          <span class="svc-copy"><strong>${name}</strong>${tagLine(`svc-tags-${e.id}`, svcTags(e))}<small id="svc-sub-${e.id}">${escapeHtml(subtitle(e))}</small></span></label>
         <span class="svc-actions">
+          ${blocked(e) ? '' : infoButton(`svc-${e.id}`, e.label, svcInfo(e))}
           ${isMock ? '' : `<button class="icon-btn sm" type="button" data-act="up" aria-label="Move ${name} up" ${i <= 0 ? 'disabled' : ''}>${icon('up')}</button>
           <button class="icon-btn sm" type="button" data-act="down" aria-label="Move ${name} down" ${i >= movable.length - 1 ? 'disabled' : ''}>${icon('down')}</button>`}
           ${e.type === 'webllm' && llmState(llmSpec(e.config).key) !== 'ready' && !(llmSpec(e.config).kind === 'nano' && !nanoUsable()) ? llmButton(e) : ''}
@@ -279,7 +299,7 @@ function renderLists() {
       : `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Manage offline languages">${icon('download')}</button>`)
     : `<button class="icon-btn sm" type="button" data-act="edit" aria-label="Edit ${name}">${icon('edit')}</button>`}
           ${builtIn ? '' : `<button class="icon-btn sm" type="button" data-act="delete" aria-label="Remove ${name}">${icon('delete')}</button>`}
-        </span>${sourceOf(e)}</li>`;
+        </span></li>`;
     }).join('') : `<li class="svc-empty">${kind === 'advanced' ? 'No AI model yet. Add one to use Advanced translation.' : 'Nothing yet.'}</li>`;
   }
   renderEngines();
@@ -296,8 +316,9 @@ function renderVoiceList(s) {
   $('svc-voice').innerHTML = list.length ? list.map((e) => {
     const name = escapeHtml(e.label);
     return `<li class="svc-row" data-id="${e.id}">
-      <span class="svc-pick svc-pick-static"><span class="svc-copy"><strong title="${name}">${name}</strong><small id="svc-sub-${e.id}">${escapeHtml(subtitle(e))}</small></span></span>
+      <span class="svc-pick svc-pick-static"><span class="svc-copy"><strong>${name}</strong>${tagLine(`svc-tags-${e.id}`, svcTags(e))}<small id="svc-sub-${e.id}">${escapeHtml(subtitle(e))}</small></span></span>
       <span class="svc-actions">
+        ${infoButton(`svc-${e.id}`, e.label, svcInfo(e))}
         <button class="icon-btn sm" type="button" data-act="edit" aria-label="Edit ${name}" aria-describedby="svc-sub-${e.id}">${icon('edit')}</button>
         <button class="icon-btn sm" type="button" data-act="delete" aria-label="Remove ${name}">${icon('delete')}</button>
       </span></li>`;

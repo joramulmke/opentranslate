@@ -19,6 +19,7 @@ import { ocrLanguages, ocrDownloaded, ocrDownload, ocrDelete, OCR_SOURCE, OCR_EN
 import { PADDLE, paddleState, paddleProgress, paddleBytes, downloadPaddle, deletePaddle, onPaddleChange } from '../features/paddle.js';
 import { ORT_MB } from '../features/ort.js';
 import { langName } from '../state.js';
+import { tagLine, infoButton, details, PRIVATE, sends, OFFLINE, ONLINE, NO_DOWNLOAD, READY, download, downloading, quality, UNAVAILABLE } from './tags.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = escapeHtml;
@@ -32,12 +33,10 @@ const hostOf = (e) => { try { return new URL(e.config.baseUrl).host; } catch { r
 
 /* ------------------------------------------------------------ rows */
 
-function modelSub(key, extra = '') {
-  const m = HF_MODELS[key];
+/** Size tag of a Hugging Face model: its download, progress, or Ready. */
+function modelSize(key) {
   const st = modelState(key);
-  if (st === 'downloading') return `Downloading… ${Math.round(modelProgress(key) * 100)}%`;
-  if (st === 'ready') return `Downloaded · ${formatMB(modelBytes(key) || m.sizeMB * 1e6)} · runs on this device${extra}`;
-  return `Not downloaded (${m.sizeMB} MB)${extra}`;
+  return st === 'downloading' ? downloading(modelProgress(key)) : st === 'ready' ? READY : download(HF_MODELS[key].sizeMB);
 }
 
 function modelButton(key) {
@@ -52,7 +51,10 @@ function modelButton(key) {
     : `<button class="icon-btn sm" type="button" data-model="${key}" aria-label="Download ${esc(m.title)} (${m.sizeMB} MB) from Hugging Face">${icon('download')}</button>`;
 }
 
-const modelSource = (key) => `From ${extLink(modelPage(key), `Hugging Face: ${HF_MODELS[key].repo}`)} · ${HF_MODELS[key].licence} licence · runs with transformers.js from jsDelivr`;
+const modelSource = (key) => details(
+  `From ${extLink(modelPage(key), `Hugging Face: ${HF_MODELS[key].repo}`)}.`,
+  `${HF_MODELS[key].licence} licence. Runs in your browser with transformers.js (from jsDelivr); nothing you say or write leaves this device.`,
+  modelState(key) === 'ready' ? `Uses ${formatMB(modelBytes(key) || HF_MODELS[key].sizeMB * 1e6)} on this device. Delete it under Storage at the top of Settings or with the delete button.` : '');
 
 /** Which Whisper size to use: tiny, base, small, large-v3 turbo (with size, and which are downloaded). */
 function whisperPicker() {
@@ -65,18 +67,31 @@ function whisperPicker() {
   return `<label class="svc-model"><span>Model<span class="visually-hidden"> size for speech recognition on this device</span></span><select data-act="whisper-size" aria-describedby="eng-speech-ondevice-sub">${opts}</select></label>`;
 }
 
-function row({ group, value, title, sub, src, checked, disabled, actions = '', extra = '' }) {
+// tag lines are rebuilt on progress ticks (focus stays put): id -> () => tags
+const tagFns = new Map();
+
+function row({ group, value, title, tags, line = '', info = '', checked, disabled, actions = '', extra = '' }) {
   const id = `eng-${group}-${value}`;
+  tagFns.set(`${id}-tags`, tags);
   return `<li class="svc-row" data-engine="${group}:${value}">
-    <label class="svc-pick"><input type="radio" name="eng-${group}" value="${value}" aria-describedby="${id}-sub${src ? ` ${id}-src` : ''}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
-      <span class="svc-copy"><strong>${esc(title)}</strong><small id="${id}-sub">${esc(sub)}</small></span></label>
-    <span class="svc-actions">${actions}</span>
-    ${extra}
-    ${src ? sourceLine(`${id}-src`, src) : ''}</li>`;
+    <label class="svc-pick"><input type="radio" name="eng-${group}" value="${value}" aria-describedby="${id}-tags${line ? ` ${id}-sub` : ''}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
+      <span class="svc-copy"><strong>${esc(title)}</strong>${tagLine(`${id}-tags`, tags())}<small id="${id}-sub">${esc(line)}</small></span></label>
+    <span class="svc-actions">${infoButton(id, title, info)}${actions}</span>
+    ${extra}</li>`;
 }
 
-const elevenSub = (e, what) => (e ? `${e.label} · ${what}` : 'Add ElevenLabs under Cloud voice services and press Test connection');
-const elevenSrc = (e) => (e ? 'Not a download: the text or your voice goes to api.elevenlabs.io.' : '');
+/** Progress: only the tag lines change. */
+function refreshTags() {
+  for (const [id, fn] of tagFns) {
+    const el = $(id);
+    if (el) el.outerHTML = tagLine(id, fn()) || `<span id="${id}"></span>`;
+  }
+}
+
+const elevenLine = (e, what) => (e ? `${e.label} · ${what}` : 'Add ElevenLabs under Cloud voice services and press Test connection');
+const elevenTags = (e) => () => (e ? [sends('api.elevenlabs.io'), ONLINE, NO_DOWNLOAD, quality('Best')] : [UNAVAILABLE]);
+const elevenInfo = (e, what) => (e ? details(`Not a download: ${what} goes to ElevenLabs (api.elevenlabs.io) with your key, which stays in this browser.`, `Uses ${esc(e.label)}. Edit it under Cloud voice services.`) : '');
+const WHISPER_QUALITY = { 'whisper-tiny': 'Fastest', whisper: 'Good', 'whisper-small': 'Good', 'whisper-turbo': 'Best' };
 
 function speechRows() {
   const stt = aiEntries().find((e) => e.config?.sttModel && e.config?.audio === 'on');
@@ -84,33 +99,46 @@ function speechRows() {
   const usable = { browser: browserSpeechAvailable(), api: !!stt && canRecord(), elevenlabs: !!eleven && canRecord(), ondevice: canRecord() };
   const pref = settings.get().speechEngine || 'browser';
   const first = [pref, ...SPEECH_ENGINES].find((e) => usable[e]);
+  const wk = whisperKey();
   return [
-    row({ group: 'speech', value: 'browser', title: "Browser's speech service", checked: first === 'browser', disabled: !usable.browser,
-      sub: usable.browser ? 'Live text while you speak · nothing to download' : 'Not available in this browser',
-      src: 'Not a download: your voice goes to the browser maker’s service (Google for Chrome, Microsoft for Edge, Apple for Safari).' }),
-    row({ group: 'speech', value: 'api', title: 'AI service (Whisper API)', checked: first === 'api', disabled: !usable.api,
-      sub: stt ? `${stt.label} · ${stt.config.sttModel}` : 'Edit an AI model under Advanced: fill in a speech-to-text model and press Test connection',
-      src: stt ? `Not a download: your voice goes to ${esc(hostOf(stt))}.` : '' }),
-    row({ group: 'speech', value: 'elevenlabs', title: 'ElevenLabs (Scribe)', checked: first === 'elevenlabs', disabled: !usable.elevenlabs,
-      sub: elevenSub(eleven, eleven?.config?.sttModel || 'scribe_v1'), src: elevenSrc(eleven) }),
-    row({ group: 'speech', value: 'ondevice', title: `On this device (${HF_MODELS[whisperKey()].title})`, checked: first === 'ondevice', disabled: !usable.ondevice,
-      sub: modelSub(whisperKey(), ' · private'), src: modelSource(whisperKey()), actions: modelButton(whisperKey()), extra: whisperPicker() }),
+    row({ group: 'speech', value: 'browser', title: 'Browser speech (Web Speech)', checked: first === 'browser', disabled: !usable.browser,
+      tags: () => (usable.browser ? [sends('the browser maker'), ONLINE, NO_DOWNLOAD, quality('Fastest')] : [UNAVAILABLE]),
+      line: usable.browser ? 'Live text while you speak' : 'Not available in this browser',
+      info: details('Not a download: your voice goes to the browser maker’s speech service (Google for Chrome, Microsoft for Edge, Apple for Safari).', 'Shows the words live while you speak.') }),
+    row({ group: 'speech', value: 'api', title: 'Cloud-AI (Whisper API)', checked: first === 'api', disabled: !usable.api,
+      tags: () => (stt ? [sends(hostOf(stt)), ONLINE, NO_DOWNLOAD] : [UNAVAILABLE]),
+      line: stt ? `${stt.label} · ${stt.config.sttModel}` : 'Edit an AI model under Advanced: fill in a speech-to-text model and press Test connection',
+      info: stt ? details(`Not a download: your voice goes to ${esc(hostOf(stt))}.`, `Uses ${esc(stt.label)} with the model ${esc(stt.config.sttModel)}.`) : '' }),
+    row({ group: 'speech', value: 'elevenlabs', title: 'Cloud-AI (ElevenLabs)', checked: first === 'elevenlabs', disabled: !usable.elevenlabs,
+      tags: elevenTags(eleven), line: elevenLine(eleven, `Scribe (${eleven?.config?.sttModel || 'scribe_v1'})`), info: elevenInfo(eleven, 'your voice') }),
+    row({ group: 'speech', value: 'ondevice', title: `On this device (${HF_MODELS[wk].title})`, checked: first === 'ondevice', disabled: !usable.ondevice,
+      tags: () => [PRIVATE, OFFLINE, modelSize(whisperKey()), quality(WHISPER_QUALITY[whisperKey()])],
+      line: HF_MODELS[wk].note ? HF_MODELS[wk].note.replace(/^./, (c) => c.toUpperCase()) : '',
+      info: modelSource(wk), actions: modelButton(wk), extra: whisperPicker() }),
   ].join('');
 }
 
 /* Read aloud: system voices, Piper voices on this device, the AI service, ElevenLabs */
 const systemVoices = () => (typeof speechSynthesis !== 'undefined' ? speechSynthesis.getVoices?.() || [] : []);
 
-function piperSub() {
-  const n = downloadedVoices().length;
-  if (kokoroState() === 'downloading') return `Downloading Kokoro… ${Math.round(kokoroProgress() * 100)}%`;
-  if (kokoroState() === 'ready') return `Kokoro (${Object.keys(KOKORO_LANGS).length} languages)${n ? ` + ${n} Piper voice${n > 1 ? 's' : ''}` : ''} · ${formatMB(piperBytes() + kokoroSize())} · private, works without internet`;
+function piperSize() {
+  if (kokoroState() === 'downloading') return downloading(kokoroProgress());
   const busy = piperVoices().find((v) => voiceState(v.lang) === 'downloading');
-  if (busy) return `Downloading ${voiceLabel(busy.lang, langName)}… ${Math.round(voiceProgress(busy.lang) * 100)}%`;
-  return n ? `${n} voice${n > 1 ? 's' : ''} · ${formatMB(piperBytes())} · private, works without internet`
-    : `No voices yet · about 63 MB per language, plus ${ENGINE_MB} MB once`;
+  if (busy) return downloading(voiceProgress(busy.lang));
+  return downloadedVoices().length || kokoroState() === 'ready' ? READY : { kind: 'size', text: 'About 63 MB per language' };
+}
+function piperLine() {
+  const n = downloadedVoices().length;
+  const k = kokoroState() === 'ready';
+  if (!n && !k) return `No voices yet · plus ${ENGINE_MB} MB voice engine, once`;
+  return [k && `Kokoro (${Object.keys(KOKORO_LANGS).length} languages)`, n && `${n} Piper voice${n > 1 ? 's' : ''}`].filter(Boolean).join(' + ') + ` · ${formatMB(piperBytes() + (k ? kokoroSize() : 0))}`;
 }
 const piperSourceHtml = () => `Voices from ${extLink(PIPER_SOURCE.page, 'Hugging Face: rhasspy/piper-voices')}, each with its own licence (see its model card) · engine ${extLink(PIPER_SOURCE.engine, 'Piper')} with eSpeak NG (GPL-3.0) and ONNX Runtime, from jsDelivr`;
+const piperInfo = () => details(
+  `Piper: ${extLink(PIPER_SOURCE.page, 'voices from Hugging Face (rhasspy/piper-voices)')}, each with its own licence (see its model card).`,
+  `Kokoro: ${extLink(KOKORO_INFO.page, 'one model from Hugging Face')} (${KOKORO_INFO.licence} licence) with more natural voices for ${Object.keys(KOKORO_LANGS).length} languages.`,
+  `Engine: ${extLink(PIPER_SOURCE.engine, 'Piper')} with eSpeak NG (GPL-3.0) and ONNX Runtime, from jsDelivr. Everything runs in your browser; the text never leaves this device.`,
+  'Pick and download voices with the download button.');
 
 function ttsRows() {
   const api = ttsApiEntry();
@@ -119,21 +147,27 @@ function ttsRows() {
   const usable = { system: typeof speechSynthesis !== 'undefined', ondevice: typeof caches !== 'undefined', api: !!api, elevenlabs: !!eleven };
   const pref = settings.get().ttsEngine || 'system';
   const first = [pref, ...TTS_ENGINES].find((e) => usable[e]);
+  tagFns.set('eng-tts-ondevice-tags', () => [PRIVATE, OFFLINE, piperSize(), quality(kokoroState() === 'ready' ? 'Best' : 'Good')]);
   return [
-    row({ group: 'tts', value: 'system', title: 'Voices of this device', checked: first === 'system', disabled: !usable.system,
-      sub: !usable.system ? 'Not available in this browser' : nSys ? `${nSys} voices · nothing to download · quality depends on the device` : 'Nothing to download · quality depends on the device' }),
+    row({ group: 'tts', value: 'system', title: 'Built-in voices (system)', checked: first === 'system', disabled: !usable.system,
+      tags: () => (usable.system ? [NO_DOWNLOAD] : [UNAVAILABLE]),
+      line: !usable.system ? 'Not available in this browser' : `${nSys ? `${nSys} voices · ` : ''}quality depends on the device`,
+      info: details('The voices that come with your device or browser. Most run on the device; some browser voices (for example Google’s in Chrome) send the text to the browser maker and need internet.') }),
     `<li class="svc-row" data-engine="tts:ondevice">
-      <label class="svc-pick"><input type="radio" name="eng-tts" value="ondevice" aria-describedby="eng-tts-ondevice-sub eng-tts-ondevice-src" ${first === 'ondevice' ? 'checked' : ''} ${usable.ondevice ? '' : 'disabled'}>
-        <span class="svc-copy"><strong>Natural voices on this device (Piper)</strong><small id="eng-tts-ondevice-sub">${esc(piperSub())}</small></span></label>
-      <span class="svc-actions"><button class="icon-btn sm" type="button" data-act="voice-manage" aria-label="Manage offline voices" aria-describedby="eng-tts-ondevice-sub">${icon('download')}</button></span>
-      ${sourceLine('eng-tts-ondevice-src', piperSourceHtml())}</li>`,
-    row({ group: 'tts', value: 'api', title: 'AI service', checked: first === 'api', disabled: !usable.api,
-      sub: api ? `${api.label} · ${api.config.ttsModel} · ${api.config.ttsVoice || 'alloy'}` : 'Edit an AI model under Advanced: fill in a text-to-speech model and press Test connection',
-      src: api ? `Not a download: the text goes to ${esc(hostOf(api))}.` : '' }),
-    row({ group: 'tts', value: 'elevenlabs', title: 'ElevenLabs', checked: first === 'elevenlabs', disabled: !usable.elevenlabs,
-      sub: elevenSub(eleven, eleven?.config?.ttsModel === 'eleven_multilingual_v2' ? 'Multilingual v2' : 'Flash v2.5'), src: elevenSrc(eleven) }),
+      <label class="svc-pick"><input type="radio" name="eng-tts" value="ondevice" aria-describedby="eng-tts-ondevice-tags eng-tts-ondevice-sub" ${first === 'ondevice' ? 'checked' : ''} ${usable.ondevice ? '' : 'disabled'}>
+        <span class="svc-copy"><strong>Natural voices (Piper)</strong>${tagLine('eng-tts-ondevice-tags', tagFns.get('eng-tts-ondevice-tags')())}<small id="eng-tts-ondevice-sub">${esc(piperLine())}</small></span></label>
+      <span class="svc-actions">${infoButton('eng-tts-ondevice', 'Natural voices (Piper)', piperInfo())}<button class="icon-btn sm" type="button" data-act="voice-manage" aria-label="Manage offline voices" aria-describedby="eng-tts-ondevice-sub">${icon('download')}</button></span></li>`,
+    row({ group: 'tts', value: 'api', title: `Cloud-AI (${api?.config.ttsModel || 'AI model'})`, checked: first === 'api', disabled: !usable.api,
+      tags: () => (api ? [sends(hostOf(api)), ONLINE, NO_DOWNLOAD] : [UNAVAILABLE]),
+      line: api ? `${api.label} · voice ${api.config.ttsVoice || 'alloy'}` : 'Edit an AI model under Advanced: fill in a text-to-speech model and press Test connection',
+      info: api ? details(`Not a download: the text goes to ${esc(hostOf(api))}.`, `Uses ${esc(api.label)} with the model ${esc(api.config.ttsModel)}.`) : '' }),
+    row({ group: 'tts', value: 'elevenlabs', title: 'Cloud-AI (ElevenLabs)', checked: first === 'elevenlabs', disabled: !usable.elevenlabs,
+      tags: elevenTags(eleven), line: elevenLine(eleven, eleven?.config?.ttsModel === 'eleven_multilingual_v2' ? 'Multilingual v2' : 'Flash v2.5'), info: elevenInfo(eleven, 'the text') }),
   ].join('');
 }
+
+const visionTags = (ai) => () => (ai ? [sends(hostOf(ai)), ONLINE, NO_DOWNLOAD, quality('Best')] : [UNAVAILABLE]);
+const NEEDS_VISION = 'Needs an AI model that can read images: edit it under Advanced and press Test connection';
 
 function hwrRows() {
   const ai = aiEntries().find((e) => e.config?.vision === 'on') || null;
@@ -141,15 +175,18 @@ function hwrRows() {
   const pref = hwrPref();
   const first = [pref, ...HWR_ENGINES].find((e) => usable[e]);
   return [
-    row({ group: 'hwr', value: 'vision', title: 'AI vision', checked: first === 'vision', disabled: !usable.vision,
-      sub: ai ? `${ai.label} reads the drawing · any script` : 'Needs an AI model that can read images: edit it under Advanced and press Test connection',
-      src: ai ? `Not a download: the drawing goes to ${esc(hostOf(ai))}.` : '' }),
+    row({ group: 'hwr', value: 'vision', title: 'Advanced (AI vision)', checked: first === 'vision', disabled: !usable.vision,
+      tags: visionTags(ai), line: ai ? `${ai.label} · any script, cursive` : NEEDS_VISION,
+      info: ai ? details(`Not a download: the drawing goes to ${esc(hostOf(ai))}.`, `Uses ${esc(ai.label)}. Also used in Advanced mode when another engine is picked.`) : '' }),
     row({ group: 'hwr', value: 'ondevice', title: 'On-device model (TrOCR)', checked: first === 'ondevice',
-      sub: modelSub('trocr', ' · Latin script only'), src: modelSource('trocr'), actions: modelButton('trocr') }),
-    row({ group: 'hwr', value: 'paddle', title: 'PP-OCRv6', checked: first === 'paddle',
-      sub: `${paddleSub()} · neat handwriting and print · Latin script, Chinese, Japanese, Greek`, src: paddleSource(), actions: paddleButton() }),
+      tags: () => [PRIVATE, OFFLINE, modelSize('trocr'), quality('Good')], line: 'Handwriting · Latin script only',
+      info: modelSource('trocr'), actions: modelButton('trocr') }),
+    row({ group: 'hwr', value: 'paddle', title: 'Many languages (PP-OCRv6)', checked: first === 'paddle',
+      tags: () => [PRIVATE, OFFLINE, paddleSize(), quality('Good')], line: 'Neat handwriting and print · Latin script, Chinese, Japanese, Greek',
+      info: paddleInfo(), actions: paddleButton() }),
     row({ group: 'hwr', value: 'tesseract', title: 'Basic (Tesseract)', checked: first === 'tesseract',
-      sub: 'Neat printed letters · uses the camera text languages below' }),
+      tags: () => [PRIVATE, OFFLINE, ocrSize(), quality('Fastest')], line: 'Neat printed letters · uses the camera text languages',
+      info: ocrInfo() }),
   ].join('');
 }
 
@@ -157,15 +194,21 @@ let ocrFiles = new Map();          // tesseract code -> bytes
 const ocrJobs = new Map();         // tesseract code -> progress 0..1
 const ocrSum = () => [...ocrFiles.values()].reduce((a, b) => a + b, 0);
 const ocrSourceHtml = () => `Language files from ${extLink(OCR_SOURCE.page, 'jsDelivr (@tesseract.js-data)')}, trained by the Tesseract project · ${OCR_SOURCE.licence} licence · engine Tesseract.js from jsDelivr`;
+const ocrSize = () => (ocrFiles.size ? READY : download('Small'));
+const ocrInfo = () => details(
+  `Language files from ${extLink(OCR_SOURCE.page, 'jsDelivr (@tesseract.js-data)')}, trained by the Tesseract project · ${OCR_SOURCE.licence} licence.`,
+  'Engine Tesseract.js from jsDelivr. Runs in your browser; photos never leave this device.',
+  ocrFiles.size ? `${ocrFiles.size} language${ocrFiles.size > 1 ? 's' : ''} downloaded (${formatMB(ocrSum())}).` : 'Each language is downloaded the first time it’s used, or ahead of time with the download button.');
 
 /* PP-OCRv6: one download (two models), shared by Camera text and Handwriting */
-function paddleSub() {
+function paddleSize() {
   const st = paddleState();
-  if (st === 'downloading') return `Downloading… ${Math.round(paddleProgress() * 100)}%`;
-  if (st === 'ready') return `Downloaded · ${formatMB(paddleBytes())} · runs on this device`;
-  return `Not downloaded (${PADDLE.sizeMB} MB + ${ORT_MB} MB engine)`;
+  return st === 'downloading' ? downloading(paddleProgress()) : st === 'ready' ? READY : download(PADDLE.sizeMB + ORT_MB);
 }
-const paddleSource = () => `From ${extLink(PADDLE.page, 'Hugging Face: PaddlePaddle/PP-OCRv6_small')} (detection and recognition models) · ${PADDLE.licence} licence · engine ONNX Runtime from jsDelivr`;
+const paddleInfo = () => details(
+  `From ${extLink(PADDLE.page, 'Hugging Face: PaddlePaddle/PP-OCRv6_small')} (a detection and a recognition model) · ${PADDLE.licence} licence.`,
+  `Engine ONNX Runtime from jsDelivr (${ORT_MB} MB, shared with the voices). Runs in your browser; images never leave this device.`,
+  'Reads Latin script, Chinese, Japanese and Greek; other languages use Basic (Tesseract). Shared by Camera text and Handwriting.');
 function paddleButton() {
   const st = paddleState();
   if (st === 'downloading') return `<button class="icon-btn sm" type="button" data-act="paddle-dl" aria-disabled="true" aria-label="Downloading PP-OCRv6, ${Math.round(paddleProgress() * 100)}%">${icon('download')}</button>`;
@@ -176,19 +219,19 @@ function paddleButton() {
 
 function ocrRows() {
   const n = ocrFiles.size;
-  const sub = n ? `${n} language${n > 1 ? 's' : ''} · ${formatMB(ocrSum())} · each downloaded the first time it's used` : 'No languages downloaded yet · each downloads the first time it’s used';
   const ai = aiEntries().find((e) => e.config?.vision === 'on') || null;
   const first = ocrPref() === 'vision' && !ai ? 'tesseract' : ocrPref();
-  return `<li class="svc-row" data-engine="ocr:tesseract">
-    <label class="svc-pick"><input type="radio" name="eng-ocr" value="tesseract" aria-describedby="eng-ocr-sub eng-ocr-src" ${first === 'tesseract' ? 'checked' : ''}>
-      <span class="svc-copy"><strong>Tesseract</strong><small id="eng-ocr-sub">${esc(sub)}</small></span></label>
-    <span class="svc-actions"><button class="icon-btn sm" type="button" data-act="ocr-manage" aria-label="Manage camera text languages" aria-describedby="eng-ocr-sub">${icon('download')}</button></span>
-    ${sourceLine('eng-ocr-src', ocrSourceHtml())}</li>`
-    + row({ group: 'ocr', value: 'paddle', title: 'PP-OCRv6', checked: first === 'paddle',
-      sub: `${paddleSub()} · better on photos · Latin script, Chinese, Japanese, Greek (others use Tesseract)`, src: paddleSource(), actions: paddleButton() })
-    + row({ group: 'ocr', value: 'vision', title: 'AI vision', checked: first === 'vision' && !!ai, disabled: !ai,
-      sub: ai ? `${ai.label} reads the photo · any script, angled and curved text` : 'Needs an AI model that can read images: edit it under Advanced and press Test connection',
-      src: ai ? `Not a download: each photo goes to ${esc(hostOf(ai))}. If it doesn't answer, the photo is read on this device.` : '' });
+  return row({ group: 'ocr', value: 'tesseract', title: 'Basic (Tesseract)', checked: first === 'tesseract',
+    tags: () => [PRIVATE, OFFLINE, ocrSize(), quality('Fastest')],
+    line: n ? `${n} language${n > 1 ? 's' : ''} · ${formatMB(ocrSum())}` : 'Each language downloads the first time it’s used',
+    info: ocrInfo(),
+    actions: `<button class="icon-btn sm" type="button" data-act="ocr-manage" aria-label="Manage camera text languages" aria-describedby="eng-ocr-tesseract-sub">${icon('download')}</button>` })
+    + row({ group: 'ocr', value: 'paddle', title: 'Many languages (PP-OCRv6)', checked: first === 'paddle',
+      tags: () => [PRIVATE, OFFLINE, paddleSize(), quality('Good')], line: 'Better on photos · Latin script, Chinese, Japanese, Greek',
+      info: paddleInfo(), actions: paddleButton() })
+    + row({ group: 'ocr', value: 'vision', title: 'Advanced (AI vision)', checked: first === 'vision' && !!ai, disabled: !ai,
+      tags: visionTags(ai), line: ai ? `${ai.label} · any script, angled and curved text` : NEEDS_VISION,
+      info: ai ? details(`Not a download: each photo goes to ${esc(hostOf(ai))}.`, "If it doesn't answer, the photo is read on this device instead.") : '' });
 }
 
 async function onPaddleButton() {
@@ -227,13 +270,10 @@ export function renderEngines() {
   }
 }
 
-/** Progress ticks only change the row's subtitle and the button's label, so focus stays put. */
+/** Progress ticks only change the tags and the button's label, so focus stays put. */
 function renderProgress() {
-  const ps = $('eng-tts-ondevice-sub');
-  if (ps) ps.textContent = piperSub();
-  for (const [key, group] of [[whisperKey(), 'speech'], ['trocr', 'hwr']]) {
-    const sub = $(`eng-${group}-ondevice-sub`);
-    if (sub && modelState(key) === 'downloading') sub.textContent = modelSub(key);
+  refreshTags();
+  for (const key of [whisperKey(), 'trocr']) {
     const b = document.querySelector(`[data-model="${key}"]`);
     if (b && modelState(key) === 'downloading') b.setAttribute('aria-label', `Downloading ${HF_MODELS[key].title}, ${Math.round(modelProgress(key) * 100)}%`);
   }
@@ -507,8 +547,7 @@ export function initEngineRows({ isOpen, closeOthers }) {
     if (!isOpen()) return;
     if (what !== 'progress') { renderEngines(); return; }
     // progress: only the subtitles and button labels change, so focus stays put
-    if ($('eng-ocr-paddle-sub')) $('eng-ocr-paddle-sub').textContent = `${paddleSub()} · better on photos · Latin script, Chinese, Japanese, Greek (others use Tesseract)`;
-    if ($('eng-hwr-paddle-sub')) $('eng-hwr-paddle-sub').textContent = `${paddleSub()} · neat handwriting and print · Latin script, Chinese, Japanese, Greek`;
+    refreshTags();
     document.querySelectorAll('[data-act="paddle-dl"]').forEach((b) => b.setAttribute('aria-label', `Downloading PP-OCRv6, ${Math.round(paddleProgress() * 100)}%`));
   });
   onVoicesChange(() => {

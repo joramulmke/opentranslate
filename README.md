@@ -119,9 +119,12 @@ LanguageDetector.
 
 ### Downloads on this device
 
-Everything the app downloads is listed in Settings → **Services and downloads**, with its size, status, where it
-comes from (host and a link to the model page) and buttons to download ahead of time (e.g. before travelling) or
-delete it to free space. Every download prompt and error also names the source.
+Everything the app downloads is listed in Settings → **Services and downloads**. Every option there carries the
+same short tags: **Private** or **Sends to <host>**, **Works offline** or **Needs internet**, its size
+(**130 MB download**, **Ready**, **No download**), and **Best / Good / Fastest** where quality really differs.
+Under the tags is one short line. The **ⓘ** button opens the details: where it comes from (host and a link to the
+model page), licence and engine. Download and delete buttons sit next to it, to download ahead of time (e.g.
+before travelling) or free space. Every download prompt and error also names the source.
 
 The top of Settings shows the space used on this device (*Using 1.2 GB on this device · 6 downloads*).
 **Free up space** opens one list of every download, largest first, each with a Delete button (it asks first).
@@ -184,16 +187,16 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
   history (last 100) and saved phrasebook, all stored in `localStorage`.
 - **Read aloud** (Text, Handwriting, Conversation). Four engines; the one checked in Settings → Translation
   services → **Read aloud** goes first, the others follow:
-  1. **voices of this device** (`speechSynthesis`), nothing to download, quality depends on the device;
-  2. **natural voices on this device** ([Piper](https://github.com/rhasspy/piper)): one voice per language for 53
+  1. **Built-in voices (system)** (`speechSynthesis`), nothing to download, quality depends on the device;
+  2. **Natural voices (Piper)** ([Piper](https://github.com/rhasspy/piper)): one voice per language for 53
      languages, ~63 MB each from Hugging Face (`huggingface.co/rhasspy/piper-voices`), plus a one-time 30 MB voice
      engine (ONNX Runtime and the Piper phonemizer with eSpeak NG data, GPL-3.0, from jsDelivr). Downloaded in the
      *Offline voices* manager, or the app asks the first time a language has no voice ("Not now" is remembered per
      language). Works without internet. No Piper voices for Hebrew, Japanese, Lithuanian and Thai: they need
      phonemizers that don't run in the browser;
-  3. **AI service**: your AI model's `/audio/speech` (set *Text-to-speech model*, e.g. `gpt-4o-mini-tts`, `tts-1`,
+  3. **Cloud-AI (your model)**: your AI model's `/audio/speech` (set *Text-to-speech model*, e.g. `gpt-4o-mini-tts`, `tts-1`,
      and a *Voice*), once *Test connection* confirmed it;
-  4. **ElevenLabs** (Settings → Voice → Cloud voice services → *Add ElevenLabs*): your API key, voice and model (Flash v2.5 or
+  4. **Cloud-AI (ElevenLabs)** (Settings → Voice → Cloud voice services → *Add ElevenLabs*): your API key, voice and model (Flash v2.5 or
      Multilingual v2). The key stays in this browser and goes only to `api.elevenlabs.io`.
 
   **Kokoro 82M** (hexgrad, Apache-2.0; `onnx-community/Kokoro-82M-v1.0-ONNX`, 92 MB) sits at the top of the
@@ -205,35 +208,35 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
   A replay of the same text uses the recording it already has (no second request or charge).
 - **Voice input** works in every browser that can record audio. Four engines; the one checked in
   Settings → Voice → **Speech recognition** goes first, the others follow:
-  1. the **browser's speech service** with live text (Chrome, Edge, Safari; your voice goes to Google, Microsoft
+  1. **Browser speech (Web Speech)** with live text (Chrome, Edge, Safari; your voice goes to Google, Microsoft
      or Apple). Not in Brave or Firefox; if it fails, the app switches to recording;
-  2. **AI service (Whisper API)**: the app records the microphone itself (stops after ~1.5 s of silence) and sends
+  2. **Cloud-AI (Whisper API)**: the app records the microphone itself (stops after ~1.5 s of silence) and sends
      it to your AI service's `/audio/transcriptions` (set *Speech-to-text model*, e.g. `whisper-1`,
      `whisper-large-v3-turbo`). Used when chosen, or in Advanced mode;
-  3. **ElevenLabs (Scribe)**, with an ElevenLabs entry under Voice › Cloud voice services;
+  3. **Cloud-AI (ElevenLabs)** (Scribe), with an ElevenLabs entry under Voice › Cloud voice services;
   4. **On this device (Whisper)**, in four sizes picked in the row: tiny (41 MB), base (80 MB, default), small
      (250 MB, much better outside English) and large-v3 turbo (563 MB, needs WebGPU with 16-bit support): `whisper-base` in the browser, asks before a one-time ~80 MB download, detects
      the language.
 - **Languages** your services can't translate stay visible but greyed out; tapping one explains why
   (e.g. not installed on your LibreTranslate server). Languages that can be downloaded show a download icon.
 - **Camera:** live preview or imported photo; OCR with [Tesseract.js](https://tesseract.projectnaptha.com/)
-  (loaded from jsDelivr on first use; one language file per language, see below), or **PP-OCRv6** (PaddlePaddle,
+  (loaded from jsDelivr on first use; one language file per language, see below) as **Basic (Tesseract)**, or **Many languages (PP-OCRv6)** (PaddlePaddle,
   Apache-2.0) when picked in Settings → Text recognition → Camera text: two small ONNX models (31 MB, once, from
   `huggingface.co/PaddlePaddle`), much better on photos, for Latin-script languages, Chinese, Japanese and Greek
-  (other scripts go to Tesseract automatically), or **AI vision**: your AI model reads the photo (any script,
+  (other scripts go to Tesseract automatically), or **Advanced (AI vision)**: your AI model reads the photo (any script,
   angled or curved text; needs a model whose **Read images** box is ticked; only when picked, since the photo is
   sent to that service; if it fails, the photo is read on the device and a notice says so). Translated text is
   drawn over the photo: line by line where the model gives line boxes, otherwise as one block.
 - **Conversation:** two people, one language each, turns alternate; translations can be read aloud.
 - **Handwriting:** draw on a pad (undo, clear, stroke width), pick a suggestion, edit, then translate.
   Four engines; the one checked in Settings → Text recognition → **Handwriting** goes first, the others follow:
-  1. **AI vision**: your AI model reads the drawing (any script, cursive), when chosen or in Advanced mode. Needs a
+  1. **Advanced (AI vision)**: your AI model reads the drawing (any script, cursive), when chosen or in Advanced mode. Needs a
      model whose **Read images** box is ticked (after Test connection); one API call per recognition.
-  2. **On-device model**: TrOCR handwriting model in the browser via
+  2. **On-device model (TrOCR)**: TrOCR handwriting model in the browser via
      [transformers.js](https://github.com/huggingface/transformers.js); asks before a one-time ~130 MB download,
      Latin-script languages only, private.
-  3. **PP-OCRv6**: the camera text model (see Camera), when picked; Latin script, Chinese, Japanese, Greek;
-  4. **Basic**: Tesseract; fallback for everything else, best with neat printed letters.
+  3. **Many languages (PP-OCRv6)**: the camera text model (see Camera), when picked; Latin script, Chinese, Japanese, Greek;
+  4. **Basic (Tesseract)**: fallback for everything else, best with neat printed letters.
 - **Permissions:** camera and microphone are explained first; the browser prompt only appears after you tap
   *Allow*. If access is blocked, the app shows browser-specific steps to re-enable it.
 - Light/dark theme (follows the system, or set it in Settings / the top bar), keyboard operation, ARIA labels,
