@@ -12,6 +12,7 @@ import { initSetupBadge } from './ui/setupbadge.js';
 import { initSiteFooter } from './ui/sitefooter.js';
 import { loadSiteConfig } from './siteconfig.js';
 import { initMenu, openMenu } from './ui/menu.js';
+import { initInstall } from './ui/install.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
 import { takeShare, takeLinkText, onOpenedFile } from './share.js';
@@ -25,6 +26,8 @@ const hooks = {};
 let currentTab = null;
 let navIndex = 0;   // position in our own pushState entries, so Back never leaves the app
 
+let isDark = false;   // the theme on screen right now (set by applyTheme)
+
 function applyTheme(theme) {
   const root = document.documentElement;
   if (theme === 'system') delete root.dataset.theme; else root.dataset.theme = theme;
@@ -33,19 +36,21 @@ function applyTheme(theme) {
     m.content = dark ? '#111318' : '#faf8ff';
     if (theme !== 'system') m.removeAttribute('media');
   });
+  isDark = dark;
   // 1200px+ top bar toggle shows the current mode (sun = light, moon = dark)
   const t = document.getElementById('btn-theme');
   if (t) {
     t.innerHTML = icon(dark ? 'darkMode' : 'lightMode');
     t.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
-    t.dataset.dark = dark ? '1' : '0';
   }
+  // the menu item offers the other mode
+  const m = document.querySelector('[data-theme-toggle]');
+  if (m) m.innerHTML = icon(dark ? 'lightMode' : 'darkMode') + `<span>${dark ? 'Light theme' : 'Dark theme'}</span>`;
 }
 
-/** Light/dark toggle: writes the same theme setting as the Settings sheet. */
+/** Light/dark toggle (top bar and menu): writes the same theme setting as the Settings sheet. */
 function toggleTheme() {
-  const dark = document.getElementById('btn-theme').dataset.dark === '1';
-  const theme = dark ? 'light' : 'dark';
+  const theme = isDark ? 'light' : 'dark';
   settings.set({ theme });
   applyTheme(theme);
 }
@@ -172,6 +177,7 @@ function boot() {
   $('btn-settings').addEventListener('click', () => openSettings());
   $('btn-more').addEventListener('click', (e) => openMenu(e.currentTarget));
   $('btn-menu').addEventListener('click', (e) => openMenu(e.currentTarget));
+  $('btn-phone-menu').addEventListener('click', (e) => openMenu(e.currentTarget));
   $('btn-theme').addEventListener('click', toggleTheme);
   $('web-history').addEventListener('click', () => openHistory('history'));
   $('web-saved').addEventListener('click', () => openHistory('saved'));
@@ -205,6 +211,8 @@ function boot() {
   initMenu('more-menu', {
     history: () => openHistory('history'),
     saved: () => openHistory('saved'),
+    theme: toggleTheme,
+    install: initInstall($('menu-install')),
     settings: () => openSettings(),
   });
 

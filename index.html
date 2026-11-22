@@ -4,11 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>OpenTranslate</title>
-  <meta name="description" content="Translate text, photos, conversations and handwriting. Works offline in demo mode, or with your own LibreTranslate server.">
+  <meta name="description" content="One translator for everything. Your words stay yours. Translate text, photos, conversations and handwriting, on your device and offline, or with the service you choose.">
   <meta name="theme-color" content="#faf8ff" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#111318" media="(prefers-color-scheme: dark)">
   <meta name="color-scheme" content="light dark">
-  <link rel="canonical" href="https://domain.tld/opentranslate/">
+  <!-- Full addresses: link previews (WhatsApp, LinkedIn, …) need them. Self-hosting? See change-me.md. -->
+  <link rel="canonical" href="https://joram.eu/opentranslate/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="OpenTranslate">
+  <meta property="og:title" content="OpenTranslate">
+  <meta property="og:description" content="One translator for everything. Your words stay yours. Translate text, photos, conversations and handwriting, on your device and offline, or with the service you choose.">
+  <meta property="og:url" content="https://joram.eu/opentranslate/">
+  <meta property="og:image" content="https://joram.eu/opentranslate/icons/opentranslate-social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="OpenTranslate: one translator for everything">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -27,7 +38,7 @@
 
   <div class="app" id="app" data-tab="text">
     <!-- Top app bar -->
-    <!-- Phones: home = star · wordmark · settings; typing = back · history/clear · pen · more.
+    <!-- Phones: home = star · wordmark · menu; typing = back · history/clear · pen · more.
          720-1199px: wordmark left, history · saved · settings right.
          1200px+: menu · wordmark, theme toggle · settings right. -->
     <header class="topbar">
@@ -52,6 +63,7 @@
         <button class="icon-btn tb-saved-wide" id="btn-saved-wide" type="button" aria-label="Saved translations" title="Saved"><i data-icon="star"></i></button>
         <button class="icon-btn tb-more" id="btn-more" type="button" aria-label="More options" aria-haspopup="menu" aria-expanded="false" title="More"><i data-icon="more"></i></button>
         <button class="icon-btn tb-theme" id="btn-theme" type="button" aria-label="Switch to dark theme" title="Switch between light and dark theme"><i data-icon="lightMode"></i></button>
+        <button class="icon-btn tb-phone-menu" id="btn-phone-menu" type="button" aria-label="Main menu" aria-haspopup="menu" aria-expanded="false" title="Menu"><i data-icon="menu"></i></button>
         <button class="icon-btn tb-settings" id="btn-settings" type="button" aria-label="Settings" title="Settings"><span class="ring"><i data-icon="settings"></i></span></button>
       </div>
     </header>
@@ -453,12 +465,14 @@
     <div role="menu" aria-label="Translation mode" id="mode-items"></div>
   </dialog>
 
-  <!-- Overflow menu (phones) / main menu (1200px+) -->
+  <!-- One menu for every size: phones (☰ on home, ⋮ while typing) and 1200px+ (☰ top left) -->
   <dialog class="menu" id="more-menu">
     <div role="menu" aria-label="More options">
       <button type="button" role="menuitem" data-menu="history"><i data-icon="history"></i><span>History</span></button>
       <button type="button" role="menuitem" data-menu="saved"><i data-icon="star"></i><span>Saved translations</span></button>
-      <button type="button" role="menuitem" data-menu="settings"><i data-icon="settings"></i><span>Settings</span></button>
+      <button type="button" role="menuitem" data-menu="theme" data-theme-toggle><i data-icon="darkMode"></i><span>Dark theme</span></button>
+      <button type="button" role="menuitem" data-menu="install" id="menu-install"><i data-icon="install"></i><span>Install app</span></button>
+      <button type="button" role="menuitem" data-menu="settings" id="menu-settings"><i data-icon="settings"></i><span>Settings</span></button>
     </div>
   </dialog>
 
@@ -520,6 +534,20 @@
       <button class="icon-btn" type="button" data-close aria-label="Close details"><i data-icon="close"></i></button>
     </div>
     <div class="info-body" id="info-body"></div>
+  </dialog>
+
+  <!-- "Install app" where the browser has no install dialog of its own: steps filled in by js/ui/install.js -->
+  <dialog class="sheet bottom info-sheet" id="install-dialog" aria-labelledby="install-title">
+    <div class="drag-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="install-title">Install OpenTranslate</h2>
+      <span class="spacer"></span>
+      <button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="close"></i></button>
+    </div>
+    <div class="info-body">
+      <p>Add it to your home screen and it opens like any app, full screen and offline.</p>
+      <ol class="install-steps" id="install-steps"></ol>
+    </div>
   </dialog>
 
   <div class="snackbar" id="snackbar"><span id="snackbar-text" role="status"></span><button class="text-btn" id="snackbar-action" type="button" hidden></button><button class="icon-btn snackbar-close" id="snackbar-close" type="button" aria-label="Dismiss message" hidden><i data-icon="close"></i></button></div>

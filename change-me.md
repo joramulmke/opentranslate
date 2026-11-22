@@ -11,3 +11,7 @@ privacy_policy_link = https://joram.eu/imp
 # The offline demo (a few built-in phrases, for trying the app). Set to false to remove it,
 # so people must add a real translation service. Leave it out, or set true, to keep it.
 demo_mode = false
+
+# Hosting your own copy? Link previews and search engines don't read this file, so change one thing by
+# hand: in index.html, replace every https://joram.eu/opentranslate/ (canonical link and the og: preview
+# tags at the top) with your own address.

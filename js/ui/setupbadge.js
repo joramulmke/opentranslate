@@ -5,7 +5,7 @@ import { settings } from '../store.js';
 import { installedLanguages, onOfflineChange } from '../features/offline.js';
 import { demoEnabled } from '../siteconfig.js';
 
-const BUTTONS = ['btn-settings', 'btn-menu', 'btn-more'];
+const BUTTONS = ['btn-settings', 'btn-menu', 'btn-phone-menu', 'btn-more', 'menu-settings'];
 
 /** true while no real translation service has been added (only the demo, or nothing when it's off). */
 export const onlyDemo = () => !settings.get().entries.some((e) => !['mock', 'offline', 'elevenlabs'].includes(e.type)) && !installedLanguages().length;

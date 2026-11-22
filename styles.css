@@ -238,7 +238,7 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .brand-mark { width: 28px; height: 28px; flex: none; }
 .brand-name { font: 400 22px/1 var(--font-display); color: var(--on-surface); letter-spacing: 0; white-space: nowrap; }
 .topbar-actions { display: flex; align-items: center; }
-.tb-back, .tb-saved, .tb-clear, .tb-pen, .tb-keyboard, .tb-more { display: none; }
+.tb-back, .tb-saved, .tb-clear, .tb-pen, .tb-keyboard, .tb-more, .tb-phone-menu { display: none; }
 .ring { display: contents; }
 
 .main { grid-area: main; position: relative; overflow: hidden; }
@@ -711,6 +711,9 @@ dialog.menu [role="menuitem"] {
 dialog.menu [role="menuitem"] .ic { color: var(--on-surface-variant); }
 dialog.menu [role="menuitem"]:hover, dialog.menu [role="menuitem"]:focus-visible { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
 dialog.menu [role^="menuitem"]:focus-visible { outline: 3px solid var(--primary); outline-offset: -3px; }
+dialog.menu [role="menuitem"][hidden] { display: none; }
+.install-steps { margin: 12px 0 8px; padding-left: 22px; line-height: 24px; }
+.install-steps li + li { margin-top: 8px; }
 
 .segmented { display: flex; margin: 0 16px 8px; border: 1px solid var(--outline); border-radius: 22px; overflow: hidden; flex: none; }
 .segmented button { flex: 1; height: 44px; border: 0; background: none; font-size: 14px; font-weight: 500; }
@@ -807,10 +810,13 @@ dialog.menu [role^="menuitem"]:focus-visible { outline: 3px solid var(--primary)
   .ring { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; border: 2.5px solid var(--primary); color: var(--primary); }
   .ring .ic { width: 20px; height: 20px; }
   .tb-saved { display: inline-grid; }
+  /* home: a menu button where the settings ring used to be; Settings is in the menu */
+  .tb-settings { display: none; }
+  .tb-phone-menu { display: inline-grid; }
 
   .app[data-mode="edit"] .brand, .app[data-tab="handwriting"] .brand,
   .app[data-mode="edit"] .tb-saved, .app[data-tab="handwriting"] .tb-saved,
-  .app[data-mode="edit"] .tb-settings, .app[data-tab="handwriting"] .tb-settings { display: none; }
+  .app[data-mode="edit"] .tb-phone-menu, .app[data-tab="handwriting"] .tb-phone-menu { display: none; }
   .app[data-mode="edit"] .topbar-actions, .app[data-tab="handwriting"] .topbar-actions { margin-left: auto; }
   .app[data-mode="edit"] .tb-back, .app[data-tab="handwriting"] .tb-back,
   .app[data-mode="edit"] .tb-pen, .app[data-mode="edit"] .tb-more, .app[data-tab="handwriting"] .tb-more,
@@ -1232,6 +1238,8 @@ dialog.menu.mode-menu [role^="menuitem"]:focus-visible { background: color-mix(i
   background: #D93025; color: #fff; font: 700 11px/16px var(--font); text-align: center;
   box-shadow: 0 0 0 2px var(--bg); pointer-events: none; opacity: 1 !important;
 }
+/* in the menu: at the end of the Settings row */
+dialog.menu .needs-setup::after { position: static; margin-left: auto; box-shadow: none; flex: none; }
 .setup-hint { margin: 0 0 8px; padding: 12px 14px; border-radius: 12px; font-size: 14px; line-height: 20px;
   background: var(--error-container); color: var(--on-error-container); }
 
