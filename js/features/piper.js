@@ -150,24 +150,29 @@ const sizeOf = async (res) => Number(res.headers.get('content-length')) || (awai
 
 /** Which voices (and engine files) are in the cache. */
 export async function refreshVoices() {
-  present.clear(); engineBytes = 0; kokoroVoicesHere.clear();
-  let kokoroAll = 0; let kokoroModel = false;
-  if (!canCache()) { kokoroBytes = 0; emit(); return; }
-  try {
-    const c = await caches.open(CACHE);
-    for (const req of await c.keys()) {
-      const res = await c.match(req);
-      const bytes = res ? await sizeOf(res) : 0;
-      const v = VOICES.find((x) => req.url === HF + encodeURI(x.file));
-      if (v) present.set(v.lang, bytes);
-      else if (isKokoroUrl(req.url)) {
-        kokoroAll += bytes;
-        if (req.url === KOKORO_MODEL) kokoroModel = true;
-        const id = req.url.match(/voices\/(\w+)\.bin$/)?.[1];
-        if (id) kokoroVoicesHere.add(id);
-      } else if (!req.url.endsWith('.onnx.json')) engineBytes += bytes;
-    }
-  } catch { /* no cache storage */ }
+  // read into locals and swap at the end, so the voices don't look missing while the cache is read
+  const nextPresent = new Map(); const nextKokoro = new Set();
+  let nextEngine = 0; let kokoroAll = 0; let kokoroModel = false;
+  if (canCache()) {
+    try {
+      const c = await caches.open(CACHE);
+      for (const req of await c.keys()) {
+        const res = await c.match(req);
+        const bytes = res ? await sizeOf(res) : 0;
+        const v = VOICES.find((x) => req.url === HF + encodeURI(x.file));
+        if (v) nextPresent.set(v.lang, bytes);
+        else if (isKokoroUrl(req.url)) {
+          kokoroAll += bytes;
+          if (req.url === KOKORO_MODEL) kokoroModel = true;
+          const id = req.url.match(/voices\/(\w+)\.bin$/)?.[1];
+          if (id) nextKokoro.add(id);
+        } else if (!req.url.endsWith('.onnx.json')) nextEngine += bytes;
+      }
+    } catch { /* no cache storage */ }
+  }
+  present.clear(); nextPresent.forEach((b, l) => present.set(l, b));
+  kokoroVoicesHere.clear(); nextKokoro.forEach((id) => kokoroVoicesHere.add(id));
+  engineBytes = nextEngine;
   kokoroBytes = kokoroModel ? kokoroAll : 0;
   emit();
 }

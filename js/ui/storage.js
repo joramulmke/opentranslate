@@ -18,10 +18,14 @@ const $ = (id) => document.getElementById(id);
 const size = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : formatMB(b));
 let items = [];
 let busy = false;
+let collecting = false;   // our own refresh*() calls announce changes too: don't react to those
 
 /** Everything downloaded: [{ id, name, kind, bytes, note?, remove? }] */
 async function collect() {
-  await Promise.all([refreshVoices(), refreshModels(), refreshPaddle()].map((p) => Promise.resolve(p).catch(() => {})));
+  collecting = true;
+  try {
+    await Promise.all([refreshVoices(), refreshModels(), refreshPaddle()].map((p) => Promise.resolve(p).catch(() => {})));
+  } finally { collecting = false; }
   const out = [];
   for (const l of installedLanguages().filter((c) => c !== 'en')) {
     out.push({ id: `pack:${l}`, name: langName(l), kind: 'Offline language (Bergamot)', bytes: packBytes(l),
@@ -130,7 +134,7 @@ export function initStorage() {
   });
   let t = 0;
   const later = (what) => {
-    if (what === 'progress') return;
+    if (what === 'progress' || collecting) return;
     clearTimeout(t); t = setTimeout(() => { if ($('settings-dialog')?.open) renderStorage(); }, 300); };
   [onOfflineChange, onVoicesChange, onModelsChange, onPaddleChange, onLlmChange].forEach((on) => { try { on(later); } catch { /* not available */ } });
 }
