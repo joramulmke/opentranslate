@@ -22,6 +22,8 @@ export const PADDLE = {
 const LATIN = new Set(['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'da', 'no', 'nb', 'nn', 'fi', 'pl', 'cs', 'sk', 'sl', 'hr', 'bs', 'ro', 'hu', 'tr',
   'id', 'ms', 'tl', 'sw', 'ca', 'ga', 'et', 'lv', 'lt', 'eo', 'af', 'sq', 'eu', 'gl', 'cy', 'is', 'az', 'uz', 'vi', 'mt', 'lb']);
 const OTHER = new Set(['zh', 'zh-Hant', 'ja', 'el']);
+/** Latin-script language (also what Florence-2 reads). */
+export const latinScript = (lang) => LATIN.has(String(lang).split('-')[0]);
 /** Can PP-OCRv6 read text in this language? (unknown / auto: yes, it's the common case) */
 export const paddleReads = (lang) => !lang || lang === 'auto' || LATIN.has(String(lang).split('-')[0]) || OTHER.has(lang) || OTHER.has(String(lang).split('-')[0]);
 

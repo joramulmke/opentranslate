@@ -31,6 +31,7 @@ const DEFAULT_SETTINGS = {
   sttModelOk: null,            // same, for the on-device speech model
   ocrEngine: 'tesseract',      // first camera text engine: tesseract | paddle (PP-OCRv6)
   paddleOk: null,              // answer to the PP-OCRv6 download question
+  visionModelOk: null,         // answer to the Florence-2 download question (camera text)
   ocrQuality: 'accurate',      // camera text: accurate (sharper photo, finer detection) | fast
   whisperModel: 'whisper',     // on-device speech model size: whisper-tiny | whisper (base) | whisper-small | whisper-turbo
 };

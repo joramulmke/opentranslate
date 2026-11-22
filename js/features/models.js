@@ -1,4 +1,4 @@
-// Downloadable on-device models that run with transformers.js (speech recognition, handwriting):
+// Downloadable on-device models that run with transformers.js (speech recognition, handwriting, camera text):
 // one place that loads them, knows whether they are downloaded, how big they are, where they come
 // from, and can delete them. transformers.js keeps the files in Cache Storage ("transformers-cache").
 import { settings } from '../store.js';
@@ -43,7 +43,16 @@ export const HF_MODELS = {
     options: { dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' } },
     what: 'handwriting model', okKey: 'hwrModelOk',
   },
+  // camera text: reads signs, menus and short texts with their place in the photo, and describes a photo
+  // without text. Four parts (image encoder, word embeddings, encoder, decoder), all 8-bit.
+  florence: {
+    repo: 'onnx-community/Florence-2-base-ft', title: 'Florence-2 base', sizeMB: 270, licence: 'MIT', source: 'huggingface',
+    model: 'Florence2ForConditionalGeneration', parts: ['embed_tokens', 'vision_encoder', 'encoder_model', 'decoder_model_merged'],
+    options: { dtype: 'q8' },
+    what: 'image model', okKey: 'visionModelOk',
+  },
 };
+const partsOf = (key) => HF_MODELS[key].parts || ['encoder_model', 'decoder_model_merged'];
 export const WHISPER_SIZES = ['whisper-tiny', 'whisper', 'whisper-small', 'whisper-turbo'];
 /** The Whisper size picked in Settings (base by default). */
 export const whisperKey = () => (WHISPER_SIZES.includes(settings.get().whisperModel) ? settings.get().whisperModel : 'whisper');
@@ -88,13 +97,13 @@ async function cachedFiles(key) {
   }));
 }
 
-/** Look in the cache which models are downloaded (both model halves are there). */
+/** Look in the cache which models are downloaded (all model parts are there). */
 export async function refreshModels() {
   for (const key of Object.keys(HF_MODELS)) {
     try {
       const files = await cachedFiles(key);
       const onnx = files.filter((f) => /\.onnx$/.test(f.req.url));
-      if (onnx.length >= 2) present.set(key, files.reduce((a, f) => a + f.bytes, 0)); else present.delete(key);
+      if (onnx.length >= partsOf(key).length) present.set(key, files.reduce((a, f) => a + f.bytes, 0)); else present.delete(key);
     } catch { present.delete(key); }
   }
   emit();
@@ -110,25 +119,29 @@ export function getPipeline(key, { onStatus, onProgress } = {}) {
   if (!pipes.has(key)) {
     const job = { progress: 0 };
     const p = (async () => {
-      const { pipeline } = await transformers();
+      const lib = await transformers();
       const files = {};
       const cached = present.has(key);
       if (!cached) { jobs.set(key, job); emit(); }
       job.onStatus?.(cached ? `Loading ${m.what}…` : `Downloading ${m.what} ${fromText(key)}…`);
-      const pipe = await pipeline(m.task, m.repo, {
-        ...m.options,
-        progress_callback: (ev) => {
-          if (ev.status !== 'progress' || !ev.total) return;
-          files[ev.file] = [ev.loaded, ev.total];
-          const [l, t] = Object.values(files).reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]);
-          job.progress = l / t;
-          job.onStatus?.(cached ? `Loading ${m.what}… ${Math.round(job.progress * 100)}%`
-            : `Downloading ${m.what} ${fromText(key)}… ${Math.round(job.progress * 100)}%`);
-          job.onProgress?.(job.progress);
-          emit('progress');
-        },
-      });
-      return pipe;
+      const progress_callback = (ev) => {
+        if (ev.status !== 'progress' || !ev.total) return;
+        files[ev.file] = [ev.loaded, ev.total];
+        const [l, t] = Object.values(files).reduce((a, [x, y]) => [a[0] + x, a[1] + y], [0, 0]);
+        job.progress = l / t;
+        job.onStatus?.(cached ? `Loading ${m.what}… ${Math.round(job.progress * 100)}%`
+          : `Downloading ${m.what} ${fromText(key)}… ${Math.round(job.progress * 100)}%`);
+        job.onProgress?.(job.progress);
+        emit('progress');
+      };
+      if (!m.model) return lib.pipeline(m.task, m.repo, { ...m.options, progress_callback });
+      // a model without a ready-made pipeline (Florence-2): the model, its image processor and tokenizer
+      const [model, processor, tokenizer] = await Promise.all([
+        lib[m.model].from_pretrained(m.repo, { ...m.options, progress_callback }),
+        lib.AutoProcessor.from_pretrained(m.repo, { progress_callback }),
+        lib.AutoTokenizer.from_pretrained(m.repo, { progress_callback }),
+      ]);
+      return { model, processor, tokenizer, lib, dispose: () => model.dispose() };
     })();
     job.promise = p;
     pipes.set(key, p);
@@ -144,7 +157,6 @@ export function getPipeline(key, { onStatus, onProgress } = {}) {
 
 // transformers.js file names: <part><suffix>.onnx in onnx/, the suffix from the precision (dtype)
 const SUFFIX = { fp32: '', fp16: '_fp16', int8: '_int8', uint8: '_uint8', q8: '_quantized', q4: '_q4', q4f16: '_q4f16', bnb4: '_bnb4' };
-const PARTS = ['encoder_model', 'decoder_model_merged'];
 
 /**
  * The files transformers.js will ask for, as it names and caches them (Hugging Face URL as the key):
@@ -158,11 +170,12 @@ async function modelFiles(key) {
     if (!res.ok) return null;
     const tree = await res.json();
     const dtype = (part) => (typeof m.options?.dtype === 'string' ? m.options.dtype : m.options?.dtype?.[part]) || (m.options?.device === 'webgpu' ? 'fp32' : 'q8');
+    const parts = partsOf(key);
     const wanted = (path) => (!path.includes('/') && path.endsWith('.json'))
-      || PARTS.some((part) => path === `onnx/${part}${SUFFIX[dtype(part)]}.onnx` || path === `onnx/${part}${SUFFIX[dtype(part)]}.onnx_data`);
+      || parts.some((part) => path === `onnx/${part}${SUFFIX[dtype(part)]}.onnx` || path === `onnx/${part}${SUFFIX[dtype(part)]}.onnx_data`);
     const files = tree.filter((f) => f.type === 'file' && wanted(f.path))
       .map((f) => ({ url: `https://huggingface.co/${m.repo}/resolve/main/${f.path}`, cache: CACHE, size: f.lfs?.size || f.size }));
-    return files.filter((f) => /\.onnx$/.test(f.url)).length === PARTS.length ? files : null;
+    return files.filter((f) => /\.onnx$/.test(f.url)).length === parts.length ? files : null;
   } catch { return null; }
 }
 

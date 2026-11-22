@@ -6,10 +6,11 @@ import { settings } from '../store.js';
 import { sheet } from './permissions.js';
 import { PADDLE, paddleState, downloadPaddle, recognizePaddle, paddleReads } from './paddle.js';
 import { ORT_MB } from './ort.js';
+import { recognizeFlorence, florenceReads, florenceAllowed } from './florence.js';
 import { state } from '../state.js';
 
 /** Camera text engines (Settings › Text recognition › Camera text): the chosen one first, Tesseract last. */
-export const OCR_ENGINES = ['tesseract', 'paddle', 'vision'];
+export const OCR_ENGINES = ['tesseract', 'paddle', 'florence', 'vision'];
 export const ocrPref = () => (OCR_ENGINES.includes(settings.get().ocrEngine) ? settings.get().ocrEngine : 'tesseract');
 
 /** PP-OCRv6 chosen but not downloaded: ask once (like the other on-device models). true = ready to use. */
@@ -89,6 +90,17 @@ export async function recognize(image, opts = {}) {
     const res = await recognizeLocal(image, opts);
     return { ...res, note: 'AI vision needs an AI model that can read images (Settings › Translation › Advanced), so this was read on the device.' };
   }
+  // Florence-2 on this device (Latin script; asks before its download), else PP-OCRv6 or Tesseract
+  if (ocrPref() === 'florence' && florenceReads(opts.iso)) {
+    try {
+      if (await florenceAllowed()) return await recognizeFlorence(image, { onProgress: opts.onProgress });
+    } catch (e) {
+      opts.onProgress?.({ status: 'fallback-florence', progress: 0 });
+      const res = await recognizeLocal(image, opts);
+      const why = String(e.message || e).replace(/[^\p{L}\p{N}\p{P} ]+/gu, ' ').slice(0, 80);
+      return { ...res, note: `Florence-2 didn't work (${why}), so the photo was read another way.` };
+    }
+  }
   return recognizeLocal(image, opts);
 }
 
@@ -118,7 +130,7 @@ async function recognizeVision(image, iso) {
 async function recognizeLocal(image, opts) {
   // PP-OCRv6 has no Cyrillic, Arabic, Indic, Thai or Korean script: Tesseract reads those
   // (also when AI vision didn't work and PP-OCRv6 is already downloaded)
-  const paddle = ocrPref() === 'paddle' || (ocrPref() === 'vision' && paddleState() === 'ready');
+  const paddle = ocrPref() === 'paddle' || (['vision', 'florence'].includes(ocrPref()) && paddleState() === 'ready');
   if (paddle && paddleReads(opts.iso)) {
     try {
       if (await paddleAllowed()) return await recognizePaddle(image, { onProgress: opts.onProgress });
@@ -156,6 +168,11 @@ export function describeOcrStatus(m) {
   if (m.status === 'fallback') return 'PP-OCRv6 didn’t work, reading with Tesseract…';
   if (m.status === 'vision') return 'Reading with AI vision…';
   if (m.status === 'fallback-vision') return 'AI vision didn’t work, reading on this device…';
+  if (m.status === 'florence-load') return 'Starting Florence-2…';
+  if (m.status === 'florence-download') return `Downloading Florence-2 from Hugging Face (huggingface.co)… ${pct}%`;
+  if (m.status === 'florence') return 'Reading with Florence-2…';
+  if (m.status === 'florence-describe') return 'No text found, describing the photo…';
+  if (m.status === 'fallback-florence') return 'Florence-2 didn’t work, reading another way…';
   return 'Preparing…';
 }
 

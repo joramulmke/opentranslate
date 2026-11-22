@@ -53,7 +53,7 @@ function modelButton(key) {
 
 const modelSource = (key) => details(
   `From ${extLink(modelPage(key), `Hugging Face: ${HF_MODELS[key].repo}`)}.`,
-  `${HF_MODELS[key].licence} licence. Runs in your browser with transformers.js (from jsDelivr); nothing you say or write leaves this device.`,
+  `${HF_MODELS[key].licence} licence. Runs in your browser with transformers.js (from jsDelivr); nothing you say, write or photograph leaves this device.`,
   modelState(key) === 'ready' ? `Uses ${formatMB(modelBytes(key) || HF_MODELS[key].sizeMB * 1e6)} on this device. Delete it under Storage at the top of Settings or with the delete button.` : '');
 
 /** Which Whisper size to use: tiny, base, small, large-v3 turbo (with size, and which are downloaded). */
@@ -229,6 +229,9 @@ function ocrRows() {
     + row({ group: 'ocr', value: 'paddle', title: 'Many languages (PP-OCRv6)', checked: first === 'paddle',
       tags: () => [PRIVATE, OFFLINE, paddleSize(), quality('Good')], line: 'Better on photos · Latin script, Chinese, Japanese, Greek',
       info: paddleInfo(), actions: paddleButton(), extra: qualitySelect() })
+    + row({ group: 'ocr', value: 'florence', title: 'On-device AI vision (Florence-2)', checked: first === 'florence',
+      tags: () => [PRIVATE, OFFLINE, modelSize('florence'), quality('Good')], line: 'Signs, menus and labels · describes photos without text · Latin script · slower',
+      info: modelSource('florence'), actions: modelButton('florence') })
     + row({ group: 'ocr', value: 'vision', title: 'Advanced (AI vision)', checked: first === 'vision' && !!ai, disabled: !ai,
       tags: visionTags(ai), line: ai ? `${ai.label} · any script, angled and curved text` : NEEDS_VISION,
       info: ai ? details(`Not a download: each photo goes to ${esc(hostOf(ai))}.`, "If it doesn't answer, the photo is read on this device instead.") : '' });
@@ -280,7 +283,7 @@ export function renderEngines() {
 /** Progress ticks only change the tags and the button's label, so focus stays put. */
 function renderProgress() {
   refreshTags();
-  for (const key of [whisperKey(), 'trocr']) {
+  for (const key of [whisperKey(), 'trocr', 'florence']) {
     const b = document.querySelector(`[data-model="${key}"]`);
     if (b && modelState(key) === 'downloading') b.setAttribute('aria-label', `Downloading ${HF_MODELS[key].title}, ${Math.round(modelProgress(key) * 100)}%`);
   }
@@ -531,7 +534,7 @@ export function initEngineRows({ isOpen, closeOthers }) {
       if (group === 'speech') settings.set({ speechEngine: value, ...(value === 'ondevice' ? { sttModelOk: null } : {}) });
       // choosing Piper again also forgets earlier "Not now" answers to its download question
       if (group === 'tts') settings.set({ ttsEngine: value, ...(value === 'ondevice' ? { ttsDeclined: [] } : {}) });
-      if (group === 'ocr') settings.set({ ocrEngine: value, ...(value === 'paddle' ? { paddleOk: null } : {}) });
+      if (group === 'ocr') settings.set({ ocrEngine: value, ...(value === 'paddle' ? { paddleOk: null } : {}), ...(value === 'florence' ? { visionModelOk: null } : {}) });
       if (group === 'hwr' && value === 'paddle') settings.set({ paddleOk: null });
       if (group === 'hwr') settings.set({ hwrEngine: value, ...(value === 'ondevice' ? { hwrModelOk: null } : {}) });
       renderEngines();

@@ -1,7 +1,7 @@
 // Service worker: the app always opens from its cache (fast, works offline). A new version is downloaded
 // whole, in the background, into its own cache, and only takes over at the next start (js/app.js), so the
 // page never runs with a mix of old and new files. API responses and CDN assets are never cached here.
-const CACHE_NAME = 'ot-shell-v24';
+const CACHE_NAME = 'ot-shell-v25';
 const SHELL = [
   './',
   './index.html',
@@ -48,6 +48,7 @@ const SHELL = [
   './js/features/piper.js',
   './js/features/ort.js',
   './js/features/paddle.js',
+  './js/features/florence.js',
   './js/ui/enginerows.js',
   './js/ui/storage.js',
   './js/ui/settingssearch.js',

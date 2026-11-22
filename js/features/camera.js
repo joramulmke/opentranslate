@@ -148,6 +148,8 @@ export function initCamera({ sendToText }) {
     shot.lines = ocr.lines.filter((l) => l.confidence > 30 && /[\p{L}\p{N}]/u.test(l.text));
     shot.ocrText = shot.lines.map((l) => l.text).join('\n');
     shot.note = ocr.note || '';   // e.g. AI vision didn't work and the device read the photo
+    shot.lang = ocr.lang || null;  // e.g. a Florence-2 description is English, whatever the photo's language
+    shot.description = !!ocr.description;
     if (!shot.ocrText) { status(''); toast(`No text found. Try moving closer or improving the light.${shot.note ? ' ' + shot.note : ''}`); return; }
     await translateShot(id);
   }
@@ -155,7 +157,7 @@ export function initCamera({ sendToText }) {
   async function translateShot(id) {
     status(`Translating to ${langName(state.target)}…`);
     try {
-      let source = state.source;
+      let source = shot.lang || state.source;
       if (source === 'auto') {
         const d = await detect(shot.ocrText).catch(() => null);
         source = d?.language || 'auto';
@@ -181,7 +183,7 @@ export function initCamera({ sendToText }) {
     const { w, h, lines } = shot;
     const showOrig = originalOnly || el.toggleOrig.getAttribute('aria-pressed') === 'true';
     const tLines = (shot.translated || '').split('\n');
-    const perLine = tLines.length === lines.length;
+    const perLine = tLines.length === lines.length && !shot.description;
     const boxes = perLine || showOrig
       ? lines.map((l, i) => ({ bbox: l.bbox, box: l.box, text: showOrig ? l.text : tLines[i] }))
       : [{ bbox: union(lines.map((l) => l.bbox)), text: shot.translated }];
