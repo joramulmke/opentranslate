@@ -20,6 +20,3 @@ tests/
 # OS / editor noise
 .DS_Store
 *.swp
-
-# Internal notes (local only)
-NOTES-INTERNAL.md
