@@ -537,8 +537,9 @@
     <code>python3 -m http.server 8000</code> then open <code>http://localhost:8000</code>.
   </div>
   <script>
-    // If the module graph never boots (file:// in Chrome/Firefox), explain how to run it.
-    setTimeout(function () {
+    // Opened from a file: browsers block ES modules there, so explain how to run it. Only then:
+    // on a real web address a slow or partial start must never show this.
+    if (location.protocol === 'file:') setTimeout(function () {
       if (!window.__otBooted) document.getElementById('boot-msg').hidden = false;
     }, 1500);
   </script>

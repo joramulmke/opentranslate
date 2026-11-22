@@ -212,4 +212,22 @@ function boot() {
   }
 }
 
-boot();
+// sw.js downloads a new version in the background and keeps it waiting. If one is waiting when the app
+// starts, it takes over first (one quick reload), so this start already runs the new version, whole.
+function start() {
+  const sw = navigator.serviceWorker;
+  let once = false;
+  try { once = sessionStorage.getItem('ot-updating') === '1'; sessionStorage.removeItem('ot-updating'); } catch { /* no storage */ }
+  if (!sw?.controller || once) { boot(); return; }
+  let booted = false;
+  const go = () => { if (!booted) { booted = true; boot(); } };
+  const timer = setTimeout(go, 3000);   // never keep the app from starting
+  sw.getRegistration().then((reg) => {
+    if (!reg?.waiting) { clearTimeout(timer); go(); return; }
+    try { sessionStorage.setItem('ot-updating', '1'); } catch { /* reloads at most once anyway: see timer */ }
+    sw.addEventListener('controllerchange', () => { if (!booted) location.reload(); });
+    reg.waiting.postMessage('skipWaiting');
+  }).catch(() => { clearTimeout(timer); go(); });
+}
+
+start();
