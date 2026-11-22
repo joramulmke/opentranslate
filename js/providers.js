@@ -376,10 +376,15 @@ registerProvider({
       suggest: true, help: '“Test connection” fills in the models your server offers.' },
     { key: 'sttModel', label: 'Speech-to-text model', type: 'text', placeholder: 'e.g. whisper-1 (OpenAI), whisper-large-v3-turbo (Groq)',
       suggest: true, help: 'Optional. Used for voice input where the browser has no speech service (Brave, Firefox). Empty = on-device model.' },
+    { key: 'ttsModel', label: 'Text-to-speech model', type: 'text', placeholder: 'e.g. gpt-4o-mini-tts or tts-1 (OpenAI)',
+      suggest: true, help: 'Optional. Reads translations aloud (Settings › Translation services › Read aloud).' },
+    { key: 'ttsVoice', label: 'Voice', type: 'text', placeholder: 'alloy', default: 'alloy',
+      help: 'A voice name of this service, e.g. alloy, nova, shimmer (OpenAI).' },
     // What the model can do besides text. The page can't know this from the name, so "Test connection"
     // tries it; the box stays off until the test confirms it, then the user decides.
     { key: 'vision', label: 'Read images (handwriting)', type: 'cap', resetBy: 'model', what: 'images' },
     { key: 'audio', label: 'Speech to text (voice input)', type: 'cap', resetBy: 'sttModel', what: 'audio' },
+    { key: 'tts', label: 'Text to speech (read aloud)', type: 'cap', resetBy: 'ttsModel', what: 'speech' },
   ],
   create(cfg) { return new OpenAICompatibleProvider(cfg); },
 });
@@ -404,7 +409,7 @@ function silentWav() {
 }
 
 export class OpenAICompatibleProvider {
-  constructor({ baseUrl, apiKey, model, sttModel, vision, audio }) {
+  constructor({ baseUrl, apiKey, model, sttModel, ttsModel, ttsVoice, vision, audio, tts }) {
     this.name = 'OpenAI-compatible';
     this.isAdvanced = true;
     this.base = String(baseUrl).trim().replace(/\/+$/, '');
@@ -413,10 +418,13 @@ export class OpenAICompatibleProvider {
     this.sttName = String(sttModel || '').trim();
     // only what a test confirmed and the user left on ('on'); untested = '' , turned off = 'off'
     this.sttModel = audio === 'on' ? this.sttName : '';
+    this.ttsName = String(ttsModel || '').trim();
+    this.ttsModel = tts === 'on' ? this.ttsName : '';
+    this.ttsVoice = String(ttsVoice || '').trim() || 'alloy';
     if (vision !== 'on') this.recognizeImage = undefined;
   }
 
-  async _req(path, body, { timeout = 60000 } = {}) {
+  async _req(path, body, { timeout = 60000, binary = false } = {}) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeout);
     const headers = { Accept: 'application/json' };
@@ -434,6 +442,7 @@ export class OpenAICompatibleProvider {
     } finally {
       clearTimeout(timer);
     }
+    if (binary && res.ok) return res.blob();
     let data = null;
     try { data = await res.json(); } catch { /* non-JSON */ }
     if (!res.ok) {
@@ -528,6 +537,21 @@ export class OpenAICompatibleProvider {
     return String(data?.text || '').trim();
   }
 
+  /** Text to speech via /audio/speech. Needs ttsModel. Resolves to an audio blob (MP3). */
+  async speak(text) {
+    if (!this.ttsModel) throw new ProviderError('NO_PROVIDER', 'No text-to-speech model set.');
+    return this._req('/audio/speech', { model: this.ttsModel, voice: this.ttsVoice, input: text, response_format: 'mp3' }, { timeout: 60000, binary: true });
+  }
+
+  /** Does the text-to-speech model answer? Asks for one short word. true / false / null. */
+  async probeSpeech() {
+    if (!this.ttsName) return null;
+    try {
+      const b = await this._req('/audio/speech', { model: this.ttsName, voice: this.ttsVoice, input: 'Hi', response_format: 'mp3' }, { timeout: 30000, binary: true });
+      return b.size > 100;
+    } catch (e) { return e.code === 'SERVER' || e.code === 'BAD_RESPONSE' ? false : null; }
+  }
+
   async listModels() {
     const data = await this._req('/models', null, { timeout: 15000 });
     const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
@@ -566,13 +590,119 @@ export class OpenAICompatibleProvider {
     try { models = await this.listModels(); } catch (e) { if (e.code === 'AUTH' || e.code === 'NETWORK') throw e; }
     if (!this.model) return { ok: false, models, message: `Connected${models.length ? `, ${models.length} models available` : ''}. Pick a model, then test again.` };
     const r = await this.translate('Good morning', 'en', 'es');
-    const [vision, audio] = await Promise.all([this.probeVision(), this.probeAudio()]);
+    const [vision, audio, speech] = await Promise.all([this.probeVision(), this.probeAudio(), this.probeSpeech()]);
     const say = (v, yes, no) => (v === true ? yes : v === false ? no : '');
     const notes = [
       say(vision, 'It can read images.', "It can't read images."),
       this.sttName ? say(audio, `${this.sttName} turns speech into text.`, `${this.sttName} didn't accept audio.`) : '',
+      this.ttsName ? say(speech, `${this.ttsName} reads text aloud.`, `${this.ttsName} didn't read text aloud.`) : '',
     ].filter(Boolean).join(' ');
-    return { ok: true, models, caps: { vision, audio }, message: `Connected. ${this.model}: “Good morning” → “${r.text}”${notes ? `. ${notes}` : ''}` };
+    return { ok: true, models, caps: { vision, audio, tts: speech }, message: `Connected. ${this.model}: “Good morning” → “${r.text}”${notes ? `. ${notes}` : ''}` };
+  }
+}
+
+/* ------------------------------------------------------------------------ */
+/* ElevenLabsProvider: cloud voices (read aloud) and speech recognition      */
+/* (Scribe). Not a translation service: it shows up in Read aloud and Speech */
+/* recognition. api.elevenlabs.io accepts requests from web pages (CORS).    */
+/* ------------------------------------------------------------------------ */
+
+const ELEVEN = 'https://api.elevenlabs.io/v1';
+
+registerProvider({
+  id: 'elevenlabs',
+  kind: 'voice',
+  label: 'ElevenLabs',
+  description: 'Natural voices for reading translations aloud, and speech recognition for voice input. Your API key is stored only in this browser and sent only to api.elevenlabs.io.',
+  fields: [
+    { key: 'apiKey', label: 'API key', type: 'password', required: true, placeholder: 'sk_…',
+      help: 'From elevenlabs.io › Developers › API keys. It needs text-to-speech and speech-to-text access.' },
+    { key: 'voiceId', label: 'Voice ID', type: 'text', default: 'JBFqnCBsd6RMkjVDRZzb', suggest: true,
+      help: '“Test connection” lists the voices of your account.' },
+    { key: 'ttsModel', label: 'Voice model', type: 'select', default: 'eleven_flash_v2_5',
+      options: [{ value: 'eleven_flash_v2_5', label: 'Flash v2.5 (fast, 32 languages)' }, { value: 'eleven_multilingual_v2', label: 'Multilingual v2 (most natural, 29 languages)' }] },
+    { key: 'sttModel', label: 'Speech recognition model', type: 'text', default: 'scribe_v1', placeholder: 'scribe_v1' },
+    { key: 'tts', label: 'Text to speech (read aloud)', type: 'cap', resetBy: 'voiceId', what: 'speech' },
+    { key: 'audio', label: 'Speech to text (voice input)', type: 'cap', resetBy: 'sttModel', what: 'audio' },
+  ],
+  create(cfg) { return new ElevenLabsProvider(cfg); },
+});
+
+export class ElevenLabsProvider {
+  constructor({ apiKey, voiceId, ttsModel, sttModel, tts, audio }) {
+    this.name = 'ElevenLabs';
+    this.apiKey = String(apiKey || '').trim();
+    this.voiceId = String(voiceId || '').trim() || 'JBFqnCBsd6RMkjVDRZzb';
+    this.ttsName = String(ttsModel || '').trim() || 'eleven_flash_v2_5';
+    this.sttName = String(sttModel || '').trim() || 'scribe_v1';
+    this.canSpeak = tts === 'on';
+    this.canListen = audio === 'on';
+  }
+
+  async _req(path, { body, form, binary = false, timeout = 60000 } = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeout);
+    const headers = { 'xi-api-key': this.apiKey };
+    if (body) headers['Content-Type'] = 'application/json';
+    let res;
+    try {
+      res = await fetch(ELEVEN + path, { method: body || form ? 'POST' : 'GET', headers, body: form || (body && JSON.stringify(body)), signal: ctrl.signal });
+    } catch (e) {
+      throw new ProviderError('NETWORK', e.name === 'AbortError' ? 'ElevenLabs took too long to answer.' : "Can't reach api.elevenlabs.io.", e);
+    } finally { clearTimeout(timer); }
+    if (res.ok) return binary ? res.blob() : res.json();
+    let msg = `HTTP ${res.status}`;
+    try { const d = await res.json(); msg = d?.detail?.message || d?.detail?.status || (typeof d?.detail === 'string' ? d.detail : msg); } catch { /* not JSON */ }
+    if (res.status === 401 || res.status === 403) throw new ProviderError('AUTH', `ElevenLabs refused the key: ${msg}`);
+    if (res.status === 429) throw new ProviderError('RATE_LIMIT', `Rate limit or quota reached: ${msg}`);
+    throw new ProviderError('SERVER', String(msg));
+  }
+
+  /** Read text aloud: resolves to an MP3 blob. */
+  async speak(text, lang) {
+    const code = lang && lang !== 'auto' ? String(lang).split('-')[0] : undefined;
+    return this._req(`/text-to-speech/${encodeURIComponent(this.voiceId)}?output_format=mp3_44100_128`, {
+      // only Flash/Turbo models take a language code
+      body: { text, model_id: this.ttsName, ...(code && /flash|turbo/.test(this.ttsName) ? { language_code: code } : {}) },
+      binary: true,
+    });
+  }
+
+  /** Speech to text with Scribe. */
+  async transcribe(blob, lang) {
+    const ext = /mp4|m4a|aac/.test(blob.type) ? 'm4a' : /ogg/.test(blob.type) ? 'ogg' : /wav/.test(blob.type) ? 'wav' : 'webm';
+    const fd = new FormData();
+    fd.append('file', blob, `speech.${ext}`);
+    fd.append('model_id', this.sttName);
+    if (lang && lang !== 'auto') fd.append('language_code', String(lang).split('-')[0]);
+    const d = await this._req('/speech-to-text', { form: fd });
+    return String(d?.text || '').trim();
+  }
+
+  async test() {
+    if (!this.apiKey) return { ok: false, message: 'Fill in your API key first.' };
+    let voices = [];
+    try {
+      const d = await this._req('/voices', { timeout: 15000 });
+      voices = (d?.voices || []).map((v) => ({ value: v.voice_id, label: v.name }));
+    } catch (e) { if (e.code === 'NETWORK') throw e; /* key without voice-list access: the probes below say more */ }
+    const probe = async (fn) => { try { return await fn(); } catch (e) { if (e.code === 'NETWORK') return null; return e; } };
+    const speech = await probe(async () => (await this.speak('Hi', 'en')).size > 100);
+    const fd = new FormData();
+    fd.append('file', new Blob([silentWav()], { type: 'audio/wav' }), 'test.wav');
+    fd.append('model_id', this.sttName);
+    const audio = await probe(async () => typeof (await this._req('/speech-to-text', { form: fd, timeout: 30000 }))?.text === 'string');
+    const okSpeech = speech === true; const okAudio = audio === true;
+    if (!okSpeech && !okAudio) {
+      const err = speech instanceof Error ? speech : audio instanceof Error ? audio : null;
+      return { ok: false, models: voices, caps: { tts: false, audio: false }, message: err ? err.message : "Couldn't reach ElevenLabs." };
+    }
+    const name = voices.find((v) => v.value === this.voiceId)?.label;
+    return {
+      ok: true, models: voices, caps: { tts: okSpeech, audio: okAudio },
+      message: ['Connected.', okSpeech ? `Reads aloud${name ? ` with ${name}` : ''}.` : `Can't read aloud: ${speech?.message || 'no audio came back'}.`,
+        okAudio ? `${this.sttName} turns speech into text.` : `Speech recognition didn't work: ${audio?.message || 'no text came back'}.`].join(' '),
+    };
   }
 }
 

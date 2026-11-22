@@ -12,7 +12,7 @@ import { setupDialog, openDialog, closeDialog } from './sheet.js';
 import { escapeHtml } from './langpicker.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
-import { initEngineRows, renderEngines, closeOcrManager, sourceLine, extLink } from './enginerows.js';
+import { initEngineRows, renderEngines, closeOcrManager, closeVoiceManager, sourceLine, extLink } from './enginerows.js';
 import { llmKey, llmTitle, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, LLM_MODELS } from '../features/localllm.js';
 
 const $ = (id) => document.getElementById(id);
@@ -27,6 +27,7 @@ export function initSettingsSheet({ onThemeChange }) {
   $('btn-add-lt').addEventListener('click', () => openEditor({ type: 'libretranslate' }));
   $('btn-add-ai').addEventListener('click', () => openEditor({ type: 'openai' }));
   $('btn-add-llm').addEventListener('click', () => openEditor({ type: 'webllm' }));
+  $('btn-add-eleven').addEventListener('click', () => openEditor({ type: 'elevenlabs' }));
   onLlmChange((what) => {
     if (!dlg?.open) return;
     if (what !== 'progress') { renderLists(); return; }
@@ -52,7 +53,7 @@ export function initSettingsSheet({ onThemeChange }) {
     if (!$('offline-manager').hidden) renderManager(); else renderLists();
   });
 
-  for (const listId of ['svc-classic', 'svc-advanced']) {
+  for (const listId of ['svc-classic', 'svc-advanced', 'svc-voice']) {
     const list = $(listId);
     list.addEventListener('change', (e) => {
       if (e.target.matches('input[type=radio]')) { useEntry(e.target.value); renderLists(); }
@@ -76,7 +77,11 @@ export function initSettingsSheet({ onThemeChange }) {
   }
 
   wireTest($('btn-test'), $('test-result'), (r) => {
-    if (r.models?.length) $('adv-models').innerHTML = r.models.map((m) => `<option value="${escapeHtml(m)}">`).join('');
+    // suggestions: model names, or { value, label } (e.g. ElevenLabs voices: id and name)
+    if (r.models?.length) {
+      $('adv-models').innerHTML = r.models.map((m) => (typeof m === 'string'
+        ? `<option value="${escapeHtml(m)}">` : `<option value="${escapeHtml(m.value)}" label="${escapeHtml(m.label)}">`)).join('');
+    }
     for (const [key, ok] of Object.entries(r.caps || {})) {
       const box = $('svc-fields').querySelector(`[data-cap="${key}"]`);
       if (box && ok !== null) setCap(box, ok ? 'on' : 'no');
@@ -96,7 +101,9 @@ export function initSettingsSheet({ onThemeChange }) {
 
   $('set-live').addEventListener('change', (e) => settings.set({ liveTranslate: e.target.checked }));
   $('set-speak').addEventListener('change', (e) => settings.set({ speakConversation: e.target.checked }));
-  initEngineRows({ isOpen: () => !!dlg?.open, closeOthers: () => { closeEditor({ silent: true }); closeManager({ silent: true }); } });
+  initEngineRows({ isOpen: () => !!dlg?.open, closeOthers: () => {
+    closeEditor({ silent: true }); closeManager({ silent: true }); closeOcrManager({ silent: true }); closeVoiceManager({ silent: true });
+  } });
   $('theme-options').addEventListener('change', (e) => {
     settings.set({ theme: e.target.value });
     onThemeChange(e.target.value);
@@ -135,6 +142,7 @@ export function openSettings(focus) {
   closeEditor({ silent: true });
   closeManager({ silent: true });
   closeOcrManager({ silent: true });
+  closeVoiceManager({ silent: true });
   renderLists();
   $('set-live').checked = s.liveTranslate;
   $('set-speak').checked = s.speakConversation;
@@ -172,6 +180,10 @@ function subtitle(e) {
   let host = c.baseUrl || '';
   try { host = new URL(c.baseUrl).host; } catch { /* keep raw */ }
   if (e.type === 'openai') return [host, c.model].filter(Boolean).join(' · ');
+  if (e.type === 'elevenlabs') {
+    const can = [c.tts === 'on' && 'reads aloud', c.audio === 'on' && 'voice input'].filter(Boolean);
+    return `api.elevenlabs.io · ${can.length ? can.join(' and ') : 'press Edit, then Test connection'}`;
+  }
   return host;
 }
 
@@ -196,6 +208,7 @@ function renderLists() {
   const hadId = had?.dataset.id;
   const hadAct = document.activeElement?.dataset?.act;
   const lead = { classic: null, advanced: null };
+  renderVoiceList(s);
   for (const kind of ['classic', 'advanced']) {
     const list = s.entries.filter((e) => kindOf(e) === kind);
     const activeId = kind === 'advanced' ? s.activeAdvanced : s.activeClassic;
@@ -229,6 +242,21 @@ function renderLists() {
     const row = document.querySelector(`.svc-row[data-id="${hadId}"]`);
     (row?.querySelector(`[data-act="${hadAct}"]:not(:disabled)`) || row?.querySelector('input:not(:disabled)'))?.focus();
   }
+}
+
+/** Voice services (ElevenLabs): not translation services, so no radio and no order; they are
+ * picked in the Read aloud and Speech recognition groups. */
+function renderVoiceList(s) {
+  const list = s.entries.filter((e) => kindOf(e) === 'voice');
+  $('svc-voice').innerHTML = list.length ? list.map((e) => {
+    const name = escapeHtml(e.label);
+    return `<li class="svc-row" data-id="${e.id}">
+      <span class="svc-pick svc-pick-static"><span class="svc-copy"><strong title="${name}">${name}</strong><small id="svc-sub-${e.id}">${escapeHtml(subtitle(e))}</small></span></span>
+      <span class="svc-actions">
+        <button class="icon-btn sm" type="button" data-act="edit" aria-label="Edit ${name}" aria-describedby="svc-sub-${e.id}">${icon('edit')}</button>
+        <button class="icon-btn sm" type="button" data-act="delete" aria-label="Remove ${name}">${icon('delete')}</button>
+      </span></li>`;
+  }).join('') : '<li class="svc-empty">None yet. Optional: cloud voices for reading aloud and voice input.</li>';
 }
 
 function llmButton(e) {
@@ -270,7 +298,8 @@ function remove(id) {
   initProvider(); renderLists();
   // keep focus in the list: the next row, else the previous one, else the add button
   const nextRadio = nextId && document.querySelector(`.svc-row[data-id="${nextId}"] input`);
-  (nextRadio || $(kindOf(e) === 'advanced' ? 'btn-add-ai' : 'btn-add-lt')).focus();
+  const fallback = { advanced: 'btn-add-ai', voice: 'btn-add-eleven' }[kindOf(e)] || 'btn-add-lt';
+  (nextRadio || document.querySelector(`.svc-row[data-id="${nextId}"] [data-act="edit"]`) || $(fallback)).focus();
   toast(freed ? `Removed ${e.label} and deleted its download` : `Removed ${e.label}`, {
     action: 'Undo',
     onAction: () => {
@@ -289,13 +318,15 @@ function openEditor({ id, type }) {
   const e = id ? entries.get(id) : null;
   closeManager({ silent: true });
   closeOcrManager({ silent: true });
+  closeVoiceManager({ silent: true });
   editing = { id: e?.id || newEntryId(), type: e?.type || type, isNew: !e, opener: document.activeElement };
   const def = getProviderDef(editing.type);
   const kindName = editing.type === 'webllm' ? 'on-device AI' : def.kind === 'advanced' ? 'AI model' : def.label;
+  const addRow = { advanced: 'svc-add-advanced', voice: 'svc-add-voice' }[def.kind] || 'svc-add-classic';
   $('svc-editor-title').textContent = e ? `Edit ${e.label}` : `Add ${kindName}`;
   $('svc-desc').textContent = def.description || '';
   $('svc-name').value = e?.label || '';
-  $('svc-name').placeholder = editing.isNew ? (editing.type === 'webllm' ? 'e.g. On-device AI' : def.kind === 'advanced' ? 'e.g. GPT, Groq, my Ollama' : 'e.g. My server') : '';
+  $('svc-name').placeholder = editing.isNew ? (editing.type === 'webllm' ? 'e.g. On-device AI' : def.kind === 'advanced' ? 'e.g. GPT, Groq, my Ollama' : def.kind === 'voice' ? `e.g. ${def.label}` : 'e.g. My server') : '';
   renderFields($('svc-fields'), def, e?.config || {});
   $('test-result').hidden = true;
   // on-device AI: testing would start the download; the save button says that it downloads
@@ -309,7 +340,7 @@ function openEditor({ id, type }) {
   if (editing.type === 'webllm') $('svc-fields').querySelector('[data-key="model"]').addEventListener('change', saveLabel);
   $('svc-editor').hidden = false;
   // the form opens right under the list it adds to
-  $(def.kind === 'advanced' ? 'svc-add-advanced' : 'svc-add-classic').after($('svc-editor'));
+  $(addRow).after($('svc-editor'));
   showAddRows(false);
   requestAnimationFrame(() => {
     $('svc-editor').scrollIntoView({ block: 'nearest' });
@@ -423,12 +454,17 @@ function setCap(box, state) {
   // aria-disabled, not disabled: stays reachable, so the reason below is heard
   if (ok) box.removeAttribute('aria-disabled'); else box.setAttribute('aria-disabled', 'true');
   const what = box.dataset.what;
-  const needsStt = what === 'audio' && !$('svc-fields').querySelector('[data-key="sttModel"]')?.value.trim();
-  $(box.getAttribute('aria-describedby')).textContent = ok
-    ? (what === 'images' ? 'Checked by the test. Untick to not send drawings to this model.' : 'Checked by the test. Untick to not send your voice to this service.')
-    : state === 'no'
-      ? (what === 'images' ? "The test showed this model can't read images." : "The test showed this speech-to-text model doesn't work here.")
-      : needsStt ? 'Fill in a speech-to-text model above, then press “Test connection” to check it.'
+  const field = { audio: 'sttModel', speech: 'ttsModel' }[what];
+  const input = field && $('svc-fields').querySelector(`input[data-key="${field}"]`);
+  const needsModel = input && !input.value.trim();
+  const COPY = {
+    images: ['Checked by the test. Untick to not send drawings to this model.', "The test showed this model can't read images."],
+    audio: ['Checked by the test. Untick to not send your voice to this service.', "The test showed this speech-to-text model doesn't work here."],
+    speech: ['Checked by the test. Untick to not send translations to this service for reading aloud.', "The test showed reading aloud doesn't work here."],
+  }[what];
+  $(box.getAttribute('aria-describedby')).textContent = ok ? COPY[0]
+    : state === 'no' ? COPY[1]
+      : needsModel ? `Fill in a ${what === 'speech' ? 'text-to-speech' : 'speech-to-text'} model above, then press “Test connection” to check it.`
         : 'Not checked yet. Press “Test connection” to find out.';
 }
 
@@ -437,6 +473,7 @@ function setCap(box, state) {
 function openManager() {
   if (editing) closeEditor({ silent: true });
   closeOcrManager({ silent: true });
+  closeVoiceManager({ silent: true });
   $('offline-search').value = '';
   $('svc-add-classic').after($('offline-manager'));   // under the Classic list it belongs to
   $('offline-manager').hidden = false;

@@ -341,6 +341,13 @@
         </div>
         <h3 class="svc-head" id="svc-speech-head">Speech recognition</h3>
         <ul class="svc-list" id="svc-speech" aria-labelledby="svc-speech-head"></ul>
+        <h3 class="svc-head" id="svc-tts-head">Read aloud</h3>
+        <ul class="svc-list" id="svc-tts" aria-labelledby="svc-tts-head"></ul>
+        <h3 class="svc-head" id="svc-voice-head">Voice services</h3>
+        <ul class="svc-list" id="svc-voice" aria-labelledby="svc-voice-head"></ul>
+        <div class="row-gap svc-add" id="svc-add-voice">
+          <button class="btn btn-tonal" type="button" id="btn-add-eleven" aria-controls="svc-editor"><i data-icon="add"></i>Add ElevenLabs</button>
+        </div>
         <h3 class="svc-head" id="svc-hwr-head">Handwriting</h3>
         <ul class="svc-list" id="svc-hwr" aria-labelledby="svc-hwr-head"></ul>
         <h3 class="svc-head" id="svc-ocr-head">Camera text (OCR)</h3>
@@ -380,6 +387,17 @@
           <p class="offline-usage" id="ocr-usage" role="status"></p>
           <input type="search" id="ocr-search" placeholder="Search languages" aria-label="Search camera text languages" autocomplete="off" spellcheck="false">
           <ul class="offline-list" id="ocr-list" aria-labelledby="ocr-title"></ul>
+        </section>
+        <section class="svc-editor offline-manager" id="voice-manager" aria-labelledby="voice-title" hidden>
+          <div class="offline-head">
+            <h3 id="voice-title">Offline voices</h3>
+            <button class="btn btn-text" type="button" id="btn-voice-done">Done</button>
+          </div>
+          <p class="field-help">Natural-sounding voices that read translations aloud privately in your browser, also without internet. One voice per language; the first one also downloads the voice engine (30 MB, once).</p>
+          <p class="field-help" id="voice-source"></p>
+          <p class="offline-usage" id="voice-usage" role="status"></p>
+          <input type="search" id="voice-search" placeholder="Search languages" aria-label="Search offline voices" autocomplete="off" spellcheck="false">
+          <ul class="offline-list" id="voice-list" aria-labelledby="voice-title"></ul>
         </section>
       </fieldset>
       <fieldset class="settings-group">

@@ -1,17 +1,19 @@
 // Speech-to-text when the browser's speech service isn't used (not chosen, Brave, Firefox, or it fails):
 // record the microphone ourselves (like any video-call site), stop on silence, then transcribe with
 //   - your AI service's /audio/transcriptions endpoint (Whisper), if a speech model is set
+//   - ElevenLabs (Scribe), if an ElevenLabs key is added
 //   - on-device Whisper in the browser via transformers.js (asks once before the download)
 // in the order chosen in Settings › Translation services › Speech recognition.
 import { state } from '../state.js';
 import { settings } from '../store.js';
 import { sheet } from './permissions.js';
 import { HF_MODELS, getPipeline, transformers, modelState, fromText } from './models.js';
+import { createProvider } from '../providers.js';
 
 export const WHISPER = { model: HF_MODELS.whisper.repo, sizeMB: HF_MODELS.whisper.sizeMB };
 
 /** Speech engines in the order to try: the chosen one first, then the others. */
-export const SPEECH_ENGINES = ['browser', 'api', 'ondevice'];
+export const SPEECH_ENGINES = ['browser', 'api', 'elevenlabs', 'ondevice'];
 export function speechOrder() {
   const pref = SPEECH_ENGINES.includes(settings.get().speechEngine) ? settings.get().speechEngine : 'browser';
   return [pref, ...SPEECH_ENGINES.filter((e) => e !== pref)];
@@ -108,9 +110,12 @@ async function onDeviceAllowed() {
 const apiReady = () => (settings.get().speechEngine === 'api' || state.mode === 'advanced')
   && typeof state.advanced?.transcribe === 'function' && !!state.advanced.sttModel;
 
+// ElevenLabs: when its speech recognition was confirmed by a test and left on
+const elevenEntry = () => settings.get().entries.find((e) => e.type === 'elevenlabs' && e.config?.audio === 'on') || null;
+
 /**
  * Transcribe a recording with the best available engine.
- * @returns {Promise<{ text: string, engine: 'api'|'ondevice' }>}
+ * @returns {Promise<{ text: string, engine: 'api'|'elevenlabs'|'ondevice' }>}
  */
 export async function transcribe(blob, lang, { onStatus } = {}) {
   const code = lang && lang !== 'auto' ? String(lang).split('-')[0] : undefined;
@@ -122,12 +127,25 @@ export async function transcribe(blob, lang, { onStatus } = {}) {
       return { text: await state.advanced.transcribe(blob, code), engine: 'api' }; // API Whisper detects the language itself
     } catch (e) { apiError = e; return null; }
   };
+  const eleven = async () => {
+    const e = elevenEntry();
+    if (!e) return null;
+    try {
+      onStatus?.('Transcribing…');
+      return { text: await createProvider('elevenlabs', e.config).transcribe(blob, code), engine: 'elevenlabs' };
+    } catch (err) { apiError = err; return null; }
+  };
+  const cloud = { api, elevenlabs: eleven };
   const order = speechOrder().filter((e) => e !== 'browser');
-  if (order[0] === 'api') { const r = await api(); if (r) return r; }
+  // cloud engines chosen before the on-device model are tried first
+  for (const e of order) {
+    if (e === 'ondevice') break;
+    const r = await cloud[e](); if (r) return r;
+  }
   if (!(await onDeviceAllowed())) {
-    const r = order[0] === 'ondevice' ? await api() : null;
-    if (r) return r;
-    throw new Error(apiError ? `Speech API failed: ${apiError.message}` : 'NO_ENGINE');
+    // no on-device model: the cloud engines after it are still worth a try
+    for (const e of order.slice(order.indexOf('ondevice') + 1)) { const r = await cloud[e](); if (r) return r; }
+    throw new Error(apiError ? `Speech service failed: ${apiError.message}` : 'NO_ENGINE');
   }
   const asr = await getPipeline('whisper', { onStatus });
   onStatus?.('Transcribing…');

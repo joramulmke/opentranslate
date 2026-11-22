@@ -22,7 +22,9 @@ const DEFAULT_SETTINGS = {
   theme: 'system',             // system | light | dark
   speakConversation: true,
   hwrEngine: 'vision',         // first handwriting engine: vision | ondevice | tesseract (old 'auto' = vision)
-  speechEngine: 'browser',     // first speech engine: browser | api | ondevice
+  speechEngine: 'browser',     // first speech engine: browser | api | elevenlabs | ondevice
+  ttsEngine: 'system',         // first read-aloud engine: system | ondevice (Piper) | api | elevenlabs
+  ttsDeclined: [],             // languages where "Download a voice?" was answered "Not now"
   hwrModelOk: null,            // null = not asked yet, true/false = answer to the model download prompt
   sttModelOk: null,            // same, for the on-device speech model
 };
@@ -36,6 +38,7 @@ export const newEntryId = () => 'e' + Date.now().toString(36) + Math.random().to
 export function entryLabel(type, config = {}) {
   if (type === 'mock') return MOCK_ENTRY.label;
   if (type === 'offline') return OFFLINE_ENTRY.label;
+  if (type === 'elevenlabs') return 'ElevenLabs';
   if (type === 'webllm') return `On-device AI · ${config.model === 'medium' ? 'Medium' : 'Small'}`;
   let host = '';
   try { host = new URL(config.baseUrl).hostname; } catch { /* empty / invalid url */ }

@@ -1,6 +1,17 @@
 import { canRecord, record, transcribe, speechOrder } from './stt.js';
 import { toast } from '../ui/snackbar.js';
-// Text-to-speech (speechSynthesis) and dictation (SpeechRecognition, where the browser has it).
+import { settings } from '../store.js';
+import { createProvider } from '../providers.js';
+import { langName } from '../state.js';
+import { sheet } from './permissions.js';
+import { voiceFor as piperVoice, offerFor, synthesize, downloadVoice, downloadSize, voiceLabel } from './piper.js';
+// Read-aloud with the engines chosen in Settings › Translation services › Read aloud:
+//   system     the device's own voices (speechSynthesis)
+//   ondevice   Piper voices downloaded to this browser (piper.js)
+//   api        your AI service's /audio/speech
+//   elevenlabs your ElevenLabs account
+// The chosen engine is tried first, then the others in this order.
+// Dictation (SpeechRecognition, where the browser has it) is further down.
 
 let voices = [];
 const loadVoices = () => { voices = window.speechSynthesis?.getVoices() || []; };
@@ -9,17 +20,55 @@ if ('speechSynthesis' in window) {
   speechSynthesis.addEventListener?.('voiceschanged', loadVoices);
 }
 
-export const canSpeak = () => 'speechSynthesis' in window;
+const systemTts = () => 'speechSynthesis' in window;
+/** Can anything read aloud here? (system voices, or an audio element for the other engines) */
+export const canSpeak = () => systemTts() || typeof window.Audio === 'function';
 
-function voiceFor(lang) {
+function systemVoice(lang) {
   if (!voices.length) loadVoices();
   const base = lang.split('-')[0].toLowerCase();
   const alias = { zh: ['zh-cn', 'zh'], 'zh-hant': ['zh-tw', 'zh-hk'], no: ['nb', 'no'], he: ['he', 'iw'], tl: ['fil', 'tl'] };
   const wanted = alias[lang.toLowerCase()] || alias[base] || [base];
   return voices.find((v) => wanted.some((w) => v.lang.toLowerCase().replace('_', '-').startsWith(w)));
 }
+/** Does the device have its own voice for this language? */
+export const hasSystemVoice = (lang) => systemTts() && !!systemVoice(lang);
 
-let currentUtterance = null;
+/* ------------------------------------------------------------ engines */
+
+export const TTS_ENGINES = ['system', 'ondevice', 'api', 'elevenlabs'];
+export function ttsOrder() {
+  const pref = TTS_ENGINES.includes(settings.get().ttsEngine) ? settings.get().ttsEngine : 'system';
+  return [pref, ...TTS_ENGINES.filter((e) => e !== pref)];
+}
+/** The AI service entry that reads aloud (a text-to-speech model the test confirmed and left on). */
+export const ttsApiEntry = () => settings.get().entries.find((e) => e.type === 'openai' && e.config?.ttsModel && e.config?.tts === 'on') || null;
+/** The ElevenLabs entry, when its voice was confirmed by a test. */
+export const elevenEntry = (what = 'tts') => settings.get().entries.find((e) => e.type === 'elevenlabs' && e.config?.[what] === 'on') || null;
+
+/** Ask once per language whether to download an offline voice. Resolves to true when it is there. */
+async function offerVoice(lang) {
+  const v = offerFor(lang);
+  const s = settings.get();
+  if (!v || (s.ttsDeclined || []).includes(v.lang) || typeof caches === 'undefined') return false;
+  const name = voiceLabel(v.lang, langName);
+  const ok = await sheet({
+    iconName: 'volume', title: `Download a ${name} voice?`,
+    body: `To read ${name} aloud, download a natural-sounding voice (${downloadSize(v)}) from Hugging Face (huggingface.co/rhasspy/piper-voices). It runs privately in your browser and works without internet. You can delete it in Settings › Translation services › Read aloud.`,
+    allowLabel: 'Download', cancelLabel: 'Not now',
+  });
+  if (!ok) { settings.set({ ttsDeclined: [...(s.ttsDeclined || []), v.lang] }); return false; }
+  toast(`Downloading the ${name} voice…`);
+  try { await downloadVoice(v.lang); } catch (e) { toast(`Download failed: ${e.message}`); return false; }
+  toast(`The ${name} voice is downloaded and works without internet.`);
+  return true;
+}
+
+/* ------------------------------------------------------------ playback */
+
+let current = null;          // { stop } of what is playing
+let player = null;           // the <audio> used for engines that return a recording
+const recent = new Map();    // engine|lang|text -> Blob (replays don't synthesize or pay again)
 
 // Pronunciation practice: playing the same text again shortly after it finished plays it slower;
 // the next replay is normal speed again.
@@ -33,43 +82,108 @@ export function nextIsSlow(text, lang) {
   return !!lastPlay && lastPlay.key === `${lang}\u0000${text}` && Date.now() - lastPlay.end < REPLAY_WINDOW && !lastPlay.slow;
 }
 
-/**
- * Speak text. Resolves when finished or stopped. Rejects with Error('NO_VOICE') if
- * the device has no voice for that language (the UI shows a message).
- * onStart(slow) says whether this is the slow replay.
- */
-export function speak(text, lang, { onStart, onEnd } = {}) {
-  return new Promise((resolve, reject) => {
-    if (!canSpeak()) return reject(new Error('NO_TTS'));
-    stopSpeaking();
+function playSystem(text, lang, slow, onStart) {
+  return new Promise((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang === 'zh' ? 'zh-CN' : lang === 'zh-Hant' ? 'zh-TW' : lang;
-    const v = voiceFor(lang);
-    // Some engines have voices that load late; if we have a list and nothing matches, bail.
-    if (!v && voices.length) return reject(new Error('NO_VOICE'));
+    const v = systemVoice(lang);
     if (v) u.voice = v;
-    const slow = nextIsSlow(text, lang);
     u.rate = slow ? SLOW_RATE : NORMAL_RATE;
-    u.onstart = () => { if (slow) toast('Playing slower. Play again for normal speed.'); onStart?.(slow); };
-    const finish = (e) => {
-      // only a play that reached the end counts (not one stopped by the person)
-      const completed = currentUtterance === u && e?.type === 'end';
-      if (currentUtterance === u) currentUtterance = null;
-      lastPlay = completed ? { key: `${lang}\u0000${text}`, end: Date.now(), slow } : null;
-      onEnd?.(); resolve();
-    };
-    u.onend = finish;
-    u.onerror = finish;
-    currentUtterance = u;
+    const me = { stop: () => speechSynthesis.cancel() };
+    u.onstart = () => onStart();
+    u.onend = () => resolve(current === me);
+    u.onerror = () => resolve(false);
+    current = me;
     speechSynthesis.speak(u);
   });
 }
 
-export function stopSpeaking() {
-  if (canSpeak() && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
-  currentUtterance = null;
+function playBlob(blob, slow, onStart) {
+  return new Promise((resolve) => {
+    player ??= new Audio();
+    const url = URL.createObjectURL(blob);
+    const me = { stop: () => { player.pause(); finish(false); } };
+    let ended = false;
+    const finish = (completed) => {
+      if (ended) return; ended = true;
+      player.onended = player.onerror = player.onplaying = null;
+      URL.revokeObjectURL(url);
+      resolve(completed && current === me);
+    };
+    player.src = url;
+    player.playbackRate = slow ? SLOW_RATE / NORMAL_RATE : 1;   // recordings are made at normal speed
+    if ('preservesPitch' in player) player.preservesPitch = true;
+    player.onplaying = () => onStart();
+    player.onended = () => finish(true);
+    player.onerror = () => finish(false);
+    current = me;
+    player.play().catch(() => finish(false));
+  });
 }
-export const isSpeaking = () => !!currentUtterance;
+
+/** A recording of text from one engine (kept for a quick replay). */
+async function recording(engine, text, lang, make) {
+  const key = `${engine}|${lang}|${text}`;
+  if (recent.has(key)) return recent.get(key);
+  const blob = await make();
+  recent.set(key, blob);
+  if (recent.size > 8) recent.delete(recent.keys().next().value);
+  return blob;
+}
+
+/** The first engine (in Settings order) that can read this language, and how. */
+async function pickEngine(text, lang) {
+  let lastError = null;
+  for (const engine of ttsOrder()) {
+    try {
+      if (engine === 'system') {
+        // some engines load their voices late: with no list at all, let the browser try
+        if (systemTts() && (systemVoice(lang) || !voices.length)) return { engine };
+      } else if (engine === 'ondevice') {
+        if (piperVoice(lang) || await offerVoice(lang)) {
+          return { engine, blob: await recording(engine, text, lang, () => synthesize(text, lang)) };
+        }
+      } else if (engine === 'api') {
+        const e = ttsApiEntry();
+        if (e) return { engine, blob: await recording(engine, text, lang, () => createProvider('openai', e.config).speak(text, lang)) };
+      } else if (engine === 'elevenlabs') {
+        const e = elevenEntry('tts');
+        if (e) return { engine, blob: await recording(engine, text, lang, () => createProvider('elevenlabs', e.config).speak(text, lang)) };
+      }
+    } catch (err) { lastError = err; }   // this engine failed: try the next one
+  }
+  if (lastError) console.warn('read aloud:', lastError);
+  throw new Error(canSpeak() ? 'NO_VOICE' : 'NO_TTS');
+}
+
+/**
+ * Speak text. Resolves when finished or stopped. Rejects with Error('NO_VOICE') if no engine
+ * can read that language (the UI shows a message), or Error('NO_TTS') if nothing can play sound.
+ * onStart(slow) says whether this is the slow replay.
+ */
+export async function speak(text, lang, { onStart, onEnd } = {}) {
+  stopSpeaking();
+  const token = {};
+  current = token;
+  let pick;
+  try { pick = await pickEngine(text, lang); } catch (e) { if (current === token) current = null; throw e; }
+  if (current !== token) { onEnd?.(); return; }       // stopped (or replaced) while preparing
+  const slow = nextIsSlow(text, lang);
+  const started = () => { if (slow) toast('Playing slower. Play again for normal speed.'); onStart?.(slow); };
+  const completed = pick.engine === 'system' ? await playSystem(text, lang, slow, started) : await playBlob(pick.blob, slow, started);
+  // only a play that reached the end counts (not one stopped by the person)
+  lastPlay = completed ? { key: `${lang}\u0000${text}`, end: Date.now(), slow } : null;
+  current = null;
+  onEnd?.();
+}
+
+export function stopSpeaking() {
+  if (systemTts() && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+  const c = current;
+  current = null;
+  c?.stop?.();
+}
+export const isSpeaking = () => !!current;
 
 /* ---------------- dictation ---------------- */
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;

@@ -101,6 +101,7 @@ delete it to free space. Every download prompt and error also names the source.
 | Classic › On this device | offline languages, ~45–75 MB each | Mozilla (`firefox-settings-attachments.cdn.mozilla.net`) | Cache Storage `ot-offline-*` |
 | Advanced › On-device AI | WebLLM model, ~0.9 / 1.8 GB | Hugging Face (`huggingface.co/mlc-ai`) | Cache Storage `webllm/*` |
 | Speech recognition › On this device | Whisper base, ~80 MB | Hugging Face (`huggingface.co/Xenova/whisper-base`) | Cache Storage `transformers-cache` |
+| Read aloud › Offline voices | Piper voice, ~63 MB per language (+ 30 MB engine, once); manager with search | Hugging Face (`huggingface.co/rhasspy/piper-voices`), engine from jsDelivr | Cache Storage `ot-piper-v1` |
 | Handwriting › On-device model | TrOCR small handwritten, ~130 MB | Hugging Face (`huggingface.co/Xenova/trocr-small-handwritten`) | Cache Storage `transformers-cache` |
 | Camera text (OCR) › Tesseract | one file per language, ~1–15 MB; manager with search | jsDelivr (`cdn.jsdelivr.net/npm/@tesseract.js-data`) | IndexedDB `keyval-store` |
 
@@ -144,17 +145,33 @@ The browser calls them directly, so they must allow the page's origin (CORS), e.
 
 ## Features
 
-- **Text:** auto-detect, live translation while typing, swap, copy, read aloud (`speechSynthesis`; play the
+- **Text:** auto-detect, live translation while typing, swap, copy, read aloud (see below; play the
   same text again within 10 s and it plays slower, at 0.6×, for practising pronunciation; the next play is normal),
   history (last 100) and saved phrasebook, all stored in `localStorage`.
-- **Voice input** works in every browser that can record audio. Three engines; the one checked in
+- **Read aloud** (Text, Handwriting, Conversation). Four engines; the one checked in Settings → Translation
+  services → **Read aloud** goes first, the others follow:
+  1. **voices of this device** (`speechSynthesis`), nothing to download, quality depends on the device;
+  2. **natural voices on this device** ([Piper](https://github.com/rhasspy/piper)): one voice per language for 53
+     languages, ~63 MB each from Hugging Face (`huggingface.co/rhasspy/piper-voices`), plus a one-time 30 MB voice
+     engine (ONNX Runtime and the Piper phonemizer with eSpeak NG data, GPL-3.0, from jsDelivr). Downloaded in the
+     *Offline voices* manager, or the app asks the first time a language has no voice ("Not now" is remembered per
+     language). Works without internet. No Piper voices for Hebrew, Japanese, Lithuanian and Thai: they need
+     phonemizers that don't run in the browser;
+  3. **AI service**: your AI model's `/audio/speech` (set *Text-to-speech model*, e.g. `gpt-4o-mini-tts`, `tts-1`,
+     and a *Voice*), once *Test connection* confirmed it;
+  4. **ElevenLabs** (Settings → Voice services → *Add ElevenLabs*): your API key, voice and model (Flash v2.5 or
+     Multilingual v2). The key stays in this browser and goes only to `api.elevenlabs.io`.
+
+  A replay of the same text uses the recording it already has (no second request or charge).
+- **Voice input** works in every browser that can record audio. Four engines; the one checked in
   Settings → Translation services → **Speech recognition** goes first, the others follow:
   1. the **browser's speech service** with live text (Chrome, Edge, Safari; your voice goes to Google, Microsoft
      or Apple). Not in Brave or Firefox; if it fails, the app switches to recording;
   2. **AI service (Whisper API)**: the app records the microphone itself (stops after ~1.5 s of silence) and sends
      it to your AI service's `/audio/transcriptions` (set *Speech-to-text model*, e.g. `whisper-1`,
      `whisper-large-v3-turbo`). Used when chosen, or in Advanced mode;
-  3. **On this device (Whisper)**: `whisper-base` in the browser, asks before a one-time ~80 MB download, detects
+  3. **ElevenLabs (Scribe)**, with an ElevenLabs entry under Voice services;
+  4. **On this device (Whisper)**: `whisper-base` in the browser, asks before a one-time ~80 MB download, detects
      the language.
 - **Languages** your services can't translate stay visible but greyed out; tapping one explains why
   (e.g. not installed on your LibreTranslate server). Languages that can be downloaded show a download icon.
@@ -206,7 +223,8 @@ js/providers.js        provider interface + registry: Mock, LibreTranslate, Open
 js/features/offline.js on-device translation: model list, downloads, Bergamot worker, detection
 js/features/localllm.js on-device AI (WebLLM): model choice, WebGPU check, download, provider (+ llm-worker.js)
 js/features/models.js  transformers.js models (Whisper, TrOCR): loading, downloaded state, size, source, delete
-js/ui/enginerows.js    Settings rows for Speech recognition, Handwriting, Camera text (+ OCR language manager)
+js/ui/enginerows.js    Settings rows for Speech recognition, Read aloud, Handwriting, Camera text (+ voice and OCR managers)
+js/features/piper.js   offline voices (Piper): voice list, download, delete, synthesis
 vendor/bergamot/       Bergamot WebAssembly engine + worker (MPL-2.0, see LICENSE there)
 js/languages.js        bundled 50-language fallback, RTL and OCR language maps
 js/ui/*.js             text view, language bar/picker, mode menu, sheets, menus, icons, layout

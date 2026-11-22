@@ -1,4 +1,4 @@
-// Settings › Translation services: the Speech recognition, Handwriting and Camera text groups.
+// Settings › Translation services: the Speech recognition, Read aloud, Handwriting and Camera text groups.
 // Each engine is a row: the radio picks which one is tried first (the others follow in list order);
 // downloadable models show their size, status and source, with Download / Delete.
 import { settings } from '../store.js';
@@ -11,7 +11,8 @@ import { sheet } from '../features/permissions.js';
 import { HF_MODELS, modelState, modelProgress, modelBytes, downloadModel, deleteModel, onModelsChange, modelPage } from '../features/models.js';
 import { SPEECH_ENGINES } from '../features/stt.js';
 import { canRecord } from '../features/stt.js';
-import { browserSpeechAvailable } from '../features/speech.js';
+import { browserSpeechAvailable, TTS_ENGINES, ttsApiEntry, elevenEntry } from '../features/speech.js';
+import { piperVoices, voiceState, voiceProgress, voiceBytes, piperBytes, downloadedVoices, downloadVoice, deleteVoice, onVoicesChange, voiceLabel, voicePage, downloadSize, PIPER_SOURCE, ENGINE_MB } from '../features/piper.js';
 import { HWR_ENGINES, hwrPref } from '../features/hwr.js';
 import { ocrLanguages, ocrDownloaded, ocrDownload, ocrDelete, OCR_SOURCE } from '../features/ocr.js';
 import { langName } from '../state.js';
@@ -59,9 +60,13 @@ function row({ group, value, title, sub, src, checked, disabled, actions = '' })
     ${src ? sourceLine(`${id}-src`, src) : ''}</li>`;
 }
 
+const elevenSub = (e, what) => (e ? `${e.label} · ${what}` : 'Add ElevenLabs under Voice services and press Test connection');
+const elevenSrc = (e) => (e ? 'Not a download: the text or your voice goes to api.elevenlabs.io.' : '');
+
 function speechRows() {
   const stt = aiEntries().find((e) => e.config?.sttModel && e.config?.audio === 'on');
-  const usable = { browser: browserSpeechAvailable(), api: !!stt && canRecord(), ondevice: canRecord() };
+  const eleven = elevenEntry('audio');
+  const usable = { browser: browserSpeechAvailable(), api: !!stt && canRecord(), elevenlabs: !!eleven && canRecord(), ondevice: canRecord() };
   const pref = settings.get().speechEngine || 'browser';
   const first = [pref, ...SPEECH_ENGINES].find((e) => usable[e]);
   return [
@@ -71,8 +76,45 @@ function speechRows() {
     row({ group: 'speech', value: 'api', title: 'AI service (Whisper API)', checked: first === 'api', disabled: !usable.api,
       sub: stt ? `${stt.label} · ${stt.config.sttModel}` : 'Edit an AI model under Advanced: fill in a speech-to-text model and press Test connection',
       src: stt ? `Not a download: your voice goes to ${esc(hostOf(stt))}.` : '' }),
+    row({ group: 'speech', value: 'elevenlabs', title: 'ElevenLabs (Scribe)', checked: first === 'elevenlabs', disabled: !usable.elevenlabs,
+      sub: elevenSub(eleven, eleven?.config?.sttModel || 'scribe_v1'), src: elevenSrc(eleven) }),
     row({ group: 'speech', value: 'ondevice', title: 'On this device (Whisper)', checked: first === 'ondevice', disabled: !usable.ondevice,
       sub: modelSub('whisper', ' · private'), src: modelSource('whisper'), actions: modelButton('whisper') }),
+  ].join('');
+}
+
+/* Read aloud: system voices, Piper voices on this device, the AI service, ElevenLabs */
+const systemVoices = () => (typeof speechSynthesis !== 'undefined' ? speechSynthesis.getVoices?.() || [] : []);
+
+function piperSub() {
+  const n = downloadedVoices().length;
+  const busy = piperVoices().find((v) => voiceState(v.lang) === 'downloading');
+  if (busy) return `Downloading ${voiceLabel(busy.lang, langName)}… ${Math.round(voiceProgress(busy.lang) * 100)}%`;
+  return n ? `${n} voice${n > 1 ? 's' : ''} · ${formatMB(piperBytes())} · private, works without internet`
+    : `No voices yet · about 63 MB per language, plus ${ENGINE_MB} MB once`;
+}
+const piperSourceHtml = () => `Voices from ${extLink(PIPER_SOURCE.page, 'Hugging Face: rhasspy/piper-voices')}, each with its own licence (see its model card) · engine ${extLink(PIPER_SOURCE.engine, 'Piper')} with eSpeak NG (GPL-3.0) and ONNX Runtime, from jsDelivr`;
+
+function ttsRows() {
+  const api = ttsApiEntry();
+  const eleven = elevenEntry('tts');
+  const nSys = systemVoices().length;
+  const usable = { system: typeof speechSynthesis !== 'undefined', ondevice: typeof caches !== 'undefined', api: !!api, elevenlabs: !!eleven };
+  const pref = settings.get().ttsEngine || 'system';
+  const first = [pref, ...TTS_ENGINES].find((e) => usable[e]);
+  return [
+    row({ group: 'tts', value: 'system', title: 'Voices of this device', checked: first === 'system', disabled: !usable.system,
+      sub: !usable.system ? 'Not available in this browser' : nSys ? `${nSys} voices · nothing to download · quality depends on the device` : 'Nothing to download · quality depends on the device' }),
+    `<li class="svc-row" data-engine="tts:ondevice">
+      <label class="svc-pick"><input type="radio" name="eng-tts" value="ondevice" aria-describedby="eng-tts-ondevice-sub eng-tts-ondevice-src" ${first === 'ondevice' ? 'checked' : ''} ${usable.ondevice ? '' : 'disabled'}>
+        <span class="svc-copy"><strong>Natural voices on this device (Piper)</strong><small id="eng-tts-ondevice-sub">${esc(piperSub())}</small></span></label>
+      <span class="svc-actions"><button class="icon-btn sm" type="button" data-act="voice-manage" aria-label="Manage offline voices" aria-describedby="eng-tts-ondevice-sub">${icon('download')}</button></span>
+      ${sourceLine('eng-tts-ondevice-src', piperSourceHtml())}</li>`,
+    row({ group: 'tts', value: 'api', title: 'AI service', checked: first === 'api', disabled: !usable.api,
+      sub: api ? `${api.label} · ${api.config.ttsModel} · ${api.config.ttsVoice || 'alloy'}` : 'Edit an AI model under Advanced: fill in a text-to-speech model and press Test connection',
+      src: api ? `Not a download: the text goes to ${esc(hostOf(api))}.` : '' }),
+    row({ group: 'tts', value: 'elevenlabs', title: 'ElevenLabs', checked: first === 'elevenlabs', disabled: !usable.elevenlabs,
+      sub: elevenSub(eleven, eleven?.config?.ttsModel === 'eleven_multilingual_v2' ? 'Multilingual v2' : 'Flash v2.5'), src: elevenSrc(eleven) }),
   ].join('');
 }
 
@@ -113,6 +155,7 @@ export function renderEngines() {
   const hadKey = had?.dataset.engine;
   const hadSel = document.activeElement?.matches?.('input') ? 'input' : document.activeElement?.dataset?.model ? '[data-model]' : document.activeElement?.dataset?.act ? `[data-act="${document.activeElement.dataset.act}"]` : null;
   $('svc-speech').innerHTML = speechRows();
+  $('svc-tts').innerHTML = ttsRows();
   $('svc-hwr').innerHTML = hwrRows();
   $('svc-ocr').innerHTML = ocrRow();
   if (hadKey && hadSel && !document.activeElement?.closest?.('[data-engine]')) {
@@ -123,6 +166,8 @@ export function renderEngines() {
 
 /** Progress ticks only change the row's subtitle and the button's label, so focus stays put. */
 function renderProgress() {
+  const ps = $('eng-tts-ondevice-sub');
+  if (ps) ps.textContent = piperSub();
   for (const [key, group] of [['whisper', 'speech'], ['trocr', 'hwr']]) {
     const sub = $(`eng-${group}-ondevice-sub`);
     if (sub && modelState(key) === 'downloading') sub.textContent = modelSub(key);
@@ -223,15 +268,90 @@ async function onOcrButton(code) {
   renderEngines();
 }
 
+/* ----------------------------------------------------- offline voices */
+
+export function openVoiceManager({ onOpen } = {}) {
+  onOpen?.();
+  $('voice-search').value = '';
+  $('svc-tts').after($('voice-manager'));   // right under the Read aloud group it belongs to
+  $('voice-manager').hidden = false;
+  document.querySelectorAll('.svc-add').forEach((r) => { r.hidden = true; });
+  $('voice-source').innerHTML = piperSourceHtml();
+  renderVoiceManager();
+  requestAnimationFrame(() => { $('voice-manager').scrollIntoView({ block: 'start' }); $('voice-search').focus(); });
+}
+
+export function closeVoiceManager({ silent = false } = {}) {
+  if ($('voice-manager').hidden) return;
+  $('voice-manager').hidden = true;
+  document.querySelectorAll('.svc-add').forEach((r) => { r.hidden = false; });
+  renderEngines();
+  if (!silent) document.querySelector('[data-act="voice-manage"]')?.focus();
+}
+
+function voiceButton(v, name) {
+  const st = voiceState(v.lang);
+  if (st === 'downloading') return `<button type="button" class="icon-btn lang-dl" data-voice="${v.lang}" aria-disabled="true" aria-label="Downloading the ${esc(name)} voice, ${Math.round(voiceProgress(v.lang) * 100)}%">${icon('download')}</button>`;
+  return st === 'ready'
+    ? `<button type="button" class="icon-btn lang-dl" data-voice="${v.lang}" aria-label="Delete the ${esc(name)} voice (${formatMB(voiceBytes(v.lang))})">${icon('delete')}</button>`
+    : `<button type="button" class="icon-btn lang-dl" data-voice="${v.lang}" aria-label="Download the ${esc(name)} voice (${esc(downloadSize(v))}) from Hugging Face">${icon('download')}</button>`;
+}
+
+function renderVoiceManager() {
+  if ($('voice-manager').hidden) return;
+  const q = $('voice-search').value.trim().toLowerCase();
+  const n = downloadedVoices().length;
+  $('voice-usage').textContent = n ? `${n} downloaded · ${formatMB(piperBytes())} used on this device (voices and engine)` : 'Nothing downloaded yet.';
+  const rank = (l) => ({ ready: 0, downloading: 1, none: 2 }[voiceState(l)]);
+  const rows = piperVoices().map((v) => ({ v, name: voiceLabel(v.lang, langName) }))
+    .filter((r) => !q || r.name.toLowerCase().includes(q) || r.v.lang.toLowerCase().startsWith(q))
+    .sort((a, b) => rank(a.v.lang) - rank(b.v.lang) || a.name.localeCompare(b.name));
+  const focused = document.activeElement?.closest?.('#voice-list [data-voice]')?.dataset.voice;
+  $('voice-list').innerHTML = rows.length ? rows.map(({ v, name }) => {
+    const st = voiceState(v.lang);
+    const sub = st === 'downloading' ? `Downloading… ${Math.round(voiceProgress(v.lang) * 100)}%`
+      : st === 'ready' ? `Downloaded · ${formatMB(voiceBytes(v.lang))} · voice “${esc(v.name)}”` : `${esc(downloadSize(v))} · voice “${esc(v.name)}”`;
+    return `<li class="offline-row"><span class="offline-copy"><span>${esc(name)}</span><small>${sub} · ${extLink(voicePage(v), 'model card')}</small></span>${voiceButton(v, name)}</li>`;
+  }).join('') : '<li class="svc-empty">No languages match.</li>';
+  if (focused) $('voice-list').querySelector(`[data-voice="${focused}"]`)?.focus();
+}
+
+async function onVoiceButton(lang) {
+  const v = piperVoices().find((x) => x.lang === lang);
+  const name = voiceLabel(lang, langName);
+  const st = voiceState(lang);
+  if (!v || st === 'downloading') return;
+  if (st === 'ready') {
+    const last = downloadedVoices().length === 1;
+    const ok = await sheet({
+      iconName: 'delete', title: `Delete the ${name} voice?`,
+      body: `This frees ${formatMB(voiceBytes(lang))}${last ? ` (and ${ENGINE_MB} MB for the voice engine, as it's the last voice)` : ''}. You can download it again at any time.`,
+      allowLabel: 'Delete', cancelLabel: 'Cancel',
+    });
+    if (!ok) return;
+    await deleteVoice(lang);
+    toast(`Deleted the ${name} voice`);
+  } else {
+    // downloading by hand is a yes to "Download a voice?" for that language
+    settings.set({ ttsDeclined: (settings.get().ttsDeclined || []).filter((l) => l !== lang) });
+    try {
+      await downloadVoice(lang);
+      toast(`The ${name} voice is downloaded and works without internet.`);
+    } catch (e) { toast(`Download failed: ${e.message || e}`); }
+  }
+}
+
 /* ------------------------------------------------------------- wiring */
 
 export function initEngineRows({ isOpen, closeOthers }) {
-  for (const id of ['svc-speech', 'svc-hwr', 'svc-ocr']) {
+  for (const id of ['svc-speech', 'svc-tts', 'svc-hwr', 'svc-ocr']) {
     $(id).addEventListener('change', (e) => {
       if (!e.target.matches('input[type=radio]')) return;
       const [group, value] = e.target.closest('[data-engine]').dataset.engine.split(':');
       // choosing the on-device model again also resets an earlier "Not now" to its download question
       if (group === 'speech') settings.set({ speechEngine: value, ...(value === 'ondevice' ? { sttModelOk: null } : {}) });
+      // choosing Piper again also forgets earlier "Not now" answers to its download question
+      if (group === 'tts') settings.set({ ttsEngine: value, ...(value === 'ondevice' ? { ttsDeclined: [] } : {}) });
       if (group === 'hwr') settings.set({ hwrEngine: value, ...(value === 'ondevice' ? { hwrModelOk: null } : {}) });
       renderEngines();
     });
@@ -239,10 +359,25 @@ export function initEngineRows({ isOpen, closeOthers }) {
       const m = e.target.closest('[data-model]');
       if (m) { onModelButton(m.dataset.model); return; }
       if (e.target.closest('[data-act="ocr-manage"]')) openOcrManager({ onOpen: closeOthers });
+      if (e.target.closest('[data-act="voice-manage"]')) openVoiceManager({ onOpen: closeOthers });
     });
   }
   $('ocr-list').addEventListener('click', (e) => { const b = e.target.closest('[data-ocr]'); if (b) onOcrButton(b.dataset.ocr); });
   $('ocr-search').addEventListener('input', () => renderOcrManager());
+  $('voice-list').addEventListener('click', (e) => { const b = e.target.closest('[data-voice]'); if (b) onVoiceButton(b.dataset.voice); });
+  $('voice-search').addEventListener('input', () => renderVoiceManager());
+  $('btn-voice-done').addEventListener('click', () => closeVoiceManager());
+  $('voice-manager').addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.target.id === 'voice-search' && e.target.value) { e.target.value = ''; renderVoiceManager(); } else closeVoiceManager();
+  });
+  onVoicesChange(() => {
+    if (!isOpen()) return;
+    renderVoiceManager();
+    // while a voice downloads only the subtitle changes, so focus stays put
+    if (piperVoices().some((v) => voiceState(v.lang) === 'downloading')) renderProgress(); else renderEngines();
+  });
   $('btn-ocr-done').addEventListener('click', () => closeOcrManager());
   $('ocr-manager').addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
