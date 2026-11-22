@@ -772,6 +772,8 @@ dialog.menu [role="menuitem"][hidden] { display: none; }
 .test-result.ok { background: var(--tertiary-container); color: var(--on-tertiary-container); }
 .test-result.bad { background: var(--error-container); color: var(--on-error-container); }
 .about { font-size: 12px; color: var(--on-surface-variant); margin: 0; }
+.version-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-top: 8px; }
+.version-row a { color: inherit; font-family: ui-monospace, monospace; }
 
 /* ---------- snackbar ---------- */
 .snackbar {
