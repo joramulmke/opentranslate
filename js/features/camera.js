@@ -3,12 +3,18 @@ import { state, subscribe, detect, translate, describeError, langName, fallbackN
 import { createLangBar } from '../ui/langbar.js';
 import { toast } from '../ui/snackbar.js';
 import { recognize, ocrLangFor, describeOcrStatus } from './ocr.js';
+import { ocrQuality } from './paddle.js';
 import { escapeHtml } from '../ui/langpicker.js';
 import { icon } from '../ui/icons.js';
 import { permissionState, onPermissionChange, blockedSteps, cameraCopy } from './permissions.js';
 
 const $ = (id) => document.getElementById(id);
-const MAX_OCR_SIDE = 1600;
+// Settings › Text recognition › Reading: Accurate keeps more detail of small print (a book page), Fast is quicker
+const CAPTURE = {
+  accurate: { side: 2560, video: { width: { ideal: 3840 }, height: { ideal: 2160 } } },
+  fast: { side: 1600, video: { width: { ideal: 1920 }, height: { ideal: 1080 } } },
+};
+const capture = () => CAPTURE[ocrQuality()];
 
 export function initCamera({ sendToText }) {
   const el = {
@@ -36,7 +42,7 @@ export function initCamera({ sendToText }) {
     }
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false,
+        video: { facingMode: { ideal: 'environment' }, ...capture().video }, audio: false,
       });
       if (!visible || shot) { s.getTracks().forEach((t) => t.stop()); return; }
       stream = s;
@@ -177,14 +183,16 @@ export function initCamera({ sendToText }) {
     const tLines = (shot.translated || '').split('\n');
     const perLine = tLines.length === lines.length;
     const boxes = perLine || showOrig
-      ? lines.map((l, i) => ({ bbox: l.bbox, text: showOrig ? l.text : tLines[i] }))
+      ? lines.map((l, i) => ({ bbox: l.bbox, box: l.box, text: showOrig ? l.text : tLines[i] }))
       : [{ bbox: union(lines.map((l) => l.bbox)), text: shot.translated }];
-    el.overlays.innerHTML = boxes.map(({ bbox, text }, i) => {
-      const left = (bbox.x0 / w) * 100, top = (bbox.y0 / h) * 100;
-      const width = ((bbox.x1 - bbox.x0) / w) * 100, height = ((bbox.y1 - bbox.y0) / h) * 100;
+    el.overlays.innerHTML = boxes.map(({ bbox, box, text }, i) => {
+      // a turned line (PP-OCRv6 on a slanted or sideways page) is covered by a box turned the same way
+      const r = box || { cx: (bbox.x0 + bbox.x1) / 2, cy: (bbox.y0 + bbox.y1) / 2, w: bbox.x1 - bbox.x0, h: bbox.y1 - bbox.y0, angle: 0 };
+      const left = ((r.cx - r.w / 2) / w) * 100, top = ((r.cy - r.h / 2) / h) * 100;
+      const width = (r.w / w) * 100, height = (r.h / h) * 100;
       const hh = perLine || showOrig ? height : Math.min(height, 6);
       return `<div class="ocr-box ${showOrig ? 'orig' : ''}" lang="${showOrig ? (shot.ocrSource || '') : state.target}"
-        style="left:${left}%;top:${top}%;width:${width}%;${perLine || showOrig ? `height:${height}%` : `min-height:${height}%;white-space:normal;align-items:flex-start`};--h:${hh};animation-delay:${i * 25}ms"
+        style="left:${left}%;top:${top}%;width:${width}%;${perLine || showOrig ? `height:${height}%` : `min-height:${height}%;white-space:normal;align-items:flex-start`};--h:${hh};${r.angle ? `rotate:${r.angle.toFixed(4)}rad;` : ''}animation-delay:${i * 25}ms"
         >${escapeHtml(text || '')}</div>`;
     }).join('');
   }
@@ -192,7 +200,7 @@ export function initCamera({ sendToText }) {
   const union = (bs) => bs.reduce((a, b) => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) }));
 
   function toCanvas(source, sw, sh) {
-    const scale = Math.min(1, MAX_OCR_SIDE / Math.max(sw, sh));
+    const scale = Math.min(1, capture().side / Math.max(sw, sh));
     const c = document.createElement('canvas');
     c.width = Math.round(sw * scale);
     c.height = Math.round(sh * scale);
@@ -200,12 +208,34 @@ export function initCamera({ sendToText }) {
     return c;
   }
 
-  el.shutter.addEventListener('click', () => {
+  el.shutter.addEventListener('click', async () => {
     const v = el.video;
-    if (!v.videoWidth) return;
+    if (!v.videoWidth || el.shutter.disabled) return;
     el.view.animate([{ filter: 'brightness(2)' }, { filter: 'none' }], { duration: 180 });
-    processCanvas(toCanvas(v, v.videoWidth, v.videoHeight));
+    el.shutter.disabled = true;
+    const photo = await takePhoto(v);
+    el.shutter.disabled = false;
+    if (!visible) return;
+    processCanvas(photo ? toCanvas(photo, photo.width, photo.height) : toCanvas(v, v.videoWidth, v.videoHeight));
   });
+
+  /**
+   * Accurate: a real photo from the camera (Image Capture, Chrome on Android), often several times sharper
+   * than a frame of the preview. Only used when it's the same way up as the preview (some cameras hand it
+   * over turned); otherwise, and in other browsers, null: the preview frame is used.
+   */
+  async function takePhoto(v) {
+    const track = stream?.getVideoTracks()[0];
+    if (ocrQuality() !== 'accurate' || typeof ImageCapture !== 'function' || !track) return null;
+    try {
+      const blob = await Promise.race([new ImageCapture(track).takePhoto(), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 5000))]);
+      const bmp = await createImageBitmap(blob);
+      const sameWay = (bmp.width >= bmp.height) === (v.videoWidth >= v.videoHeight);
+      if (sameWay && bmp.width * bmp.height > v.videoWidth * v.videoHeight) return bmp;
+      bmp.close();
+    } catch { /* no photo: the preview frame will do */ }
+    return null;
+  }
 
   const pickFile = () => el.file.click();
   el.importBtn.addEventListener('click', pickFile);

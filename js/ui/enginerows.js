@@ -16,7 +16,7 @@ import { piperVoices, voiceState, voiceProgress, voiceBytes, piperBytes, downloa
   KOKORO_INFO, KOKORO_LANGS, kokoroState, kokoroProgress, kokoroSize, kokoroVoice, kokoroVoiceName, kokoroVoiceReady, downloadKokoro, downloadKokoroVoice, deleteKokoro } from '../features/piper.js';
 import { HWR_ENGINES, hwrPref } from '../features/hwr.js';
 import { ocrLanguages, ocrDownloaded, ocrDownload, ocrDelete, OCR_SOURCE, OCR_ENGINES, ocrPref } from '../features/ocr.js';
-import { PADDLE, paddleState, paddleProgress, paddleBytes, downloadPaddle, deletePaddle, onPaddleChange } from '../features/paddle.js';
+import { PADDLE, paddleState, paddleProgress, paddleBytes, downloadPaddle, deletePaddle, onPaddleChange, ocrQuality } from '../features/paddle.js';
 import { ORT_MB } from '../features/ort.js';
 import { langName } from '../state.js';
 import { tagLine, infoButton, details, PRIVATE, sends, OFFLINE, ONLINE, NO_DOWNLOAD, READY, download, downloading, quality, UNAVAILABLE } from './tags.js';
@@ -228,10 +228,17 @@ function ocrRows() {
     actions: `<button class="icon-btn sm" type="button" data-act="ocr-manage" aria-label="Manage camera text languages" aria-describedby="eng-ocr-tesseract-sub">${icon('download')}</button>` })
     + row({ group: 'ocr', value: 'paddle', title: 'Many languages (PP-OCRv6)', checked: first === 'paddle',
       tags: () => [PRIVATE, OFFLINE, paddleSize(), quality('Good')], line: 'Better on photos · Latin script, Chinese, Japanese, Greek',
-      info: paddleInfo(), actions: paddleButton() })
+      info: paddleInfo(), actions: paddleButton(), extra: qualitySelect() })
     + row({ group: 'ocr', value: 'vision', title: 'Advanced (AI vision)', checked: first === 'vision' && !!ai, disabled: !ai,
       tags: visionTags(ai), line: ai ? `${ai.label} · any script, angled and curved text` : NEEDS_VISION,
       info: ai ? details(`Not a download: each photo goes to ${esc(hostOf(ai))}.`, "If it doesn't answer, the photo is read on this device instead.") : '' });
+}
+
+/** Camera text: Accurate (sharper photo, small print kept apart) or Fast (quicker on older phones). */
+function qualitySelect() {
+  const q = ocrQuality();
+  const opt = (v, label) => `<option value="${v}" ${v === q ? 'selected' : ''}>${esc(label)}</option>`;
+  return `<label class="svc-model"><span>Reading<span class="visually-hidden"> of camera text with PP-OCRv6</span></span><select data-act="ocr-quality" aria-describedby="eng-ocr-paddle-sub">${opt('accurate', 'Accurate · best for book pages, takes a few seconds longer')}${opt('fast', 'Fast · quicker, for signs and menus')}</select></label>`;
 }
 
 async function onPaddleButton() {
@@ -510,6 +517,12 @@ export function initEngineRows({ isOpen, closeOthers }) {
         settings.set({ whisperModel: e.target.value, sttModelOk: modelState(e.target.value) === 'ready' ? true : null });
         renderEngines();
         document.querySelector('[data-act="whisper-size"]')?.focus();
+        return;
+      }
+      if (e.target.matches('[data-act="ocr-quality"]')) {
+        settings.set({ ocrQuality: e.target.value });
+        renderEngines();
+        document.querySelector('[data-act="ocr-quality"]')?.focus();
         return;
       }
       if (!e.target.matches('input[type=radio]')) return;

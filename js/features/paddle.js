@@ -2,8 +2,11 @@
 // with ONNX Runtime: one finds the text lines (detection), one reads each line (recognition: Latin-script
 // languages, Chinese, Japanese and Greek in one model; no Cyrillic, Arabic, Indic, Thai or Korean script). Downloaded once from Hugging Face (huggingface.co/PaddlePaddle) and kept in Cache
 // Storage ("ot-paddle-v1"). Same result shape as Tesseract (ocr.js), so camera and handwriting can use either.
+// Photos of book pages are rarely flat and straight: each line gets a box turned along it (and following it
+// where the page bends), the page may lie sideways or upside down, and the lines are read column by column.
 import { ORT_FILES, ORT_MB, loadOrt, cachedFile, haveFile } from './ort.js';
 import { bgDownload, bgResume } from './bgfetch.js';
+import { settings } from '../store.js';
 
 const CACHE = 'ot-paddle-v1';
 const HF = 'https://huggingface.co/PaddlePaddle/';
@@ -22,8 +25,10 @@ const OTHER = new Set(['zh', 'zh-Hant', 'ja', 'el']);
 /** Can PP-OCRv6 read text in this language? (unknown / auto: yes, it's the common case) */
 export const paddleReads = (lang) => !lang || lang === 'auto' || LATIN.has(String(lang).split('-')[0]) || OTHER.has(lang) || OTHER.has(String(lang).split('-')[0]);
 
-// detection settings from the model's inference.yml
-const DET_LIMIT = 960;
+// detection settings from the model's inference.yml. The longer side of the photo is scaled to OCR_QUALITIES
+// before detection: Accurate keeps the small print of a book page apart, Fast is quicker on older phones.
+export const OCR_QUALITIES = { accurate: 1920, fast: 960 };
+export const ocrQuality = () => (settings.get().ocrQuality in OCR_QUALITIES ? settings.get().ocrQuality : 'accurate');
 const THRESH = 0.2; const BOX_THRESH = 0.45; const UNCLIP = 1.4;
 const MEAN = [0.485, 0.456, 0.406]; const STD = [0.229, 0.224, 0.225];
 const REC_H = 48; const REC_MAX_W = 3200;
@@ -144,13 +149,10 @@ async function toCanvas(image) {
   return c;
 }
 
-/** Pixels of a canvas region as a 1×3×H×W tensor, blue-green-red like PaddleOCR, normalised per channel. */
-function tensorOf(ort, source, sx, sy, sw, sh, w, h, mean, std) {
-  const c = canvasOf(w, h);
-  const g = c.getContext('2d', { willReadFrequently: true });
-  g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
-  g.drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
-  const px = g.getImageData(0, 0, w, h).data;
+/** A canvas as a 1×3×H×W tensor, blue-green-red like PaddleOCR, normalised per channel. */
+function tensorOf(ort, c, mean, std) {
+  const { width: w, height: h } = c;
+  const px = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
   const out = new Float32Array(3 * w * h);
   for (let i = 0, p = 0; i < w * h; i++, p += 4) {
     out[i] = (px[p + 2] / 255 - mean[0]) / std[0];               // B
@@ -160,56 +162,252 @@ function tensorOf(ort, source, sx, sy, sw, sh, w, h, mean, std) {
   return new ort.Tensor('float32', out, [1, 3, h, w]);
 }
 
+/** A white canvas of w×h; draw(g) paints onto it. */
+function paint(w, h, draw) {
+  const c = canvasOf(w, h);
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+  draw(g);
+  return c;
+}
+
+/** The four corners of a turned box { cx, cy, w, h, angle }: top-left, top-right, bottom-right, bottom-left. */
+const cornersOf = ({ cx, cy, w, h, angle }) => {
+  const ux = Math.cos(angle); const uy = Math.sin(angle);
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [cx + (a * w * ux - b * h * uy) / 2, cy + (a * w * uy + b * h * ux) / 2]);
+};
+
 /* ------------------------------------------------------------ detection */
 
-/** Text line boxes in image pixels: [{ x0, y0, x1, y1, score }]. */
+/**
+ * Text line boxes in image pixels, turned to follow each line: [{ cx, cy, w, h, angle, score }], unsorted.
+ * A straight rectangle around a slanted line also takes in the lines above and below it, which the
+ * reader then mixes up; so each line gets the narrowest box along its own direction (principal axis of
+ * its pixels), like PaddleOCR's minimum-area rectangles.
+ */
 async function detect(m, img) {
   const W = img.width; const H = img.height;
-  const scale = Math.min(1, DET_LIMIT / Math.max(W, H));
+  const scale = Math.min(1, OCR_QUALITIES[ocrQuality()] / Math.max(W, H));
   const w = Math.max(32, Math.round((W * scale) / 32) * 32);
   const h = Math.max(32, Math.round((H * scale) / 32) * 32);
-  const input = tensorOf(m.ort, img, 0, 0, W, H, w, h, MEAN, STD);
+  const input = tensorOf(m.ort, paint(w, h, (g) => g.drawImage(img, 0, 0, W, H, 0, 0, w, h)), MEAN, STD);
   const out = await m.det.run({ [m.det.inputNames[0]]: input });
   const prob = out[m.det.outputNames[0]].data;   // 1×1×h×w
-  // connected regions above the threshold (iterative flood fill)
-  const seen = new Uint8Array(w * h);
+  const sx = W / w; const sy = H / h;
   const boxes = [];
-  const stack = [];
-  for (let start = 0; start < w * h; start++) {
-    if (seen[start] || prob[start] <= THRESH) continue;
-    let x0 = w; let y0 = h; let x1 = 0; let y1 = 0; let sum = 0; let n = 0;
-    stack.push(start); seen[start] = 1;
-    while (stack.length) {
-      const i = stack.pop();
-      const x = i % w; const y = (i - x) / w;
-      sum += prob[i]; n++;
-      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
-      for (const j of [i - 1, i + 1, i - w, i + w]) {
-        if (j < 0 || j >= w * h || seen[j] || prob[j] <= THRESH) continue;
-        if ((j === i - 1 && x === 0) || (j === i + 1 && x === w - 1)) continue;
-        seen[j] = 1; stack.push(j);
-      }
-    }
-    const bw = x1 - x0 + 1; const bh = y1 - y0 + 1;
-    if (Math.min(bw, bh) < 3 || sum / n < BOX_THRESH) continue;
-    // the model marks a shrunken core of each line: grow it back ("unclip")
-    const d = (bw * bh * UNCLIP) / (2 * (bw + bh));
-    boxes.push({
-      x0: Math.max(0, (x0 - d) * (W / w)), y0: Math.max(0, (y0 - d) * (H / h)),
-      x1: Math.min(W, (x1 + 1 + d) * (W / w)), y1: Math.min(H, (y1 + 1 + d) * (H / h)), score: sum / n,
-    });
+  for (const { px, sum } of regions(prob, w, h, THRESH)) {
+    const b = fitBox(px, sum, w, sx, sy);
+    if (b) boxes.push(b);
   }
-  // reading order: top to bottom, then left to right within a line
-  return boxes.sort((a, b) => (Math.abs(a.y0 - b.y0) < Math.min(a.y1 - a.y0, b.y1 - b.y0) / 2 ? a.x0 - b.x0 : a.y0 - b.y0));
+  return boxes;
+}
+
+const median = (xs) => (xs.length ? [...xs].sort((a, b) => a - b)[xs.length >> 1] : 0);
+
+/** Connected regions above threshold t (4-neighbour flood fill), as lists of pixel indices. */
+function regions(prob, w, h, t) {
+  const seen = new Uint8Array(w * h);
+  const ok = (j) => !seen[j] && prob[j] > t;
+  const queue = new Int32Array(w * h);
+  const found = [];
+  for (let start = 0; start < w * h; start++) {
+    if (!ok(start)) continue;
+    let n = 0; let top = 0; let sum = 0;
+    queue[top++] = start; seen[start] = 1;
+    while (n < top) {
+      const i = queue[n++];
+      const x = i % w;
+      sum += prob[i];
+      if (x > 0 && ok(i - 1)) { seen[i - 1] = 1; queue[top++] = i - 1; }
+      if (x < w - 1 && ok(i + 1)) { seen[i + 1] = 1; queue[top++] = i + 1; }
+      if (i >= w && ok(i - w)) { seen[i - w] = 1; queue[top++] = i - w; }
+      if (i < w * (h - 1) && ok(i + w)) { seen[i + w] = 1; queue[top++] = i + w; }
+    }
+    found.push({ px: queue.slice(0, n), sum });
+  }
+  return found;
+}
+
+/**
+ * The turned box of one region, in image pixels: the narrowest box along the direction of its pixels
+ * (principal axis), grown back by the "unclip" margin. null for specks and unsure regions.
+ */
+function fitBox(px, sum, w, sx, sy) {
+  const n = px.length;
+  if (n < 6 || sum / n < BOX_THRESH) return null;
+  let mx = 0; let my = 0;
+  for (let k = 0; k < n; k++) { const x = px[k] % w; mx += x; my += (px[k] - x) / w; }
+  mx = (mx / n + 0.5) * sx; my = (my / n + 0.5) * sy;
+  let cxx = 0; let cyy = 0; let cxy = 0;
+  for (let k = 0; k < n; k++) {
+    const x = px[k] % w;
+    const dx = (x + 0.5) * sx - mx; const dy = ((px[k] - x) / w + 0.5) * sy - my;
+    cxx += dx * dx; cyy += dy * dy; cxy += dx * dy;
+  }
+  const angle = 0.5 * Math.atan2(2 * cxy, cxx - cyy);
+  const ux = Math.cos(angle); const uy = Math.sin(angle);
+  let a0 = Infinity; let a1 = -Infinity; let b0 = Infinity; let b1 = -Infinity;
+  for (let k = 0; k < n; k++) {
+    const x = px[k] % w;
+    const dx = (x + 0.5) * sx - mx; const dy = ((px[k] - x) / w + 0.5) * sy - my;
+    const a = dx * ux + dy * uy; const b = dy * ux - dx * uy;
+    if (a < a0) a0 = a; if (a > a1) a1 = a; if (b < b0) b0 = b; if (b > b1) b1 = b;
+  }
+  const step = Math.hypot(sx * ux, sy * uy);      // one detection pixel, in image pixels
+  let bw = a1 - a0 + step; let bh = b1 - b0 + step;
+  if (Math.min(bw, bh) < 3 * step) return null;
+  // A line on a bent page is curved, and a straight box around it is much too thick. So the middle of the
+  // line is followed in short pieces (the centre between its top and bottom in each piece); the box is
+  // then only as thick as the line around that curve, and read() straightens it.
+  let bend = null; let cb = (b0 + b1) / 2;
+  const K = Math.min(48, Math.floor((a1 - a0) / (8 * step)));
+  if (K >= 3 && bw > 4 * bh) {
+    const lo = new Float64Array(K).fill(Infinity); const hi = new Float64Array(K).fill(-Infinity);
+    const bin = (a1 - a0) / K;
+    const at = new Float64Array(n); const bt = new Float64Array(n);
+    for (let k = 0; k < n; k++) {
+      const x = px[k] % w;
+      const dx = (x + 0.5) * sx - mx; const dy = ((px[k] - x) / w + 0.5) * sy - my;
+      at[k] = dx * ux + dy * uy; bt[k] = dy * ux - dx * uy;
+      const j = Math.min(K - 1, Math.floor((at[k] - a0) / bin));
+      if (bt[k] < lo[j]) lo[j] = bt[k]; if (bt[k] > hi[j]) hi[j] = bt[k];
+    }
+    let mid = Array.from(lo, (l, j) => (l <= hi[j] ? (l + hi[j]) / 2 : NaN));
+    // pieces without pixels (gaps between words) take their neighbours' value; then smooth twice
+    for (let j = 0; j < K; j++) {
+      if (!Number.isNaN(mid[j])) continue;
+      let p = j - 1; while (p >= 0 && Number.isNaN(mid[p])) p--;
+      let q = j + 1; while (q < K && Number.isNaN(mid[q])) q++;
+      mid[j] = p < 0 ? mid[q] : q >= K ? mid[p] : mid[p] + ((mid[q] - mid[p]) * (j - p)) / (q - p);
+    }
+    for (let pass = 0; pass < 2; pass++) mid = mid.map((v, j) => (mid[Math.max(0, j - 1)] + v + mid[Math.min(K - 1, j + 1)]) / 3);
+    const curve = (a) => {
+      const t = Math.max(0, Math.min(K - 1, (a - a0) / bin - 0.5));
+      const j = Math.min(K - 2, Math.floor(t));
+      return mid[j] + (mid[j + 1] - mid[j]) * (t - j);
+    };
+    let r0 = Infinity; let r1 = -Infinity;
+    for (let k = 0; k < n; k++) { const r = bt[k] - curve(at[k]); if (r < r0) r0 = r; if (r > r1) r1 = r; }
+    const thin = r1 - r0 + step;
+    if (thin * 1.15 < bh) {
+      bh = thin; cb = 0;
+      const d = (bw * bh * UNCLIP) / (2 * (bw + bh));
+      const from = a0 - step / 2 - d; const len = bw + 2 * d;
+      bend = Array.from({ length: K }, (_, k) => curve(from + (k / (K - 1)) * len) + (r0 + r1) / 2);
+    }
+  }
+  // the model marks a shrunken core of each line: grow it back ("unclip")
+  const d = (bw * bh * UNCLIP) / (2 * (bw + bh));
+  const ca = (a0 + a1) / 2;
+  bw += 2 * d; bh += 2 * d;
+  return { cx: mx + ca * ux - cb * uy, cy: my + ca * uy + cb * ux, w: bw, h: bh, angle, bend, score: sum / n };
+}
+
+/** A box's bend when the box is turned half around: the other end first, the other side up. */
+const turned = (bend) => bend && [...bend].reverse().map((v) => -v);
+
+/** An angle brought within half a turn of ref: (ref - π, ref + π]. */
+const near = (a, ref) => a - 2 * Math.PI * Math.round((a - ref) / (2 * Math.PI));
+
+/**
+ * Turn every box the same way as the page, which may lie sideways or upside down in the photo.
+ * The page's direction is the median of the wide boxes (short words and marks don't tip it); a box more
+ * than 45° off it is a short word whose own direction is unreliable, so it follows the page. Which way
+ * round (a line read from its start or its end) is decided by reading the widest lines both ways.
+ * Returns the boxes in reading order; reads holds the lines already read (box -> result).
+ */
+async function orient(m, img, boxes) {
+  const reads = new Map();
+  if (!boxes.length) return { boxes, reads };
+  const wide = boxes.filter((b) => b.w > 2 * b.h);
+  const ref = wide.length ? wide : boxes;
+  // the angles' direction modulo half a turn: average on the doubled angle so 89° and -89° agree
+  let tilt = 0.5 * Math.atan2(ref.reduce((a, b) => a + Math.sin(2 * b.angle), 0), ref.reduce((a, b) => a + Math.cos(2 * b.angle), 0));
+  tilt = median(ref.map((b) => { const a = near(b.angle, tilt); return Math.abs(a - tilt) > Math.PI / 2 ? near(a + Math.PI, tilt) : a; }));
+  for (const b of boxes) {
+    b.angle = near(b.angle, tilt);
+    if (Math.abs(b.angle - tilt) > Math.PI / 2) { b.angle = near(b.angle + Math.PI, tilt); b.bend = turned(b.bend); }
+    if (Math.abs(b.angle - tilt) > Math.PI / 4) { b.angle = tilt; [b.w, b.h] = [b.h, b.w]; b.bend = null; }
+  }
+  // which way round: the widest lines, read as they are and turned half around (until it's clear)
+  const sample = [...boxes].sort((a, b) => b.w / b.h - a.w / a.h).slice(0, 5);
+  let ahead = 0; let back = 0;
+  const flipped = new Map();
+  for (const b of sample) {
+    const r = await read(m, img, b);
+    const rf = await read(m, img, { ...b, angle: b.angle + Math.PI, bend: turned(b.bend) });
+    reads.set(b, r); flipped.set(b, rf);
+    ahead += r.confidence * r.text.length; back += rf.confidence * rf.text.length;
+    if (flipped.size >= 2 && Math.max(ahead, back) > 1.5 * Math.min(ahead, back)) break;
+  }
+  if (back > ahead) {
+    tilt += Math.PI;
+    for (const b of boxes) {
+      b.angle += Math.PI; b.bend = turned(b.bend);
+      if (flipped.has(b)) reads.set(b, flipped.get(b));
+    }
+  }
+  // reading order along the page's own direction: column by column (e.g. the edge of the facing page
+  // apart from this one), and within a column top to bottom, then left to right within a line
+  const tx = Math.cos(tilt); const ty = Math.sin(tilt);
+  for (const b of boxes) {
+    b.along = b.cx * tx + b.cy * ty; b.across = b.cy * tx - b.cx * ty;
+    const da = b.angle - tilt;
+    b.reach = Math.abs((b.w / 2) * Math.cos(da)) + Math.abs((b.h / 2) * Math.sin(da));   // half its length along the page
+  }
+  const columns = [];
+  for (const b of [...boxes].sort((p, q) => (p.along - p.reach) - (q.along - q.reach))) {
+    const col = columns[columns.length - 1];
+    if (col && b.along - b.reach < col.end) { col.boxes.push(b); col.end = Math.max(col.end, b.along + b.reach); } else columns.push({ end: b.along + b.reach, boxes: [b] });
+  }
+  const inColumn = (a, b) => (Math.abs(a.across - b.across) < Math.min(a.h, b.h) / 2 ? a.along - b.along : a.across - b.across);
+  return { boxes: columns.flatMap((c) => c.boxes.sort(inColumn)), reads };
 }
 
 /* ------------------------------------------------------------ recognition */
 
-/** Read one line box: greedy CTC decoding (index 0 = blank, last = space). */
+/**
+ * The line of box b, cut out of img and turned level into a canvas of w×h. A curved line (b.bend: the
+ * offsets of its middle across the box, evenly spaced along it) is straightened in narrow strips, each
+ * moved and turned to follow the curve.
+ */
+function cutLine(img, b, w, h) {
+  const ux = Math.cos(b.angle); const uy = Math.sin(b.angle);
+  const vx = -uy; const vy = ux;
+  const kx = w / b.w; const ky = h / b.h;
+  const K = b.bend?.length || 0;
+  const off = (a) => {
+    if (!K) return 0;
+    const t = Math.max(0, Math.min(K - 1, ((a + b.w / 2) / b.w) * (K - 1)));
+    const j = Math.min(K - 2, Math.floor(t));
+    return b.bend[j] + (b.bend[j + 1] - b.bend[j]) * (t - j);
+  };
+  const strips = K ? Math.max(1, Math.ceil(w / 32)) : 1;
+  return paint(w, h, (g) => {
+    for (let i = 0; i < strips; i++) {
+      const o0 = (i * w) / strips; const o1 = ((i + 1) * w) / strips;
+      const am = (o0 + o1) / 2 / kx - b.w / 2; const half = (o1 - o0) / kx / 2;
+      const c = off(am); const sl = K ? (off(am + half) - off(am - half)) / (2 * half) : 0;
+      // output pixel o -> image point P0 + o.x * e1 + o.y * e2 (box frame a, b; across offset c + sl·(a - am))
+      const e1x = (ux + sl * vx) / kx; const e1y = (uy + sl * vy) / kx;
+      const e2x = vx / ky; const e2y = vy / ky;
+      const p0x = b.cx + (c - sl * am) * vx - (b.w / 2) * (ux + sl * vx) - (b.h / 2) * vx;
+      const p0y = b.cy + (c - sl * am) * vy - (b.w / 2) * (uy + sl * vy) - (b.h / 2) * vy;
+      const det = e1x * e2y - e2x * e1y;
+      const ia = e2y / det; const ib = -e1y / det; const ic = -e2x / det; const id = e1x / det;
+      g.save();
+      if (strips > 1) { g.beginPath(); g.rect(o0 - 0.5, 0, o1 - o0 + 1, h); g.clip(); }
+      g.setTransform(ia, ib, ic, id, -(ia * p0x + ic * p0y), -(ib * p0x + id * p0y));
+      g.drawImage(img, 0, 0);
+      g.restore();
+    }
+  });
+}
+
 async function read(m, img, b) {
-  const bw = b.x1 - b.x0; const bh = b.y1 - b.y0;
-  const w = Math.max(8, Math.min(REC_MAX_W, Math.ceil((REC_H * bw) / bh)));
-  const input = tensorOf(m.ort, img, b.x0, b.y0, bw, bh, w, REC_H, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]);
+  const w = Math.max(8, Math.min(REC_MAX_W, Math.ceil((REC_H * b.w) / b.h)));
+  const crop = cutLine(img, b, w, REC_H);
+  const input = tensorOf(m.ort, crop, [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]);
   const out = await m.rec.run({ [m.rec.inputNames[0]]: input });
   const t = out[m.rec.outputNames[0]];
   const [, T, C] = t.dims;
@@ -228,18 +426,28 @@ async function read(m, img, b) {
 
 /**
  * Same shape as ocr.js recognize(): { text, confidence, lines: [{ text, bbox: { x0, y0, x1, y1 }, confidence }], words: [] }.
+ * Each line also has its turned box: quad (four corners) and box { cx, cy, w, h, angle } (angle in radians).
  * single: the image is one line of text (handwriting), so detection is skipped.
  */
 export async function recognizePaddle(image, { single = false, onProgress } = {}) {
   onProgress?.({ status: 'starting', progress: 0 });
   const m = await load();
   const img = await toCanvas(image);
-  const boxes = single ? [{ x0: 0, y0: 0, x1: img.width, y1: img.height }] : await detect(m, img);
+  const { boxes, reads } = single
+    ? { boxes: [{ cx: img.width / 2, cy: img.height / 2, w: img.width, h: img.height, angle: 0 }], reads: new Map() }
+    : await orient(m, img, await detect(m, img));
   const lines = [];
   for (let i = 0; i < boxes.length; i++) {
     onProgress?.({ status: 'recognizing text', progress: (i + 1) / boxes.length });
-    const r = await read(m, img, boxes[i]);
-    if (r.text) lines.push({ text: r.text, bbox: { x0: boxes[i].x0, y0: boxes[i].y0, x1: boxes[i].x1, y1: boxes[i].y1 }, confidence: r.confidence });
+    const b = boxes[i];
+    const r = reads.get(b) || await read(m, img, b);
+    if (!r.text) continue;
+    const quad = cornersOf(b);
+    const xs = quad.map((q) => q[0]); const ys = quad.map((q) => q[1]);
+    lines.push({
+      text: r.text, confidence: r.confidence, quad, box: { cx: b.cx, cy: b.cy, w: b.w, h: b.h, angle: b.angle },
+      bbox: { x0: Math.max(0, Math.min(...xs)), y0: Math.max(0, Math.min(...ys)), x1: Math.min(img.width, Math.max(...xs)), y1: Math.min(img.height, Math.max(...ys)) },
+    });
   }
   const confidence = lines.length ? lines.reduce((a, l) => a + l.confidence, 0) / lines.length : 0;
   return { text: lines.map((l) => l.text).join('\n'), confidence, lines, words: [] };
