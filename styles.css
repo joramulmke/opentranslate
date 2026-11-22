@@ -1408,3 +1408,50 @@ dialog.menu [data-blocked] strong { color: var(--on-surface-variant); }
 #settings-dialog { overflow: hidden; overscroll-behavior: contain; }
 .settings-form { min-height: 0; overscroll-behavior: contain; }
 html:has(dialog.sheet[open]) { overflow: hidden; }
+
+/* Settings and the mode menu: long names and details wrap instead of being cut off with "…" */
+.svc-copy strong, .svc-copy small, .offline-copy span, .offline-copy small, .mode-copy strong {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+.svc-copy strong { line-height: 22px; }
+.svc-pick, .svc-row { min-height: 56px; }
+.svc-copy { padding: 6px 0; }
+
+/* Settings › top: space used on this device and the "Free up space" list */
+.storage-box { display: grid; gap: 4px; padding: 4px 4px 8px 12px; border-radius: 16px; background: var(--surface-container); }
+.storage-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: 48px; }
+.storage-line { flex: 1 1 12em; margin: 0; font-size: 15px; line-height: 20px; color: var(--on-surface); }
+.storage-head .btn { min-height: 44px; }
+.storage-list { margin-right: 0; }
+.storage-list .offline-row { padding-left: 0; }
+
+/* "Why?" under a fallback note: each service tried and what went wrong */
+.why-btn { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; margin: 4px 0 0 4px; padding: 0 10px;
+  border: 0; border-radius: 22px; background: none; color: var(--primary); font: inherit; font-size: 14px; font-weight: 500; text-decoration: underline; cursor: pointer; vertical-align: middle; }
+.why-btn:hover { background: color-mix(in srgb, var(--primary) 8%, transparent); }
+.why-btn:focus-visible { outline: 3px solid var(--primary); outline-offset: 2px; }
+.why-list { margin: 4px 0 0; padding-left: 22px; font-size: 14px; line-height: 20px; color: var(--on-surface-variant); }
+.why-list li + li { margin-top: 2px; }
+.why-list .why-ok { color: var(--on-surface); }
+
+/* Settings search: stays at the top while the list scrolls */
+.settings-search { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; margin: 0 0 4px;
+  padding: 0 4px 0 14px; min-height: 48px; border-radius: 24px; background: var(--surface-high); color: var(--on-surface-variant);
+  box-shadow: 0 0 0 6px var(--surface-low); }
+.settings-search .ic { width: 22px; height: 22px; flex: none; }
+.settings-search input { flex: 1; min-width: 0; height: 48px; border: 0; background: none; color: var(--on-surface); font: inherit; font-size: 16px; }
+.settings-search input:focus { outline: none; }
+.settings-search:focus-within { outline: 3px solid var(--primary); outline-offset: 2px; }
+.search-miss { display: none !important; }
+.settings-form.is-searching .svc-group-head { margin-top: 8px; }
+
+/* 200% zoom and narrow screens: pickers drop under their label instead of being squeezed */
+.kokoro-voice label { flex-wrap: wrap; }
+.kokoro-voice label > span { flex: 1 1 9.5em; }
+.kokoro-voice select { flex: 1 1 12em; }
+.svc-model { flex-wrap: wrap; }
+.svc-model select { flex: 1 1 14em; }
+.offline-row { flex-wrap: wrap; }
+.offline-copy { flex: 1 1 12em; }
+/* keyboard focus never hides under the sticky search box */
+.settings-form { scroll-padding-top: 64px; }

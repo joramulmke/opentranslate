@@ -109,6 +109,8 @@
               <div class="skeleton" id="out-skeleton" hidden aria-hidden="true"><span></span><span></span><span></span></div>
               <p class="out-text" id="out-text" hidden></p>
               <span class="mock-chip" id="mock-chip" hidden>Offline demo translation</span>
+              <button class="why-btn" id="btn-why" type="button" aria-expanded="false" aria-controls="why-list" hidden>Why?</button>
+              <ol class="why-list" id="why-list" aria-label="Services tried, in order" hidden></ol>
             </div>
             <div class="pane-footer out-footer">
               <button class="icon-btn" id="btn-speak" type="button" aria-label="Listen to translation" disabled><i data-icon="volume"></i></button>
@@ -323,6 +325,19 @@
       <button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="close"></i></button>
     </div>
     <form class="settings-form" id="settings-form" novalidate>
+      <div class="settings-search" role="search">
+        <i data-icon="search" aria-hidden="true"></i>
+        <input type="search" id="settings-search" placeholder="Search settings" aria-label="Search settings" aria-describedby="settings-search-status" autocomplete="off" spellcheck="false">
+        <span class="visually-hidden" id="settings-search-status" role="status"></span>
+      </div>
+      <p class="svc-empty settings-search-none" id="settings-search-none" hidden></p>
+      <section class="storage-box" id="storage-box" aria-labelledby="storage-line">
+        <div class="storage-head">
+          <p class="storage-line" id="storage-line" tabindex="-1">Checking storage…</p>
+          <button class="btn btn-text" type="button" id="btn-storage" aria-expanded="false" aria-controls="storage-list" hidden>Free up space</button>
+        </div>
+        <ul class="offline-list storage-list" id="storage-list" aria-label="Downloads on this device, largest first" hidden></ul>
+      </section>
       <fieldset class="settings-group" id="services-group" aria-describedby="svc-help">
         <legend>Services and downloads</legend>
         <p class="setup-hint" id="setup-hint" hidden><span data-hint="demo"><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server or an AI model below for real translations.</span><span data-hint="none" hidden><strong>No translation service yet.</strong> Add a LibreTranslate server or an AI model below to start translating.</span></p>

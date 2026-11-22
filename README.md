@@ -30,7 +30,7 @@ An AI model's form has two boxes, **Read images
 
 | Group | Service | Notes |
 | --- | --- | --- |
-| Classic | **On this device** | Built in. Translates in the browser with downloaded language packs (see below). No server, no key, works offline; nothing you type leaves the device. |
+| Classic | **On this device (Bergamot)** | Built in. Translates in the browser with downloaded language packs (see below). No server, no key, works offline; nothing you type leaves the device. |
 | Classic | **LibreTranslate** | Any server with the standard `/languages`, `/detect`, `/translate` API. Server URL and (optional) API key. |
 | Classic | **Offline demo** | Built in, for trying the app: a few phrases, other text gets a clearly marked placeholder. Can simulate network / unsupported-pair errors. |
 | Advanced | **AI model** (OpenAI-compatible) | Any `/chat/completions` endpoint: OpenAI, OpenRouter, Groq, Mistral, DeepSeek, Ollama, LM Studio or custom. Base URL, API key and model; **Test connection** lists available models. |
@@ -38,18 +38,20 @@ An AI model's form has two boxes, **Read images
 
 **Which one is used:** the checked service in each group goes first. If it fails (offline, server down) or
 doesn't have the language, the next one **of the same group** is tried, in list order; the result then says
-*Translated with …*. The offline demo never stands in for a real service.
+who failed and why, e.g. *LT one didn't answer in time, so LT two translated this.* A **Why?** button under the
+note lists every service that was tried, what went wrong with each, and which one answered. The offline demo
+never stands in for a real service.
 
 The dropdown next to the character count lists all services (Classic and Advanced) for quick switching.
 Settings saved by older versions (one LibreTranslate + one AI setup) are moved into the list automatically.
 
-### Offline languages (On this device)
+### Offline languages (On this device, Bergamot)
 
 Download a language once, then translate without internet:
 
 - in the **language picker** (Classic mode), tap the download icon next to a language; tap again to cancel, or
   to remove a downloaded one;
-- or in **Settings → On this device → Manage** (all languages, sizes, storage used, remove);
+- or in **Settings → On this device (Bergamot) → Manage** (all languages, sizes, storage used, remove);
 - or when a translation needs a missing language, the result card offers **Download**.
 
 Each pack is English ↔ that language (about 45–75 MB, Chinese ~120 MB); English is built in. Other pairs go
@@ -121,9 +123,14 @@ Everything the app downloads is listed in Settings → **Services and downloads*
 comes from (host and a link to the model page) and buttons to download ahead of time (e.g. before travelling) or
 delete it to free space. Every download prompt and error also names the source.
 
+The top of Settings shows the space used on this device (*Using 1.2 GB on this device · 6 downloads*).
+**Free up space** opens one list of every download, largest first, each with a Delete button (it asks first).
+A **Search settings** box filters the whole Settings page: only matching rows and their headings stay; Escape
+clears it.
+
 | Group | What | From | Kept in |
 | --- | --- | --- | --- |
-| Classic › On this device | offline languages, ~45–75 MB each | Mozilla (`firefox-settings-attachments.cdn.mozilla.net`) | Cache Storage `ot-offline-*` |
+| Classic › On this device (Bergamot) | offline languages, ~45–75 MB each | Mozilla (`firefox-settings-attachments.cdn.mozilla.net`) | Cache Storage `ot-offline-*` |
 | Advanced › On-device AI | WebLLM model, ~0.2–7 GB (your pick), or your own model | Hugging Face (`huggingface.co/mlc-ai`) or your model URL | Cache Storage `webllm/*` |
 | Speech recognition › On this device | Whisper tiny / base / small / large-v3 turbo, 41–563 MB | Hugging Face (`huggingface.co/Xenova/whisper-base`) | Cache Storage `transformers-cache` |
 | Read aloud › Offline voices | Piper voice, ~63 MB per language (+ 30 MB engine, once); manager with search | Hugging Face (`huggingface.co/rhasspy/piper-voices`), engine from jsDelivr | Cache Storage `ot-piper-v1` |
@@ -259,6 +266,8 @@ how to add a real provider.
 index.html  styles.css  manifest.webmanifest  sw.js  icons/
 js/app.js              boot, routing (#text, #camera, #conversation, #handwriting), theme, service worker
 js/state.js            shared state, service chains (first choice + fallbacks per group), error messages
+js/ui/storage.js       Settings: space used on this device and the "Free up space" list
+js/ui/settingssearch.js Settings: search box that hides what doesn't match
 js/store.js            localStorage: settings + service list (with migration), history, phrasebook
 js/providers.js        provider interface + registry: Mock, LibreTranslate, OpenAI-compatible
 js/features/offline.js on-device translation: model list, downloads, Bergamot worker, detection

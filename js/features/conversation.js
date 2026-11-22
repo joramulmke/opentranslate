@@ -6,7 +6,7 @@
 //  Modes:  listening    = only their language is captured, translated into yours, captions only
 //          conversation = take turns (alternates automatically), translations read aloud
 //          text         = take turns, nothing read aloud
-import { translate, describeError, langName } from '../state.js';
+import { translate, describeError, langName, fallbackNote } from '../state.js';
 import { settings } from '../store.js';
 import { isRtl } from '../languages.js';
 import { pickLanguage, escapeHtml } from '../ui/langpicker.js';
@@ -278,7 +278,7 @@ export function initConversation({ leave = () => {} } = {}) {
       const res = await translate(u.text, u.fromLang, u.toLang);
       u.translated = res.text;
       renderUtterance(u);
-      if (res.note) toast(res.note);   // e.g. Classic stood in for Advanced
+      if (fallbackNote(res)) toast(fallbackNote(res));   // e.g. Classic stood in for Advanced, or the next service did
       if (mode === 'conversation') speak(res.text, u.toLang).catch(() => {});
     } catch (e) {
       const { title, message } = describeError(e);

@@ -35,7 +35,7 @@ const DEFAULT_SETTINGS = {
 };
 
 export const MOCK_ENTRY = { id: 'mock', type: 'mock', label: 'Offline demo', config: {} };
-export const OFFLINE_ENTRY = { id: 'offline', type: 'offline', label: 'On this device', config: {} };
+export const OFFLINE_ENTRY = { id: 'offline', type: 'offline', label: 'On this device (Bergamot)', config: {} };
 export const BUILT_IN = new Set([MOCK_ENTRY.id, OFFLINE_ENTRY.id]);
 export const newEntryId = () => 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -101,6 +101,9 @@ export const settings = {
       raw.entries.splice(demo < 0 ? raw.entries.length : demo, 0, { ...OFFLINE_ENTRY });
       write(KEY.settings, raw);
     }
+    // older versions saved the on-device service as plain "On this device"
+    const off = raw.entries.find((e) => e.id === OFFLINE_ENTRY.id);
+    if (off && off.label === 'On this device') { off.label = OFFLINE_ENTRY.label; write(KEY.settings, raw); }
     // the offline demo: left out when change-me.md says demo_mode = false, back (last) when it's on again
     if (!demoEnabled()) raw.entries = raw.entries.filter((e) => e.type !== 'mock');
     else if (!raw.entries.some((e) => e.id === MOCK_ENTRY.id)) { raw.entries.push({ ...MOCK_ENTRY }); write(KEY.settings, raw); }

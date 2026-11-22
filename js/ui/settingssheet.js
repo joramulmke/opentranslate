@@ -16,6 +16,8 @@ import { initEngineRows, renderEngines, closeOcrManager, closeVoiceManager, sour
 import { chromeTranslatorSupported, CHROME_TRANSLATOR_REASON } from '../features/chrometranslator.js';
 import { llmSpec, llmState, llmProgress, isDownloaded, downloadModel, cancelModelDownload, deleteModel, checkGpu, onLlmChange, nanoUsable, nanoReason, NANO, NANO_INTERNALS } from '../features/localllm.js';
 import { copyToClipboard } from './snackbar.js';
+import { initStorage, renderStorage } from './storage.js';
+import { initSettingsSearch, resetSettingsSearch } from './settingssearch.js';
 
 const $ = (id) => document.getElementById(id);
 let dlg, form;
@@ -110,6 +112,8 @@ export function initSettingsSheet({ onThemeChange }) {
 
   $('set-live').addEventListener('change', (e) => settings.set({ liveTranslate: e.target.checked }));
   $('set-speak').addEventListener('change', (e) => settings.set({ speakConversation: e.target.checked }));
+  initStorage();
+  initSettingsSearch();
   initEngineRows({ isOpen: () => !!dlg?.open, closeOthers: () => {
     closeEditor({ silent: true }); closeManager({ silent: true }); closeOcrManager({ silent: true }); closeVoiceManager({ silent: true });
   } });
@@ -153,6 +157,8 @@ export function openSettings(focus) {
   closeOcrManager({ silent: true });
   closeVoiceManager({ silent: true });
   renderLists();
+  resetSettingsSearch();
+  renderStorage();
   $('set-live').checked = s.liveTranslate;
   $('set-speak').checked = s.speakConversation;
   form.querySelectorAll('input[name="theme"]').forEach((r) => { r.checked = r.value === s.theme; });

@@ -2,7 +2,7 @@
 // On phones it also drives the home ↔ typing ("edit") states of the reference layout:
 //   home: big "Translate text" sheet + language pills + Conversation · Mic · Camera
 //   edit: input focused or holding text; top bar becomes back · history/clear · pen · more
-import { state, subscribe, set, langName, detect, translate, describeError, setSource, setMode } from '../state.js';
+import { state, subscribe, set, langName, detect, translate, describeError, setSource, setMode, fallbackNote } from '../state.js';
 import { settings, history, phrasebook, onChange } from '../store.js';
 import { isRtl } from '../languages.js';
 import { createLangBar } from './langbar.js';
@@ -41,7 +41,7 @@ export function initTextView(opts) {
     speakSrc: $('btn-speak-src'), copySrc: $('btn-copy-src'),
     outCard: $('output-card'), placeholder: $('out-placeholder'), skeleton: $('out-skeleton'),
     out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'),
-    errActions: $('out-error-actions'), mockChip: $('mock-chip'),
+    errActions: $('out-error-actions'), mockChip: $('mock-chip'), why: $('btn-why'), whyList: $('why-list'),
     speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), starBtn: $('btn-star'),
     inputCard: $('input-card'), live: $('out-live'),
   };
@@ -63,6 +63,11 @@ export function initTextView(opts) {
   el.clear.addEventListener('click', () => clearText());
   el.translateBtn.addEventListener('click', () => runTranslate({ commit: true }));
   el.copyBtn.addEventListener('click', copyResult);
+  el.why?.addEventListener('click', () => {
+    const open = el.whyList.hidden;
+    el.whyList.hidden = !open;
+    el.why.setAttribute('aria-expanded', String(open));
+  });
   el.speakBtn.addEventListener('click', toggleSpeak);
   el.starBtn.addEventListener('click', toggleStar);
   el.mic.addEventListener('click', toggleMic);
@@ -214,7 +219,7 @@ async function runTranslate({ commit = false } = {}) {
       set({ detected: { language: res.detected, confidence: 1 } });
       source = res.detected;
     }
-    showResult({ text: res.text, source, target: state.target, input: text, mock: !!state.provider?.isMock && !res.note, via: res.via, note: res.note });
+    showResult({ text: res.text, source, target: state.target, input: text, mock: !!state.provider?.isMock && !res.note, via: res.via, note: res.note, tried: res.tried, answered: res.answered || res.via });
     if (commit) commitHistory(); else commitHistorySoon();
   } catch (err) {
     if (id !== reqId) return;
@@ -244,6 +249,19 @@ function endLoading() {
   el.translateBtn.disabled = false;
 }
 
+/** "Why?" under the note: every service that was tried, what went wrong, and which one answered. */
+function showWhy(tried, answered) {
+  if (!el.why) return;
+  el.why.hidden = !tried.length;
+  el.why.setAttribute('aria-expanded', 'false');
+  el.whyList.hidden = true;
+  el.whyList.replaceChildren(...tried.map((t) => {
+    const li = document.createElement('li');
+    li.textContent = `${t.name}: ${t.reason}`;
+    return li;
+  }), ...(tried.length && answered ? [Object.assign(document.createElement('li'), { className: 'why-ok', textContent: `${answered}: translated this` })] : []));
+}
+
 function showResult(r) {
   endLoading();
   result = r;
@@ -257,8 +275,9 @@ function showResult(r) {
   el.out.classList.remove('stale');
   el.out.classList.toggle('long', r.text.length > 120);
   // "Offline demo translation", or which service answered when the first choice couldn't
-  el.mockChip.textContent = r.mock ? 'Offline demo translation' : r.note || (r.via ? `Translated with ${r.via}` : '');
+  el.mockChip.textContent = r.mock ? 'Offline demo translation' : fallbackNote(r);
   el.mockChip.hidden = !r.mock && !r.via && !r.note;
+  showWhy(r.mock ? [] : r.tried || [], r.answered);
   // one short polite announcement instead of a live region around the whole card
   if (el.live) {
     const t = document.createElement('span');
@@ -278,6 +297,7 @@ function showError(err) {
   el.placeholder.hidden = true;
   el.out.hidden = true;
   el.mockChip.hidden = true;
+  showWhy([]);
   el.err.hidden = false;
   el.errTitle.textContent = title;
   el.errMsg.textContent = message;
@@ -326,6 +346,7 @@ function clearOutput() {
   el.out.textContent = '';
   el.err.hidden = true;
   el.mockChip.hidden = true;
+  showWhy([]);
   el.placeholder.hidden = false;
   if (el.live) el.live.textContent = '';
   setOutputActions(false);

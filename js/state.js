@@ -57,6 +57,31 @@ function buildEntry(e) {
  * list order. If one fails or can't do the language pair, the next one is tried.
  * The offline demo only takes part when it is the active entry (its output isn't real).
  */
+/** Why one service was passed over, short enough for a note: "didn't answer in time". */
+export function reasonOf(e) {
+  const msg = String(e?.message || e || '');
+  switch (e?.code) {
+    case 'NETWORK': return /too long|time/i.test(msg) ? "didn't answer in time" : "isn't reachable";
+    case 'AUTH': return 'refused the API key';
+    case 'RATE_LIMIT': return 'hit its rate limit or quota';
+    case 'NEEDS_DOWNLOAD': return 'needs a download first';
+    case 'UNSUPPORTED_PAIR': return "can't translate this language pair";
+    case 'BROWSER_BLOCKED': return "can't run in this browser";
+    case 'NO_PROVIDER': return 'is not set up';
+    case 'TOO_LONG': return 'found the text too long';
+    case 'BAD_RESPONSE': return 'sent an answer that could not be read';
+    default: return msg ? `failed (${msg.replace(/\.$/, '')})` : 'failed';
+  }
+}
+
+/** The note for a translation another service made: "DeepL didn't answer in time, so … translated this." */
+export function fallbackNote(res) {
+  if (res?.note) return res.note;
+  if (!res?.via) return '';
+  const first = res.tried?.[0];
+  return first ? `${first.name} ${first.reason}, so ${res.via} translated this.` : `Translated with ${res.via}`;
+}
+
 export class ProviderChain {
   constructor(kind, members) {
     this.kind = kind;
@@ -82,24 +107,32 @@ export class ProviderChain {
   async _run(method, args, canTry = () => true) {
     let firstErr = null;
     const skipped = []; const later = [];
-    const attempt = async (m) => { try { return [await m[method](...args), m]; } catch (e) { firstErr ??= e; return null; } };
+    const tried = [];   // [{ name, reason }] for each service that was passed over, in order
+    const attempt = async (m) => {
+      try { return [await m[method](...args), m, tried]; }
+      catch (e) { firstErr ??= e; tried.push({ name: m.entryLabel || m.name, reason: reasonOf(e) }); return null; }
+    };
     for (const m of this.members) {
       if (typeof m[method] !== 'function') continue;
       const ok = canTry(m);
       if (ok === 'later') { later.push(m); continue; }
-      if (!ok) { skipped.push(m); continue; }
+      if (!ok) { skipped.push(m); tried.push({ name: m.entryLabel || m.name, reason: "can't translate this language pair" }); continue; }
       const r = await attempt(m);
       if (r) return r;
     }
     // last resort, e.g. on-device without the languages yet: its error says what to download
     for (const m of later) { const r = await attempt(m); if (r) return r; }
+    let err;
     if (skipped.length && (!firstErr || !['UNSUPPORTED_PAIR', 'NEEDS_DOWNLOAD'].includes(firstErr.code))) {
       // the services that know the language pair didn't answer, the others can't do the pair
       const names = skipped.map((m) => m.entryLabel).join(', ');
-      throw new ProviderError('UNSUPPORTED_PAIR', `${names} can't translate this language pair` +
+      err = new ProviderError('UNSUPPORTED_PAIR', `${names} can't translate this language pair` +
         (firstErr ? `, and the other service failed: ${firstErr.message}` : '.'));
+    } else {
+      err = firstErr || new ProviderError('UNSUPPORTED_PAIR', 'None of your translation services can do this.');
     }
-    throw firstErr || new ProviderError('UNSUPPORTED_PAIR', 'None of your translation services can do this.');
+    try { err.tried = tried; } catch { /* frozen */ }
+    throw err;
   }
 
   /** false if the member is known not to support source→target (saves a request). */
@@ -112,8 +145,9 @@ export class ProviderChain {
   }
 
   async translate(text, source, target) {
-    const [r, m] = await this._run('translate', [text, source, target], (x) => this.supports(x, source, target));
-    return { ...r, via: m === this.lead ? undefined : m.entryLabel, entryId: m.entryId };
+    const [r, m, tried] = await this._run('translate', [text, source, target], (x) => this.supports(x, source, target));
+    const via = m === this.lead ? undefined : m.entryLabel;
+    return { ...r, via, entryId: m.entryId, tried: via ? tried : [] };
   }
 
   async detect(text) { return (await this._run('detect', [text]))[0]; }
@@ -276,7 +310,10 @@ export async function translate(text, source, target) {
   if (other && !other.isMock) {
     try {
       const r = await other.translate(text, source, target);
-      return { ...r, via: undefined, note: `Translated with ${other.entryLabel} (${otherName}) because ${becauseOf(err, mode)}.`, otherMode };
+      const mine = err.tried?.length ? err.tried : [{ name: state.provider?.entryLabel || (mode === 'advanced' ? 'Advanced' : 'Classic'), reason: reasonOf(err) }];
+      const answered = r.via || other.entryLabel;
+      return { ...r, via: undefined, answered, tried: [...mine, ...(r.tried || [])],
+        note: `Translated with ${answered} (${otherName}) because ${becauseOf(err, mode)}.`, otherMode };
     } catch { /* the other mode can't either: report this mode's error */ }
   }
   // a button can switch modes when the other one has something to offer (even the demo)

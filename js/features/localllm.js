@@ -109,6 +109,8 @@ const writeStore = (v) => { try { localStorage.setItem(STORE, JSON.stringify(v))
 // earlier versions stored 'small' / 'medium'
 { const s = readStore(); let moved = false; for (const [o, n] of Object.entries(LEGACY)) if (s[o]) { s[n] = true; delete s[o]; moved = true; } if (moved) writeStore(s); }
 let nanoState = 'unavailable';   // Chrome's answer: available | downloadable | downloading | unavailable
+/** Keys of the downloaded WebLLM models (Gemini Nano is Chrome's, not ours). */
+export const downloadedLlms = () => Object.keys(readStore()).filter((k) => readStore()[k] && k !== NANO);
 export const isDownloaded = (key) => (key === NANO ? nanoState === 'available' : !!readStore()[key]);
 const mark = (key, on) => { const s = readStore(); if (on) s[key] = true; else delete s[key]; writeStore(s); };
 

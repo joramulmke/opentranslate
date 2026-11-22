@@ -62,7 +62,7 @@ function whisperPicker() {
     const can = modelRunsHere(k);
     return `<option value="${k}" ${k === whisperKey() ? 'selected' : ''} ${can ? '' : 'disabled'}>${esc(`${m.title.replace('Whisper ', '')} · ${m.sizeMB} MB · ${can ? m.note : 'needs WebGPU with 16-bit support'}${st}`)}</option>`;
   }).join('');
-  return `<label class="svc-model"><span>Model</span><select data-act="whisper-size" aria-describedby="eng-speech-ondevice-sub">${opts}</select></label>`;
+  return `<label class="svc-model"><span>Model<span class="visually-hidden"> size for speech recognition on this device</span></span><select data-act="whisper-size" aria-describedby="eng-speech-ondevice-sub">${opts}</select></label>`;
 }
 
 function row({ group, value, title, sub, src, checked, disabled, actions = '', extra = '' }) {
@@ -401,7 +401,7 @@ function renderKokoro() {
   $('kokoro-voices').hidden = st !== 'ready';
   $('kokoro-voices').innerHTML = st !== 'ready' ? '' : Object.entries(KOKORO_LANGS).map(([l, L]) => {
     const cur = kokoroVoice(l, picked);
-    return `<li class="kokoro-voice"><label><span>${esc(langLabel(l))}</span>
+    return `<li class="kokoro-voice"><label><span><span class="visually-hidden">Kokoro voice for </span>${esc(langLabel(l))}</span>
       <select data-kokoro-lang="${l}">${L.voices.map((id) => `<option value="${id}" ${id === cur ? 'selected' : ''}>${esc(kokoroVoiceName(id))}${kokoroVoiceReady(id) ? '' : ' · 0.5 MB download'}</option>`).join('')}</select></label></li>`;
   }).join('');
   if (hadSel) document.querySelector(`[data-kokoro-lang="${hadSel}"]`)?.focus();

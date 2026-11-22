@@ -309,6 +309,12 @@ export async function deletePack(lang) {
   emit();
 }
 
+/** Bytes used by one language's downloaded pack (both directions). */
+export function packBytes(lang) {
+  const l = fx(lang); const { pairs } = readIndex();
+  return [pairKey(PIVOT, l), pairKey(l, PIVOT)].reduce((a, k) => a + (pairs[k]?.files.reduce((b, f) => b + f.size, 0) || 0), 0);
+}
+
 /** Bytes used by downloaded packs. */
 export function usedBytes() {
   return Object.values(readIndex().pairs).reduce((a, m) => a + m.files.reduce((b, f) => b + f.size, 0), 0);
@@ -444,13 +450,13 @@ const nameOf = (code) => STATIC_LANGUAGES.find((l) => l.code === code)?.name || 
 
 registerProvider({
   id: 'offline',
-  label: 'On this device',
+  label: 'On this device (Bergamot)',
   builtIn: true,
   description: 'Translates in your browser with open models from the Firefox project. Download the languages you need once; after that it works without internet, and nothing you type leaves this device.',
   fields: [],
   create() {
     return {
-      name: 'On this device',
+      name: 'On this device (Bergamot)',
       isOffline: true,
       async languages() {
         loadRegistry().catch(() => {});

@@ -1,5 +1,5 @@
 // Camera tab: live preview, capture or import, OCR, translated text overlaid on the photo.
-import { state, subscribe, detect, translate, describeError, langName } from '../state.js';
+import { state, subscribe, detect, translate, describeError, langName, fallbackNote } from '../state.js';
 import { createLangBar } from '../ui/langbar.js';
 import { toast } from '../ui/snackbar.js';
 import { recognize, ocrLangFor, describeOcrStatus } from './ocr.js';
@@ -158,7 +158,7 @@ export function initCamera({ sendToText }) {
       const res = await translate(shot.ocrText, source, state.target);
       if (id !== job) return;
       shot.translated = res.text;
-      const note = [shot.note, res.note].filter(Boolean).join(' ');   // e.g. Classic stood in for Advanced
+      const note = [shot.note, fallbackNote(res)].filter(Boolean).join(' ');   // e.g. Classic stood in for Advanced
       if (note) toast(note);
       drawOverlays();
       status('');
