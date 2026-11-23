@@ -19,6 +19,15 @@ text, scrolling; each line translated as soon as it is final.
 When the input is only a word or a few (e.g. "test", "Prüfung", "church community"), show a link to
 https://www.wiktionary.org/ for it: meanings, gender, plural, pronunciation. Not for whole sentences.
 
+Plan (agreed Nov 2026):
+- Looks up the translation, not the input: German→English "Prüfung" gives a link for "test".
+- In the target language's Wiktionary: `https://{target}.wiktionary.org/w/index.php?search={translation}`
+  (search URL: opens the entry if it exists, else search results, so capitalisation doesn't matter).
+  Languages without their own Wiktionary fall back to en.wiktionary.org.
+- A small link under the result, e.g. 'Look up "test" on Wiktionary ↗', in `js/ui/textview.js`. Shown only when
+  the input is 1–3 words (no sentence punctuation, no line break) and the translation has finished.
+  Opens in a new tab, with a proper screen-reader label.
+
 ## 5. Web Share
 
 (Done, Nov 2026: Text view, translation only.) Share a translation (Web Share): a Share button next to Copy that opens the phone's share menu, so you can send a translation to WhatsApp or by email. NEXT: Share translated image, file, website etc. 
@@ -27,6 +36,15 @@ https://www.wiktionary.org/ for it: meanings, gender, plural, pronunciation. Not
 
 Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when
    space runs low. One call asks it to keep them; the right moment is right after the first download.
+
+Plan (agreed Nov 2026):
+- No own "Keep downloads safe?" sheet: Chrome/Edge decide by themselves (installed, bookmarked, used a lot),
+  Firefox shows its own prompt, Safari decides by itself. Asking ourselves too would just ask twice.
+- Ask once, on the first tap on Download (`navigator.storage.persisted()`, then `persist()`), so Firefox's prompt
+  appears in context. Remember that we asked. A helper `ensurePersisted()` in `js/ui/storage.js`, called from the
+  download buttons (language packs, voices, models, PP-OCRv6, on-device AI; `js/features/offline.js`, `bgfetch.js`).
+- Show the result in Settings › storage line: "· Kept safe", or "· May be deleted when space runs low" with a hint
+  "Install the app to keep them safe". Nothing shown where the browser has no storage API.
 
 ## 7. background fetch
 
