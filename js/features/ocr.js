@@ -54,14 +54,26 @@ function loadLib() {
 
 export const ocrLangFor = (code) => TESSERACT_LANGS[code] || TESSERACT_LANGS[String(code).split('-')[0]] || 'eng';
 
+/** A Tesseract worker that fails when its language file can't be downloaded. On its own, Tesseract.js
+ *  reports that only as an uncaught error and its promise never settles, so photo reading waited forever. */
+function startWorker(lang, oem, options = {}) {
+  return loadLib().then((T) => new Promise((resolve, reject) => {
+    let failed = false;
+    const fail = (e) => {
+      if (failed) return;
+      failed = true;
+      reject(new Error(`Couldn’t download the language file for reading photos (failed to fetch: ${String(e?.message || e).slice(0, 80)}).`));
+    };
+    T.createWorker(lang, oem, { ...options, errorHandler: fail }).then(
+      (w) => (failed ? w.terminate().catch(() => {}) : resolve(w)),
+      fail,
+    );
+  }));
+}
+
 async function getWorker(lang, onProgress) {
   if (!workers.has(lang)) {
-    const p = (async () => {
-      const T = await loadLib();
-      return T.createWorker(lang, 1, {
-        logger: (m) => progressHandlers.forEach((fn) => fn(m)),
-      });
-    })();
+    const p = startWorker(lang, 1, { logger: (m) => progressHandlers.forEach((fn) => fn(m)) });
     p.catch(() => workers.delete(lang));
     workers.set(lang, p);
   }
@@ -174,7 +186,7 @@ let osd = null;   // Promise<worker> for script detection (4 MB, downloaded the 
 
 /** The Tesseract language for the script in the photo ("rus" for Cyrillic …), or null if unsure. */
 export async function detectScript(image) {
-  osd ??= loadLib().then((T) => T.createWorker('osd', 0, { legacyCore: true, legacyLang: true }));
+  osd ??= startWorker('osd', 0, { legacyCore: true, legacyLang: true });
   osd.catch(() => { osd = null; });
   const { data } = await (await osd).detect(image);
   return (data?.script_confidence ?? 0) > 1 ? SCRIPT_LANG[data.script] || null : null;

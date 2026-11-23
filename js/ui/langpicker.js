@@ -123,7 +123,8 @@ function render() {
   offlineSet = state.mode === 'classic' && !downloadsBlocked ? new Set(offlineLanguages().filter((c) => c !== 'en')) : null;
   if (offlineSet) loadRegistry().then(() => { if (dlg.open) updateDownloadButtons(list); }).catch(() => {});
   const byCode = new Map([...STATIC_LANGUAGES, ...state.languages].map((l) => [l.code, l]));
-  const langs = [...byCode.values()].sort((a, b) => a.name.localeCompare(b.name));
+  // names through langName: a service that only sends codes still shows "German", not "de"
+  const langs = [...byCode.values()].map((l) => ({ ...l, name: langName(l.code) })).sort((a, b) => a.name.localeCompare(b.name));
   let html = '';
   if (q) {
     const hits = langs.filter((l) => l.name.toLowerCase().includes(q) || l.code.toLowerCase() === q);

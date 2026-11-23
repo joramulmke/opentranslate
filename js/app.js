@@ -17,6 +17,7 @@ import { initPersist } from './features/persist.js';
 import { pipSupported, openPip } from './features/pip.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { takeShare, takeLinkText, onOpenedFiles } from './share.js';
+import { leaveScreen } from './ui/snackbar.js';
 
 const TABS = ['text', 'camera', 'conversation', 'handwriting'];
 // which home-screen control opened each phone sub-view (focus returns there on Back)
@@ -71,7 +72,7 @@ function navigate(tab, { replace = false, focus = false } = {}) {
   if (!TABS.includes(tab)) tab = 'text';
   if (tab === currentTab) return;
   const prev = currentTab;
-  if (prev) hooks[prev]?.onHide?.();
+  if (prev) { hooks[prev]?.onHide?.(); leaveScreen(); }
   currentTab = tab;
   document.getElementById('app').dataset.tab = tab;
   for (const t of TABS) {

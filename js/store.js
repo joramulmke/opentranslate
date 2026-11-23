@@ -1,6 +1,7 @@
 // localStorage persistence: settings, history (last 100), phrasebook (starred).
 import { demoEnabled } from './siteconfig.js';
 import { prettyName } from './features/llmcatalog.js';
+import { STATIC_LANGUAGES } from './languages.js';
 const KEY = { settings: 'ot.settings.v1', history: 'ot.history.v1', saved: 'ot.phrasebook.v1', recents: 'ot.recentLangs.v1' };
 const HISTORY_MAX = 100;
 
@@ -8,6 +9,20 @@ const read = (k, fallback) => {
   try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
 };
 const write = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota / private mode */ } };
+
+/** The phone's own language, as a target the app knows ("de-AT" → "de", "zh-TW" → "zh-Hant"), else English:
+ *  a first visit translates into the language you read. */
+export function deviceLanguage(list = globalThis.navigator?.languages || []) {
+  const known = new Set(STATIC_LANGUAGES.map((l) => l.code));
+  const alias = { nb: 'no', nn: 'no', fil: 'tl', iw: 'he', in: 'id' };
+  for (const tag of list) {
+    const [base, ...rest] = String(tag).split('-');
+    const b = alias[base.toLowerCase()] || base.toLowerCase();
+    if (b === 'zh' && rest.some((r) => /^(hant|tw|hk|mo)$/i.test(r))) return 'zh-Hant';
+    if (known.has(b)) return b;
+  }
+  return 'en';
+}
 
 const DEFAULT_SETTINGS = {
   // Translation services, in fallback order. Each: { id, type, label, config }.
@@ -18,7 +33,7 @@ const DEFAULT_SETTINGS = {
   activeAdvanced: null,        // entry id used first in Advanced mode (null = first AI entry)
   mode: 'classic',             // classic | advanced
   source: 'auto',
-  target: 'es',
+  target: deviceLanguage(),     // the phone's language (see deviceLanguage)
   liveTranslate: true,
   theme: 'system',             // system | light | dark
   speakConversation: true,

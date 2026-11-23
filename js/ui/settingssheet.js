@@ -64,11 +64,13 @@ export function initSettingsSheet({ onThemeChange }) {
     list.addEventListener('change', (e) => {
       if (e.target.matches('input[type=radio]')) { useEntry(e.target.value); renderLists(); }
     });
+    wireRowMenus(list);
     list.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-act]');
-      if (!btn) return;
+      if (!btn || btn.dataset.act === 'more') return;
       const id = btn.closest('[data-id]').dataset.id;
       const act = btn.dataset.act;
+      btn.closest('.row-menu')?.hidePopover();
       if (act === 'edit') openEditor({ id });
       if (act === 'manage') openManager();
       if (act === 'why') {
@@ -81,8 +83,9 @@ export function initSettingsSheet({ onThemeChange }) {
       if (act === 'up' || act === 'down') {
         entries.move(id, act === 'up' ? -1 : 1, kindOf);
         initProvider(); renderLists();
-        $(listId).querySelector(`[data-id="${id}"] [data-act="${act}"]:not(:disabled)`)?.focus()
-          || $(listId).querySelector(`[data-id="${id}"] input`)?.focus();
+        // after the closed menu's own focus return (to a button the new list replaced)
+        requestAnimationFrame(() => ($(listId).querySelector(`[data-id="${id}"] [data-act="more"]`)
+          || $(listId).querySelector(`[data-id="${id}"] input`))?.focus());
       }
       if (act === 'delete') remove(id);
     });
@@ -287,8 +290,6 @@ function renderLists() {
           <span class="svc-copy"><strong>${name}</strong>${tagLine(`svc-tags-${e.id}`, svcTags(e))}<small id="svc-sub-${e.id}">${escapeHtml(subtitle(e))}</small></span></label>
         <span class="svc-actions">
           ${blocked(e) ? '' : infoButton(`svc-${e.id}`, e.label, svcInfo(e))}
-          ${isMock ? '' : `<button class="icon-btn sm" type="button" data-act="up" aria-label="Move ${name} up" ${i <= 0 ? 'disabled' : ''}>${icon('up')}</button>
-          <button class="icon-btn sm" type="button" data-act="down" aria-label="Move ${name} down" ${i >= movable.length - 1 ? 'disabled' : ''}>${icon('down')}</button>`}
           ${e.type === 'webllm' && llmState(llmSpec(e.config).key) !== 'ready' && !(llmSpec(e.config).kind === 'nano' && !nanoUsable()) ? llmButton(e) : ''}
           ${blocked(e) && e.type !== 'offline'
     ? `<button class="icon-btn sm" type="button" data-act="why" aria-label="Why ${name} isn't available" aria-describedby="svc-sub-${e.id}">${icon('info')}</button>`
@@ -298,7 +299,11 @@ function renderLists() {
       ? `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Why offline languages aren't available" aria-describedby="svc-sub-${e.id}">${icon('info')}</button>`
       : `<button class="icon-btn sm" type="button" data-act="manage" aria-label="Manage offline languages">${icon('download')}</button>`)
     : `<button class="icon-btn sm" type="button" data-act="edit" aria-label="Edit ${name}">${icon('edit')}</button>`}
-          ${builtIn ? '' : `<button class="icon-btn sm" type="button" data-act="delete" aria-label="Remove ${name}">${icon('delete')}</button>`}
+          ${rowMenu(e.id, name, [
+    !isMock && i > 0 && ['up', 'Move up', 'up'],
+    !isMock && i < movable.length - 1 && ['down', 'Move down', 'down'],
+    !builtIn && ['delete', 'Remove', 'delete'],
+  ])}
         </span></li>`;
     }).join('') : `<li class="svc-empty">${kind === 'advanced' ? 'No AI model yet. Add one to use Advanced translation.' : 'Nothing yet.'}</li>`;
   }
@@ -307,6 +312,41 @@ function renderLists() {
     const row = document.querySelector(`.svc-row[data-id="${hadId}"]`);
     (row?.querySelector(`[data-act="${hadAct}"]:not(:disabled)`) || row?.querySelector('input:not(:disabled)'))?.focus();
   }
+}
+
+/** "⋯" on a service row: the rarer actions (order, remove) in a small menu instead of three more
+ *  buttons on every row. A popover in the list, so the list's click handler runs its items too. */
+function rowMenu(id, name, items) {
+  items = items.filter(Boolean);
+  if (!items.length) return '';
+  return `<button class="icon-btn sm" type="button" data-act="more" popovertarget="svc-more-${id}" aria-haspopup="menu" aria-expanded="false" aria-label="More for ${name}">${icon('more')}</button>
+    <div class="row-menu" id="svc-more-${id}" popover role="menu" aria-label="${name}">${items.map(([act, label, ic]) =>
+    `<button type="button" role="menuitem" data-act="${act}" aria-label="${label}: ${name}">${icon(ic)}<span>${label}</span></button>`).join('')}</div>`;
+}
+
+/** Place an open row menu under its "⋯" button (inside the viewport), focus its first item; arrow keys move. */
+function wireRowMenus(list) {
+  list.addEventListener('toggle', (e) => {
+    const menu = e.target;
+    if (!menu.matches?.('.row-menu')) return;
+    const btn = list.querySelector(`[popovertarget="${menu.id}"]`);
+    btn?.setAttribute('aria-expanded', String(e.newState === 'open'));
+    if (e.newState !== 'open' || !btn) return;
+    const r = btn.getBoundingClientRect();
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.right - w))}px`;
+    menu.style.top = `${r.bottom + 4 + h > innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4}px`;
+    menu.querySelector('[role=menuitem]')?.focus();
+  }, true);
+  list.addEventListener('keydown', (e) => {
+    const menu = e.target.closest?.('.row-menu');
+    if (!menu) return;
+    const items = [...menu.querySelectorAll('[role=menuitem]')];
+    const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    items[(items.indexOf(document.activeElement) + step + items.length) % items.length].focus();
+  });
 }
 
 /** Voice services (ElevenLabs): not translation services, so no radio and no order; they are

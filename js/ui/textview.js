@@ -3,7 +3,7 @@
 //   home: big "Translate text" sheet + language pills + Conversation · Mic · Camera
 //   edit: input focused or holding text; top bar becomes back · history/clear · pen · more
 import { state, subscribe, set, langName, detect, translate, describeError, errorText, warmUp, setSource, setMode, fallbackNote } from '../state.js';
-import { settings, history, phrasebook, onChange } from '../store.js';
+import { settings, history, phrasebook, onChange, recentLangs } from '../store.js';
 import { isRtl } from '../languages.js';
 import { createLangBar } from './langbar.js';
 import { pickLanguage } from './langpicker.js';
@@ -43,8 +43,8 @@ export function initTextView(opts) {
     mic: $('btn-mic'), homeMic: $('home-mic'), toCamera: $('btn-to-camera'), paste: $('btn-paste'),
     speakSrc: $('btn-speak-src'), copySrc: $('btn-copy-src'),
     outCard: $('output-card'), placeholder: $('out-placeholder'), skeleton: $('out-skeleton'),
-    out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'),
-    errActions: $('out-error-actions'), mockChip: $('mock-chip'), why: $('btn-why'), whyList: $('why-list'),
+    out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'), errNote: $('out-error-note'),
+    errActions: $('out-error-actions'), divider: $('out-divider'), mockChip: $('mock-chip'), why: $('btn-why'), whyList: $('why-list'),
     speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), shareBtn: $('btn-share'), showBtn: $('btn-show'), starBtn: $('btn-star'),
     inputCard: $('input-card'), live: $('out-live'), wikt: $('wikt-link'),
   };
@@ -107,6 +107,7 @@ export function initTextView(opts) {
   renderLabels();
   renderLive();
   updateCount();
+  wireDivider();
   autosize();
 }
 
@@ -171,14 +172,83 @@ function updateCount() {
   el.count.classList.toggle('near', n > MAX * 0.95);
   el.clear.hidden = n === 0;
   el.app.dataset.hasText = n ? '1' : '0';
-  el.input.classList.toggle('long', n > 120);
+  sizeTexts();
   if (n && !editing) { editing = true; }
   applyMode();
 }
 
+// Phone: the text box grows with the text up to about a third of the screen, then scrolls inside, so the
+// translation always starts in the top half. The line between the two (#out-divider) resizes it by hand;
+// the chosen size (a share of the screen) is remembered, double-tap goes back to automatic.
+const SIZE_KEY = 'ot.inputSize.v1';
+const AUTO_SHARE = 0.36;
+let inputShare = (() => { try { const v = Number(localStorage.getItem(SIZE_KEY)); return v > 0 ? v : null; } catch { return null; } })();
+const MIN_SHARE = 0.1, MAX_SHARE = 0.75;
+
 function autosize() {
   el.input.style.height = 'auto';
-  el.input.style.height = Math.min(el.input.scrollHeight + 2, window.innerHeight * 0.5) + 'px';
+  if (!isPhone()) {
+    el.input.style.height = Math.min(el.input.scrollHeight + 2, window.innerHeight * 0.5) + 'px';
+    return;
+  }
+  // the card's label and buttons take part of the share; the text box gets the rest (at least 2 lines)
+  const chrome = el.inputCard.offsetHeight - el.input.offsetHeight;
+  const room = (share) => Math.max(72, Math.round(window.innerHeight * share - chrome));
+  const h = inputShare ? room(inputShare) : Math.min(el.input.scrollHeight + 2, room(AUTO_SHARE));
+  el.input.style.height = h + 'px';
+  updateDivider();
+}
+
+function updateDivider() {
+  const d = el.divider;
+  if (!d) return;
+  const pct = Math.round((inputShare || AUTO_SHARE) * 100);
+  d.setAttribute('aria-valuenow', String(pct));
+  d.setAttribute('aria-valuetext', inputShare ? `Text box: ${pct}% of the screen` : 'Text box: automatic size');
+}
+
+function setInputShare(share) {
+  inputShare = share == null ? null : Math.min(MAX_SHARE, Math.max(MIN_SHARE, share));
+  try { inputShare == null ? localStorage.removeItem(SIZE_KEY) : localStorage.setItem(SIZE_KEY, String(inputShare.toFixed(3))); } catch { /* private mode */ }
+  autosize();
+}
+
+function wireDivider() {
+  const d = el.divider;
+  if (!d) return;
+  let drag = null;
+  let lastTap = 0;   // double tap = automatic size (the browser's dblclick is unreliable on touch screens)
+  d.addEventListener('pointerdown', (e) => {
+    if (e.button) return;
+    e.preventDefault();
+    d.setPointerCapture(e.pointerId);
+    drag = { y: e.clientY, card: el.inputCard.getBoundingClientRect().height, moved: false };
+    d.classList.add('dragging');
+  });
+  d.addEventListener('pointermove', (e) => {
+    if (!drag || (!drag.moved && Math.abs(e.clientY - drag.y) < 4)) return;
+    drag.moved = true;
+    setInputShare((drag.card + e.clientY - drag.y) / window.innerHeight);
+  });
+  const end = (e) => {
+    if (drag && !drag.moved && e.type === 'pointerup') {
+      if (e.timeStamp - lastTap < 400) { setInputShare(null); lastTap = 0; } else lastTap = e.timeStamp;
+    }
+    drag = null; d.classList.remove('dragging');
+  };
+  d.addEventListener('pointerup', end);
+  d.addEventListener('pointercancel', end);
+  d.addEventListener('keydown', (e) => {
+    const now = inputShare || el.inputCard.getBoundingClientRect().height / window.innerHeight;
+    const step = { ArrowUp: -0.05, ArrowDown: 0.05 }[e.key];
+    if (step) setInputShare(now + step);
+    else if (e.key === 'Home') setInputShare(MIN_SHARE);
+    else if (e.key === 'End') setInputShare(MAX_SHARE);
+    else if (e.key === 'Enter' || e.key === ' ') setInputShare(null);
+    else return;
+    e.preventDefault();
+  });
+  window.addEventListener('resize', () => requestAnimationFrame(autosize));
 }
 
 /** Public: put text into the input (from camera, handwriting, history). */
@@ -225,18 +295,35 @@ async function runTranslate({ commit = false } = {}) {
       if (id !== reqId) return;
       if (detected) { set({ detected }); source = detected.language; }
     }
-    const res = await translate(text, source, state.target);
+    // typed in the language you translate into ("Detect language" → English, English typed):
+    // translate the other way, into the last other language you used
+    const target = state.source === 'auto' && detected && base(detected.language) === base(state.target) ? otherTarget() : state.target;
+    const res = await translate(text, source, target);
     if (id !== reqId) return;
     if (state.source === 'auto' && !detected && res.detected) {
       set({ detected: { language: res.detected, confidence: 1 } });
       source = res.detected;
     }
-    showResult({ text: res.text, source, target: state.target, input: text, mock: !!state.provider?.isMock && !res.note, via: res.via, note: res.note, tried: res.tried, answered: res.answered || res.via });
+    showResult({ text: res.text, source, target, input: text, mock: !!state.provider?.isMock && !res.note, via: res.via, note: res.note, tried: res.tried, answered: res.answered || res.via });
     if (commit) commitHistory(); else commitHistorySoon();
   } catch (err) {
     if (id !== reqId) return;
     showError(err);
   }
+}
+
+const base = (c) => String(c || '').split('-')[0];
+/** The language to translate into when the text is already in the target language. */
+function otherTarget() {
+  const other = recentLangs.get('target').find((c) => base(c) !== base(state.target));
+  return other || (base(state.target) === 'en' ? 'es' : 'en');
+}
+
+/** Your text and its translation always share one size: smaller when either one is long. */
+function sizeTexts() {
+  const long = Math.max(el.input.value.length, result && !el.out.hidden ? result.text.length : 0) > 120;
+  el.input.classList.toggle('long', long);
+  el.out.classList.toggle('long', long);
 }
 
 function setOutState(s) { el.outCard.dataset.state = s; }
@@ -300,7 +387,7 @@ function showResult(r) {
   el.out.lang = r.target;
   el.out.dir = isRtl(r.target) ? 'rtl' : 'ltr';
   el.out.classList.remove('stale');
-  el.out.classList.toggle('long', r.text.length > 120);
+  sizeTexts();
   // "Offline demo translation", or which service answered when the first choice couldn't
   el.mockChip.textContent = r.mock ? 'Offline demo translation' : fallbackNote(r);
   el.mockChip.hidden = !r.mock && !r.via && !r.note;
@@ -330,6 +417,13 @@ function showError(err) {
   el.err.hidden = false;
   el.errTitle.textContent = title;
   el.errMsg.textContent = message;
+  // a first download is a normal step, not a failure: calm colours, a download icon, no alert
+  const prompt = code === 'NEEDS_DOWNLOAD';
+  el.err.classList.toggle('prompt', prompt);
+  el.err.setAttribute('role', prompt ? 'status' : 'alert');
+  el.err.querySelector('.ic')?.replaceWith(document.createRange().createContextualFragment(icon(prompt ? 'download' : 'warning')));
+  el.errNote.textContent = err?.detail?.source || '';
+  el.errNote.hidden = !el.errNote.textContent;
   el.errActions.innerHTML = '';
   const action = (label, fn) => {
     const b = document.createElement('button');
@@ -405,7 +499,8 @@ function renderLabels() {
   } else {
     el.srcLabel.textContent = langName(state.source);
   }
-  el.tgtLabel.textContent = langName(state.target);
+  // the language this translation is really in (it can be the other one, see otherTarget)
+  el.tgtLabel.textContent = langName(result && el.input.value.trim() ? result.target : state.target);
   const srcLang = state.source === 'auto' ? det : state.source;
   if (srcLang) { el.input.lang = srcLang; el.input.dir = isRtl(srcLang) ? 'rtl' : 'auto'; }
   else { el.input.removeAttribute('lang'); el.input.dir = 'auto'; }
