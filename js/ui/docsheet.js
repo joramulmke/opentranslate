@@ -1,6 +1,6 @@
 // "Translate a file or website" (⋮ menu, home-screen shortcut, files opened with or shared to the app):
 // IDEAS #9. Pick or drop a file, or paste a link; big ones ask first; progress with Stop; then download.
-import { state, langName, describeError } from '../state.js';
+import { state, langName, describeError, errorText } from '../state.js';
 import { settings } from '../store.js';
 import { siteValue, loadSiteConfig } from '../siteconfig.js';
 import { setupDialog, openDialog } from './sheet.js';
@@ -164,7 +164,7 @@ function fail(id, e) {
   if (id !== run) return;
   el.progress.hidden = true;
   el.done.hidden = false;
-  el.doneText.textContent = e.message || 'This could not be opened.';
+  el.doneText.textContent = errorText(e, 'This couldn’t be opened.');
   el.again.hidden = false;
 }
 

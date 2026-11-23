@@ -299,3 +299,27 @@ second press of Play is already slower). Plan (agreed Nov 2026):
 - Always on while playing; the mark goes when it stops. In the Text result first; Show to someone (#15)
   and the phrasebook can use it too.
 - Screen readers: the highlight is only visual (no announcements for each word).
+
+## 17. Speed and wording pass (whole app, phone first)
+
+(Done, Nov 2026; tried in Playwright with phone emulation, a slow network and a 4× slower CPU, not on a real
+phone.)
+- Works offline again with "Detect language": the language detector (franc-min, MIT) ships in
+  `vendor/franc/` and is in the offline cache. It used to load from a CDN, so on-device translation failed
+  without internet with "Failed to fetch dynamically imported module…".
+- Plain words instead of browser errors when something couldn't load (`errorText`, `describeError`).
+- Warm-up: the on-device engine and the pair's models load when the text box gets focus; Tesseract and its
+  language file start while the camera is aiming. Only with the languages already downloaded (no surprise
+  downloads), and the AI engines (Florence-2, PP-OCRv6) still ask first.
+- The last 60 translations and detections of each service are kept in memory: swapping back or
+  re-translating the same text is instant.
+- Starts with half the code: camera, conversation, handwriting, settings, file translation, feedback and
+  opened files load in idle time right after the start, or at once when opened. The rest is fetched at once
+  (`<link rel="modulepreload">`, written by `.github/scripts/preload.mjs` on every deploy). Measured on
+  the emulated phone: ready in 2.9 s instead of 5.1 s.
+- Camera with "Detect language": if the text comes out as nonsense, Tesseract's script detection (OSD,
+  4 MB, downloaded the first time it's needed) finds the script and the photo is read again, e.g. with
+  Russian + English. The next photos start with that script. Tried with Cyrillic and Latin test images.
+- Wording: "Stop reading aloud" for the speaker (the mic keeps "Stop listening"); "Saved translations"
+  everywhere instead of "phrasebook"; "service" instead of "provider"; "Service is busy" instead of
+  "Slow down"; every message ends with a full stop.

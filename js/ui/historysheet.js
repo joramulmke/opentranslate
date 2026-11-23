@@ -32,7 +32,7 @@ export function initHistorySheet({ onSelect }) {
     const backup = store.all();
     if (!backup.length) return;
     store.clear();
-    toast(mode === 'history' ? 'History cleared' : 'Phrasebook cleared', {
+    toast(mode === 'history' ? 'History cleared' : 'Saved translations cleared', {
       action: 'Undo',
       onAction: () => { localStorage.setItem(mode === 'history' ? 'ot.history.v1' : 'ot.phrasebook.v1', JSON.stringify(backup)); render(); },
     });
@@ -76,7 +76,7 @@ function render() {
   if (!items.length) {
     empty.innerHTML = mode === 'history'
       ? `${icon('history')}<strong>No history yet</strong><span>Your last 100 translations will show up here.</span>`
-      : `${icon('starBorder')}<strong>No saved translations</strong><span>Tap the star on a translation to save it to your phrasebook.</span>`;
+      : `${icon('starBorder')}<strong>No saved translations</strong><span>Tap the star on a translation to save it here.</span>`;
     return;
   }
   list.innerHTML = items.map((x) => {
@@ -87,7 +87,7 @@ function render() {
         <div class="entry-src" lang="${x.source}">${escapeHtml(x.text)}</div>
         <div class="entry-tgt" lang="${x.target}">${escapeHtml(x.result)}</div>
       </button>
-      <button type="button" class="icon-btn" data-act="star" aria-pressed="${starred}" aria-label="${starred ? 'Remove from saved' : 'Save'}">${icon(starred ? 'star' : 'starBorder')}</button>
+      <button type="button" class="icon-btn" data-act="star" aria-pressed="${starred}" aria-label="${starred ? 'Remove from saved' : 'Save translation'}">${icon(starred ? 'star' : 'starBorder')}</button>
       ${mode === 'history' ? `<button type="button" class="icon-btn" data-act="delete" aria-label="Delete from history">${icon('close')}</button>` : ''}
     </li>`;
   }).join('');

@@ -54,6 +54,8 @@ jobs:
           else
             echo "sw.js not found, skipping cache update"
           fi
+          # the modules the app starts with, fetched at once (.github/scripts/preload.mjs)
+          node .github/scripts/preload.mjs
           # Settings shows this as "Version abc1234 · date" (js/ui/version.js)
           printf '{ "commit": "%s", "date": "%s" }\n' "$GITHUB_SHA" "$(git log -1 --format=%cI "$GITHUB_SHA")" > version.json
           cat version.json

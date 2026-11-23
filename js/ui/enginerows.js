@@ -2,7 +2,7 @@
 // Each engine is a row: the radio picks which one is tried first (the others follow in list order);
 // downloadable models show their size, status and source, with Download / Delete.
 import { settings } from '../store.js';
-import { state } from '../state.js';
+import { state, errorText } from '../state.js';
 import { escapeHtml } from './langpicker.js';
 import { icon } from './icons.js';
 import { toast } from './snackbar.js';
@@ -261,7 +261,7 @@ async function onPaddleButton() {
   }
   settings.set({ paddleOk: true });
   toast(`Downloading PP-OCRv6 (${PADDLE.sizeMB + ORT_MB} MB) from Hugging Face…`);
-  downloadPaddle().then(() => toast('PP-OCRv6 is downloaded and works without internet.'), (e) => toast(`Download failed: ${e.message}`));
+  downloadPaddle().then(() => toast('PP-OCRv6 is downloaded and works without internet.'), (e) => toast(`Download failed: ${errorText(e)}`));
 }
 
 /* ------------------------------------------------------------ render */
@@ -305,7 +305,7 @@ async function onModelButton(key) {
     return;
   }
   toast(`Downloading ${m.title} (${m.sizeMB} MB) from Hugging Face…`);
-  downloadModel(key).then(() => toast(`${m.title} is downloaded and works without internet.`), (e) => toast(`Download failed: ${e.message}`));
+  downloadModel(key).then(() => toast(`${m.title} is downloaded and works without internet.`), (e) => toast(`Download failed: ${errorText(e)}`));
 }
 
 /* ------------------------------------------------------- OCR manager */
@@ -374,7 +374,7 @@ async function onOcrButton(code) {
       ocrFiles = await ocrDownloaded();
       toast(`${name} is downloaded for camera text`);
     } catch (e) {
-      toast(`Download failed: ${e.message || e}`);
+      toast(`Download failed: ${errorText(e)}`);
     } finally { ocrJobs.delete(code); }
   }
   if (!$('ocr-manager').hidden) renderOcrManager();
@@ -474,14 +474,14 @@ async function onKokoroButton() {
   try {
     await downloadKokoro({ picked: settings.get().kokoroVoices || {} });
     toast('Kokoro is downloaded and works without internet.');
-  } catch (e) { toast(`Download failed: ${e.message || e}`); }
+  } catch (e) { toast(`Download failed: ${errorText(e)}`); }
 }
 
 async function onKokoroVoice(sel) {
   const { kokoroLang: lang } = sel.dataset;
   settings.set({ kokoroVoices: { ...(settings.get().kokoroVoices || {}), [lang]: sel.value } });
   if (!kokoroVoiceReady(sel.value)) {
-    try { await downloadKokoroVoice(sel.value); toast(`${kokoroVoiceName(sel.value)} is ready for ${langLabel(lang)}.`); } catch (e) { toast(`Download failed: ${e.message || e}`); }
+    try { await downloadKokoroVoice(sel.value); toast(`${kokoroVoiceName(sel.value)} is ready for ${langLabel(lang)}.`); } catch (e) { toast(`Download failed: ${errorText(e)}`); }
   } else toast(`${kokoroVoiceName(sel.value)} reads ${langLabel(lang)} now.`);
 }
 
@@ -506,7 +506,7 @@ async function onVoiceButton(lang) {
     try {
       await downloadVoice(lang);
       toast(`The ${name} voice is downloaded and works without internet.`);
-    } catch (e) { toast(`Download failed: ${e.message || e}`); }
+    } catch (e) { toast(`Download failed: ${errorText(e)}`); }
   }
 }
 

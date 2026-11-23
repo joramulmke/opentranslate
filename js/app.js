@@ -1,14 +1,11 @@
 // Entry point: wires the views, navigation, theme and service worker.
 // Phones (< 720px): home screen + full-screen sub-views with back buttons (no tab bar).
 // 720px+: tabs in a bottom bar (720-1023px) or a navigation rail (1024px+).
-import { initBackup } from './ui/backup.js';
-import { initDocs, openDocs } from './ui/docsheet.js';
 import { hydrateIcons, icon } from './ui/icons.js';
 import { initProvider, state } from './state.js';
 import { settings, onChange } from './store.js';
 import * as textView from './ui/textview.js';
 import { initHistorySheet, openHistory } from './ui/historysheet.js';
-import { initSettingsSheet, openSettings } from './ui/settingssheet.js';
 import { initModeMenu } from './ui/modemenu.js';
 import { initSetupBadge } from './ui/setupbadge.js';
 import { initSiteFooter } from './ui/sitefooter.js';
@@ -18,18 +15,26 @@ import { initMenu, openMenu } from './ui/menu.js';
 import { initInstall } from './ui/install.js';
 import { initPersist } from './features/persist.js';
 import { pipSupported, openPip } from './features/pip.js';
-import { initFeedback, openFeedback } from './ui/feedback.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
-import { initCamera } from './features/camera.js';
 import { takeShare, takeLinkText, onOpenedFiles } from './share.js';
-import { openFiles } from './features/openfiles.js';
-import { initConversation } from './features/conversation.js';
-import { initHandwriting } from './features/handwriting.js';
 
 const TABS = ['text', 'camera', 'conversation', 'handwriting'];
 // which home-screen control opened each phone sub-view (focus returns there on Back)
 const OPENER = { camera: 'home-camera', conversation: 'home-convo', handwriting: 'btn-to-hand' };
 const hooks = {};
+
+// Loaded after the text view is up (in idle time), or at once when opened first: the app starts with
+// about half the code. Each part loads and starts once; the service worker keeps all of them offline.
+const parts = {};
+const loaders = {};
+function part(name) {
+  parts[name] ??= loaders[name]();
+  parts[name].catch(() => { delete parts[name]; });   // e.g. offline on a first visit: try again next time
+  return parts[name];
+}
+const openSettings = (...a) => part('settings').then((m) => m.openSettings(...a));
+const openDocs = (...a) => part('docs').then((m) => m.openDocs(...a));
+const openFeedback = (...a) => part('feedback').then((m) => m.openFeedback(...a));
 let currentTab = null;
 let navIndex = 0;   // position in our own pushState entries, so Back never leaves the app
 
@@ -85,10 +90,14 @@ function navigate(tab, { replace = false, focus = false } = {}) {
     if (replace || !prev) history.replaceState({ ot: tab, i: navIndex }, '', hash);
     else { navIndex += 1; history.pushState({ ot: tab, i: navIndex }, '', hash); }
   }
-  hooks[tab]?.onShow?.({ viaArrowKeys: focus });   // focus === keyboard tab navigation
+  const show = () => {
+    hooks[tab]?.onShow?.({ viaArrowKeys: focus });   // focus === keyboard tab navigation
+    if (!focus && prev && isPhone()) focusAfterPhoneNav(tab, prev);
+  };
+  if (hooks[tab] || !loaders[tab]) show();
+  else part(tab).then(() => { if (currentTab === tab) show(); }, (e) => console.warn('[OpenTranslate]', tab, e));
   updateWakeLock();
   if (focus) document.getElementById(`tab-${tab}`).focus();
-  else if (prev && isPhone()) focusAfterPhoneNav(tab, prev);
 }
 
 // Conversation and Camera keep the screen on while they're open (Wake Lock). The browser drops the lock
@@ -171,13 +180,18 @@ function boot() {
   const sendToText = (text, opts = {}) => { navigate('text'); textView.setInput(text, { translateNow: true, ...opts }); };
 
   initHistorySheet({ onSelect: (item) => sendToText(item.text, { source: item.source, target: item.target }) });
-  initSettingsSheet({ onThemeChange: applyTheme });
-  initBackup();
-  initDocs();
 
-  hooks.camera = initCamera({ sendToText });
-  hooks.conversation = initConversation({ leave: () => goBack() });
-  hooks.handwriting = initHandwriting({ sendToText });
+  loaders.camera = () => import('./features/camera.js').then((m) => (hooks.camera = m.initCamera({ sendToText })));
+  loaders.conversation = () => import('./features/conversation.js').then((m) => (hooks.conversation = m.initConversation({ leave: () => goBack() })));
+  loaders.handwriting = () => import('./features/handwriting.js').then((m) => (hooks.handwriting = m.initHandwriting({ sendToText })));
+  loaders.settings = () => Promise.all([import('./ui/settingssheet.js'), import('./ui/backup.js')]).then(([m, backup]) => {
+    m.initSettingsSheet({ onThemeChange: applyTheme });
+    backup.initBackup();   // its buttons are in Settings
+    return m;
+  });
+  loaders.docs = () => import('./ui/docsheet.js').then((m) => { m.initDocs(); return m; });
+  loaders.feedback = () => import('./ui/feedback.js').then((m) => { m.initFeedback({ currentTab: () => currentTab }); return m; });
+  loaders.files = () => import('./features/openfiles.js');
 
   // top bar
   $('btn-history').addEventListener('click', () => openHistory('history'));
@@ -196,12 +210,12 @@ function boot() {
     else goBack();
   });
   // pen: switch the input to handwriting, carrying the text over
-  const toHandwriting = () => { hooks.handwriting.setText(textView.getInput()); navigate('handwriting'); };
+  const toHandwriting = async () => { const t = textView.getInput(); (await part('handwriting')).setText(t); navigate('handwriting'); };
   $('btn-pen').addEventListener('click', toHandwriting);
   $('btn-to-hand').addEventListener('click', toHandwriting);
   // keyboard: back to typing, carrying the handwritten text over
   $('btn-keyboard').addEventListener('click', () => {
-    const t = hooks.handwriting.getText();
+    const t = hooks.handwriting?.getText() || '';
     navigate('text');
     textView.setInput(t, { translateNow: !!t.trim() });
     textView.focusInput();
@@ -230,7 +244,6 @@ function boot() {
   });
   $('menu-pip').hidden = !pipSupported();
   initPersist();
-  initFeedback({ currentTab: () => currentTab });
 
   onChange((what) => { if (what === 'phrasebook') textView.refreshStar(); });
   onLayoutChange(() => textView.onLayoutChange());
@@ -264,11 +277,12 @@ function boot() {
     toDocs: (file) => openDocs({ file }),
     toText: (text) => { navigate('text', { replace: true }); textView.setInput(text, { translateNow: true }); },
     toCamera: async (images) => {
-      if (!(await hooks.camera?.openImages?.(images))) return false;
+      if (!(await (await part('camera')).openImages?.(images))) return false;
       navigate('camera', { replace: true });
       return true;
     },
   };
+  const openFiles = (...a) => part('files').then((m) => m.openFiles(...a));
   onOpenedFiles((files) => openFiles(files, fileTargets));
   takeShare().then(async (shared) => {
     if (!shared) return;
@@ -278,6 +292,15 @@ function boot() {
 
   window.__otBooted = true;
   document.getElementById('boot-msg').hidden = true;
+
+  // the rest, one part at a time once the page is idle (a backup was just imported: Settings says so)
+  let backupJustImported = false;
+  try { backupJustImported = !!sessionStorage.getItem('ot.backupImported'); } catch { /* no storage */ }
+  if (backupJustImported) part('settings');
+  const idle = (fn) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 3000 }) : setTimeout(fn, 1200));
+  const rest = Object.keys(loaders);
+  const next = () => { const n = rest.shift(); if (n) part(n).catch(() => {}).finally(() => idle(next)); };
+  idle(next);
 
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW registration failed', e));

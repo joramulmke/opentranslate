@@ -7,6 +7,7 @@
 import { MAX } from '../ui/textview.js';
 import { canTranslateFile } from './doctranslate.js';
 import { toast } from '../ui/snackbar.js';
+import { errorText } from '../state.js';
 
 const isImage = (f) => /^image\//.test(f.type);
 const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '');
@@ -65,6 +66,6 @@ export async function openFiles(files, { text = '', toText, toCamera, toDocs }) 
     if (text) { toText(text); return; }
     toast('OpenTranslate can open photos, PDFs, text files and documents (Word, PowerPoint, Excel, e-books…).');
   } catch (e) {
-    toast(e.message || 'This file could not be opened.');
+    toast(errorText(e, 'This file couldn’t be opened.'));
   }
 }
