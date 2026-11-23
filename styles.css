@@ -532,6 +532,7 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
   background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
 .cap-menu button:hover, .cap-menu button:focus-visible { background: color-mix(in srgb, var(--on-surface) 8%, transparent); outline: none; }
 .cap-menu .ic { width: 20px; height: 20px; }
+.cam-share-menu { inset: auto 12px 96px auto; }
 .convo-shared .utt:not(:last-child) .utt-trans { font-size: 22px; line-height: 30px; }
 .utt-orig { font-size: 16px; line-height: 22px; color: var(--on-surface-variant); }
 .utt.from-me { justify-items: end; text-align: end; }
