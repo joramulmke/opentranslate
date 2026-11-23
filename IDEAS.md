@@ -69,7 +69,17 @@ Plan (agreed Nov 2026):
 
 ## 5. Web Share
 
-(Done, Nov 2026: Text view, translation only.) Share a translation (Web Share): a Share button next to Copy that opens the phone's share menu, so you can send a translation to WhatsApp or by email. Sharing a translated photo, file or website came with #1 and #9.
+(Done, Nov 2026: Text view, translation only.) Share a translation (Web Share): a Share button next to Copy that opens the phone's share menu, so you can send a translation to WhatsApp or by email.
+
+Share translated photos, files and websites (done, Nov 2026; not yet tried on a phone). Phones share, computers save, as before:
+- Camera photo: Share (phones) or Save (computers) opens a small menu: this photo, all photos (when there
+  are several, e.g. shared or a scanned PDF; photos not read yet are read first, then all go in one share,
+  or are saved one by one on a computer), and the translated text (Share text on phones, Copy text on
+  computers; translation only). If reading took long, the phone may refuse the share: then a "Share"
+  button in a message finishes it.
+- Website: Share page (.html) on phones, Download (.html) on computers, plus Share text / Copy text (the
+  translated page's text as it reads on screen).
+- Translated files: unchanged (Share on phones, Download on computers).
 
 ## 6. Persistent downloads
 

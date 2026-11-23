@@ -1,7 +1,7 @@
 // Camera tab: live preview, capture or import, OCR, translated text overlaid on the photo.
 import { state, subscribe, detect, translate, describeError, langName, fallbackNote } from '../state.js';
 import { createLangBar } from '../ui/langbar.js';
-import { toast } from '../ui/snackbar.js';
+import { toast, copyToClipboard } from '../ui/snackbar.js';
 import { recognize, ocrLangFor, describeOcrStatus } from './ocr.js';
 import { ocrQuality } from './paddle.js';
 import { escapeHtml } from '../ui/langpicker.js';
@@ -149,6 +149,7 @@ export function initCamera({ sendToText }) {
       ocr = await recognize(canvas, { lang: ocrLangFor(ocrSource), iso: state.source === 'auto' ? null : ocrSource, psm: '3', onProgress: (m) => id === job && status(describeOcrStatus(m)) });
     } catch (e) {
       if (id !== job) return;
+      shot.failed = true;   // read again when shown again; "Save all" goes on without it
       status('');
       toast(e.message || 'Text recognition failed');
       return;
@@ -239,33 +240,108 @@ export function initCamera({ sendToText }) {
     }
   }
 
-  /** The photo with the translation drawn in, as a JPEG. */
-  async function translatedPhoto() {
+  /** A photo with the translation drawn in, as a JPEG. */
+  async function translatedPhoto(sh = shot) {
     const img = new Image();
-    img.src = shot.src;
+    img.src = sh.src;
     await img.decode();
     const c = document.createElement('canvas');
-    c.width = shot.w; c.height = shot.h;
+    c.width = sh.w; c.height = sh.h;
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    if (shot.translated) drawTranslated(ctx, shot.lines, shot.lineTexts, shot.colors || [], shot.translated);
+    if (sh.translated) drawTranslated(ctx, sh.lines, sh.lineTexts, sh.colors || [], sh.translated);
     return new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
   }
+
+  /* Share (phones) or Save (computers): a small menu with this photo, all photos (when there are
+     several) and the translated text (Share text on phones, Copy text on computers). IDEAS #5. */
   const phone = () => matchMedia('(pointer: coarse)').matches;
-  if (!phone()) { el.share.querySelector('span').textContent = 'Save'; el.share.setAttribute('aria-label', 'Save translated photo'); }
-  el.share.addEventListener('click', async () => {
-    if (!shot?.translated) { toast(shot?.done ? 'There is no translation to save.' : 'Still translating…'); return; }
-    const blob = await translatedPhoto();
-    const file = new File([blob], `translated-${state.target}.jpg`, { type: 'image/jpeg' });
-    if (phone() && navigator.canShare?.({ files: [file] })) {
-      try { await navigator.share({ files: [file] }); } catch (e) { if (e.name !== 'AbortError') toast('Sharing didn’t work.'); }
-      return;
-    }
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: file.name });
-    document.body.append(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    toast('Translated photo saved');
+  const shareMenu = $('cam-share-menu');
+  if (!phone()) { el.share.querySelector('span').textContent = 'Save'; el.share.setAttribute('aria-label', 'Save translated photo or copy text'); }
+  shareMenu.addEventListener('beforetoggle', (e) => {
+    if (e.newState !== 'open') return;
+    const verb = phone() ? 'Share' : 'Save';
+    const item = (act, ic, label) => `<button type="button" role="menuitem" data-share="${act}">${icon(ic)}<span>${escapeHtml(label)}</span></button>`;
+    shareMenu.innerHTML = [
+      item('photo', 'image', album.length > 1 ? `${verb} this photo` : `${verb} photo`),
+      album.length > 1 ? item('all', 'photos', `${verb} all ${album.length} photos`) : '',
+      phone() && navigator.share ? item('text', 'share', 'Share text') : item('copy', 'copy', 'Copy text'),
+    ].join('');
   });
+  shareMenu.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-share]');
+    if (!b) return;
+    shareMenu.hidePopover?.();
+    ({ photo: sharePhoto, all: shareAll, text: () => shareText(false), copy: () => shareText(true) })[b.dataset.share]();
+  });
+  function notReady() {
+    if (shot?.translated) return false;
+    toast(shot?.done ? 'There is no translation to share.' : 'Still translating…');
+    return true;
+  }
+  /** Phones: the share menu; computers (or when sharing files isn't possible): downloads. */
+  async function sendFiles(files) {
+    if (phone() && navigator.canShare?.({ files })) {
+      try { await navigator.share({ files }); return; } catch (e) {
+        if (e.name === 'AbortError') return;
+        // the tap is too long ago when reading the photos took a while: ask for one more tap
+        if (e.name === 'NotAllowedError') { toast(`${files.length} translated photos ready`, { action: 'Share', onAction: () => navigator.share({ files }).catch(() => {}) }); return; }
+        toast('Sharing didn’t work, saving instead.');
+      }
+    }
+    files.forEach((f, i) => setTimeout(() => {
+      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(f), download: f.name });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }, i * 300));   // one at a time, or the browser may drop some
+    toast(files.length > 1 ? `${files.length} translated photos saved` : 'Translated photo saved');
+  }
+  async function sharePhoto() {
+    if (notReady()) return;
+    const name = album.length > 1 ? `translated-${state.target}-${albumAt + 1}.jpg` : `translated-${state.target}.jpg`;
+    await sendFiles([new File([await translatedPhoto()], name, { type: 'image/jpeg' })]);
+  }
+  /** Wait until photo i is read and translated into the current language (or failed). */
+  function settled(i, list) {
+    const pair = () => `${state.source}>${state.target}`;
+    return new Promise((ok) => {
+      const t0 = Date.now();
+      const tick = () => {
+        const sh = album[i]?.shot;
+        if (album !== list) return ok(false);
+        if (sh?.failed) return ok(true);
+        if (sh?.done && (!sh.ocrText || sh.pair === pair() || sh.pair === null)) return ok(true);
+        if (Date.now() - t0 > 180000) return ok(false);
+        setTimeout(tick, 200);
+      };
+      tick();
+    });
+  }
+  async function shareAll() {
+    const list = album; const back = albumAt; const files = [];
+    for (let i = 0; i < list.length; i++) {
+      if (album !== list) return;
+      const sh = list[i].shot;
+      if (!(sh?.done && (!sh.ocrText || sh.pair === `${state.source}>${state.target}`))) {
+        status(`Reading photo ${i + 1} of ${list.length}…`);
+        await showPhoto(i);
+        if (!(await settled(i, list))) return;
+      }
+      const s2 = list[i].shot;
+      if (s2?.translated) files.push(new File([await translatedPhoto(s2)], `translated-${state.target}-${i + 1}.jpg`, { type: 'image/jpeg' }));
+    }
+    if (album !== list) return;
+    if (albumAt !== back) await showPhoto(back);
+    if (!files.length) { toast('None of the photos has a translation to share.'); return; }
+    if (files.length < list.length) toast(`${list.length - files.length} of the photos had no text to translate.`);
+    await sendFiles(files);
+  }
+  async function shareText(copy) {
+    if (notReady()) return;
+    const text = shot.translated.trim();
+    if (copy) { copyToClipboard(text, 'Translation copied'); return; }
+    try { await navigator.share({ text }); } catch (e) { if (e.name !== 'AbortError') copyToClipboard(text, 'Sharing didn’t work, translation copied'); }
+  }
 
   /* Zoom: pinch, Ctrl + wheel (or a trackpad pinch), double-tap, or + / − keys; drag to move. */
   const zoom = { s: 1, x: 0, y: 0 };

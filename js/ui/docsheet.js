@@ -4,7 +4,7 @@ import { state, langName, describeError } from '../state.js';
 import { settings } from '../store.js';
 import { siteValue, loadSiteConfig } from '../siteconfig.js';
 import { setupDialog, openDialog } from './sheet.js';
-import { toast } from './snackbar.js';
+import { toast, copyToClipboard } from './snackbar.js';
 import { icon } from './icons.js';
 import { DEFAULT_PROXY, ASK_ABOVE, ACCEPT, FORMATS, extOf, outName, openDocument, translateTexts, sourceFor, fetchPage, openPage, workerCode } from '../features/doctranslate.js';
 
@@ -172,7 +172,7 @@ function fail(id, e) {
 function offer(label, blob, name) {
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'btn btn-filled';
-  b.innerHTML = `${icon('download')}<span></span>`;
+  b.innerHTML = `${icon(phone() && navigator.share ? 'share' : 'download')}<span></span>`;
   b.querySelector('span').textContent = label;
   b.addEventListener('click', () => save(blob, name));
   el.actions.append(b);
@@ -316,11 +316,30 @@ async function translateWebsite(url) {
   el.frame.onload = () => hookLinks(page.url);
   el.frame.srcdoc = html;
   const host = (() => { try { return new URL(page.url).hostname.replace(/^www\./, ''); } catch { return 'page'; } })();
-  offer('Download (.html)', new Blob([html], { type: 'text/html' }), `${host}.${state.target}.html`);
+  offer(phone() ? 'Share page (.html)' : 'Download (.html)', new Blob([html], { type: 'text/html' }), `${host}.${state.target}.html`);
+  // the translated text alone (IDEAS #5): Share text on phones, Copy text on computers
+  const share = phone() && navigator.share;
+  const tb = document.createElement('button');
+  tb.type = 'button'; tb.className = 'btn btn-tonal';
+  tb.innerHTML = `${icon(share ? 'share' : 'copy')}<span>${share ? 'Share text' : 'Copy text'}</span>`;
+  tb.addEventListener('click', async () => {
+    const text = pageText();
+    if (!text) { toast('There is no text to share.'); return; }
+    if (!share) { copyToClipboard(text, 'Translation copied'); return; }
+    try { await navigator.share({ title: el.name.textContent, text }); } catch (e) { if (e.name !== 'AbortError') copyToClipboard(text, 'Sharing didn’t work, translation copied'); }
+  });
+  el.actions.append(tb);
   const orig = document.createElement('a');
   orig.className = 'btn btn-text'; orig.href = page.url; orig.target = '_blank'; orig.rel = 'noopener noreferrer';
   orig.textContent = 'Open the original ↗';
   el.actions.append(orig);
+}
+
+/** The translated page's text, as it reads on screen (blank lines between blocks). */
+function pageText() {
+  const body = el.frame.contentDocument?.body;
+  if (!body) return '';
+  return (body.innerText || body.textContent || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** In the translated page, a tapped link is translated too; links within the page just scroll. */
