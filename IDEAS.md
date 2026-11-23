@@ -1,199 +1,30 @@
 # OpenTranslate: feature ideas
 
-Possible features for later, not promises. Items marked "Done" are kept for what is still left to do.
+Possible features for later, not promises. Ideas that are done have been taken out (they're in the app, and
+in this file's git history); what is still open from them is in the first section. Numbers of ideas that
+were taken out (#2 live subtitles, #7 background downloads, #15 Show to someone…) still mean those features.
 
-## 1. Translate the camera photo in place
+## Left over from done ideas
 
-Draw the translation over the original text in the photo (like Lens): each text line gets a box in the
-background colour with the translated text on top, sized to fit. Uses the line boxes that Tesseract,
-PP-OCRv6 and AI vision already return.
-
-(Done, Nov 2026; not yet tried on a phone or with Tesseract/PP-OCRv6 on real photos, only AI vision in a test.)
-Half there before (Nov 2026): a light box with the translation over each line. Plan (agreed Nov 2026):
-- The photo's own colours: each box takes the background colour around its line (sampled from the
-  photo's edges of the box) and a text colour that stands out from it, so it blends in.
-- Whole sentences: lines that belong together (a paragraph: close below each other, about the same left
-  edge and height) are translated as one text, then spread back over their lines by length. Better
-  translations than line by line.
-- Save and share the translated photo as a picture (the photo with the boxes drawn in), also the
-  "NEXT" from #5.
-- Pinch (or Ctrl + wheel) to zoom and drag to move the photo. Tapping a box zooms in until its line
-  fills the screen; tapping it again zooms back out. "Original" still shows the original text.
-
-## 2. Live subtitles in Conversation
-
-Continuous speech recognition and translation as running captions, for talks or calls. Big, readable
-text, scrolling; each line translated as soon as it is final.
-
-(Done, Nov 2026: in Conversation › Listening, with microphone or tab sound, the pause switch, text size,
-transcript and floating captions on computers. Tried with a recording engine; Chrome's own speech service
-and tab sound still need a try on a real computer and phone. Phones: see #13.)
-Plan (agreed Nov 2026): build it into Conversation › Listening, which already listens, translates only
-their language and restarts the mic by itself (it pauses after two silences today).
-- Runs until you stop it or leave: no pause after silence (after ~2 minutes of silence it pauses, to save
-  battery, and says so). A switch "Pause after 2 minutes of silence" (on by default, remembered) in the
-  Listening setup and on the captions screen turns that off, e.g. for a long talk with breaks. Chrome's speech service: `continuous = true` in Listening, restarted when Chrome
-  ends it (about every minute). Recording engines (Whisper, ElevenLabs, on-device): the next recording
-  starts at once while the last one is transcribed, so no words get lost between pieces.
-- Captions: translation big, original small under it (as now); the words being heard show greyed until
-  they're final; only final lines are translated (no extra API calls). Scrolls to the newest line, unless
-  you scrolled up: then a "Jump to latest" button. Screen readers hear final lines only.
-- Text size: A− / A+ on the captions screen, 4 steps, remembered.
-- Audio: Microphone (default) or, on a computer, "Tab or screen audio" (a video call, a YouTube tab) via
-  screen sharing with audio. That needs a recording engine; with Chrome's speech service chosen, the app
-  says so and uses the next engine. Hidden where the browser can't share audio (phones; see #13 for
-  "Sound from this phone", and #11 for other apps' sound in a native app).
-- Save the transcript: Copy, Share, or download as .txt (both languages, with times).
-- Floating window (#8): "Pop out captions" on a computer shows the latest lines big in the always-on-top
-  window; the main tab keeps the microphone. On phones: floating captions as a video, see #13.
-- Keep screen on: already done (Conversation keeps the screen on).
-- Costs: Whisper and ElevenLabs charge per minute, so continuous captions can add up; the setup says so
-  when one of them is chosen.
-- Test: Playwright with a fake microphone (a WAV file) and a mocked transcription API; Chrome's own speech
-  service only on a real device.
-
-
-## 4. Look up a word on Wiktionary
-
-(Done, Nov 2026.) When the input is only a word or a few (e.g. "test", "Prüfung", "church community"), show a link to
-https://www.wiktionary.org/ for it: meanings, gender, plural, pronunciation. Not for whole sentences.
-
-Plan (agreed Nov 2026):
-- Looks up the translation, not the input: German→English "Prüfung" gives a link for "test".
-- In the target language's Wiktionary: `https://{target}.wiktionary.org/w/index.php?search={translation}`
-  (search URL: opens the entry if it exists, else search results, so capitalisation doesn't matter).
-  Languages without their own Wiktionary fall back to en.wiktionary.org.
-- A small link under the result, e.g. 'Look up "test" on Wiktionary ↗', in `js/ui/textview.js`. Shown only when
-  the input is 1–3 words (no sentence punctuation, no line break) and the translation has finished.
-  Opens in a new tab, with a proper screen-reader label.
-
-## 5. Web Share
-
-(Done, Nov 2026: Text view, translation only.) Share a translation (Web Share): a Share button next to Copy that opens the phone's share menu, so you can send a translation to WhatsApp or by email.
-
-Share translated photos, files and websites (done, Nov 2026; not yet tried on a phone). Phones share, computers save, as before:
-- Camera photo: Share (phones) or Save (computers) opens a small menu: this photo, all photos (when there
-  are several, e.g. shared or a scanned PDF; photos not read yet are read first, then all go in one share,
-  or are saved one by one on a computer), and the translated text (Share text on phones, Copy text on
-  computers; translation only). If reading took long, the phone may refuse the share: then a "Share"
-  button in a message finishes it.
-- Website: Share page (.html) on phones, Download (.html) on computers, plus Share text / Copy text (the
-  translated page's text as it reads on screen).
-- Translated files: unchanged (Share on phones, Download on computers).
-
-Polish (done, Nov 2026; tried in a test with phone emulation, not on a real phone):
-- The translated photo is made right after translating, so Share opens the share menu straight from the
-  tap (a phone refuses a share that comes too long after it).
-- Buttons say what really happens: "Share" only where the phone can share that kind of file (e.g. some
-  phones can't share .html or Office files: then "Download"); otherwise the camera says "Save".
-- When sharing doesn't work, files and websites now say so (and offer one more tap), like the camera.
-- File names: first words of the translation + language + date, e.g. pharmacy-please-ring-en-2026-11-23.jpg.
-- Several photos on a computer: the menu has "Save all as .zip" and "Save all separately". The .zip maker
-  is loaded from the internet the first time; without it, the photos are saved one by one.
-- "Share all" shows "Reading photo 3 of 8…" with Cancel; Cancel stops and shares nothing.
-- The share menu works with the keyboard (arrows, Home/End, Escape back to the button).
-- Not done: a label on the shared photo (the photo stays clean).
-
-Accessibility (done, Nov 2026; axe-core WCAG 2.2 AA scan clean before and after; tested in emulation):
-- ✕ and Escape on "Reading photo 2 of 3…" stop the work like Cancel (before, the message went away but the
-  photos were still shared a moment later).
-- Right-to-left translations (Arabic, Hebrew, Persian, Urdu…): the boxes on the photo, the saved photo,
-  PDF pages, the page view and saved .html / web pages / EPUB pages get the right direction (dir="rtl").
-  Not done: .txt has no direction mark, and Word / OpenDocument files keep their paragraph direction.
-- The share menu has an edge in Windows High Contrast (forced colours), like other floating menus.
-- Messages sit above the camera's bottom buttons, so they never hide a focused button (WCAG 2.4.11).
-- A saved or shared photo carries its words as a description (EXIF ImageDescription and XMP
-  dc:description): "Pharmacy, please ring (German: Apotheke, bitte klingeln)". Galleries such as Google
-  Photos can show it; few screen readers read it yet.
-
-Whole-app accessibility audit (Nov 2026): axe-core WCAG 2.2 AA on every tab and dialog, light and dark,
-phone and computer: clean. Manual: 320px reflow, reduced motion, text spacing, focus, live regions: fine. Fixed:
-- A zoomed photo moves with the arrow keys (Shift: bigger steps); + / − / 0 zoom as before.
-- Conversation: screen readers hear each finished translation once, in its language, from a hidden line;
-  the transcript on screen and its animation are unchanged (it is no longer a live region itself).
-- Handwriting: the pen-width slider is 40px tall and reads "6 pixels".
-- Reduced motion (the device setting) also means calm text in Conversation and Listening: no words
-  appearing while someone speaks, only whole sentences (a static "…" line shows something is being heard).
-  "Jump to latest" no longer slides then. Chosen over a separate setting; live words stay the default.
-Still to try with real TalkBack / VoiceOver / NVDA on a phone and a computer.
-
-## 6. Persistent downloads
-
-(Done, Nov 2026; not yet tried in Firefox or on a phone.) Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when
-   space runs low. One call asks it to keep them; the right moment is right after the first download.
-
-Plan (agreed Nov 2026, built):
-- On the first tap on Download, the app asks the user first, with its own sheet (`sheet()` from
-  `js/features/permissions.js`):
-  "Keep downloads safe? Downloads can be large. When space on this device runs low, the browser may delete
-  them without asking. OpenTranslate can ask the browser to keep them." Buttons: "Keep them safe" / "Not now".
-  The download starts either way.
-- Only after "Keep them safe" does the app ask the browser (`navigator.storage.persist()`). Firefox then shows
-  its own prompt; Chrome, Edge and Safari decide by themselves (installed, bookmarked, used a lot).
-- If the browser says no, ask the browser again later without a new sheet, because its answer can change:
-  after the app is installed (`appinstalled`, or the first start as an installed app), and at the next
-  downloads. Stop once it says yes. (Firefox remembers a "Block" and won't prompt again.)
-- "Not now" in the sheet: don't ask again by sheet. Settings gets a switch "Keep downloads safe" to change it.
-- A helper `ensurePersisted()` in `js/ui/storage.js`, called from the download buttons (language packs, voices,
-  models, PP-OCRv6, on-device AI; `js/features/offline.js`, `bgfetch.js`).
-- Show the result in Settings › storage line: "· Kept safe", or "· May be deleted when space runs low" with a
-  hint "Install the app to keep them safe". Nothing shown where the browser has no storage API.
-
-## 7. background fetch
-
-(Done, Nov 2026: language packs, voices, PP-OCRv6, speech, handwriting and on-device AI models; not yet tried on a phone.) Downloads keep going when the app is closed (Background Fetch): large language and model downloads finish even if you leave the app. This works in Chrome on Android only.
+- Camera photo translated in place (#1): try Tesseract and PP-OCRv6 on real photos (only AI vision was
+  tried, in a test).
+- Live subtitles (#2): try Chrome's own speech service and tab sound on a real computer. Phones: see #13.
+- Right-to-left translations in saved files (#5): .txt files have no direction mark, and Word / OpenDocument
+  files keep their paragraph direction.
+- Screen readers (#5): try the app with real TalkBack, VoiceOver and NVDA.
+- Keep downloads safe (#6): try in Firefox (its own prompt, and "Block" is remembered).
+- Translate a file or website (#9):
+  - A scanned PDF (no text) isn't translated in "Translate a file", only in camera text.
+  - Text in pictures on websites isn't translated.
+  - The files' own links, and formatting inside a paragraph (e.g. one bold word), go to the whole paragraph.
+- Word highlight while reading aloud (#16): try with a real ElevenLabs key.
+- Faster loading (#18c): the web host only has gzip (no Brotli) and only speaks HTTP/1.1 (no HTTP/2 or
+  HTTP/3); that would need IONOS or Cloudflare in front.
 
 ## 8. pip
    
 (Done, Nov 2026: Chrome/Edge on computers. Live captions in it: later, with #2.) A floating translator window (Picture-in-Picture): on a computer, a small always-on-top window for translating while you work in other apps. It also fits the live subtitles idea.
    
-## 9. File and Website Translation
-
-(Done, Nov 2026; not yet tried on a phone. Tried in a test: every format below, the PDF's two results,
-the size question, Stop, sharing a .docx to the app, and a real page through joram.eu's proxy. Left for
-later: a scanned PDF (no text) isn't translated here, only in camera text; text in pictures on websites;
-the files' own links and formatting inside a paragraph.)
-Plan (agreed Nov 2026):
-- Where: "Translate a file or website" in the ⋮ menu (and a home-screen shortcut, below) opens a sheet:
-  pick or drop a file, or paste a link. Files opened with or shared to the app that the text box can't
-  take well (.docx, .pptx, …) open there too.
-- Files, translated in place, same format out, translation only: Word .docx, PowerPoint .pptx, Excel
-  .xlsx (text cells only, numbers and formulas left alone), OpenDocument .odt/.ods/.odp, e-books .epub,
-  .html, .txt/.md, subtitles .srt/.vtt (lines and times kept), .csv, .po and .json strings. Office files
-  are ZIPs of XML: the text of each paragraph is swapped (formatting inside a paragraph, e.g. one bold
-  word, goes to the whole paragraph). The ZIP reader (fflate) loads only when needed, from jsDelivr.
-- PDF, two results: a readable page view (translated paragraphs page by page, next to the original;
-  download as .html or .txt) and "Original layout" (each page drawn like #1, translation over the text,
-  saved as a new PDF of page pictures, so any script works; its text can't be selected).
-- Websites by link: the page with its layout and pictures, text translated, in a safe frame with the
-  site's scripts off; a tapped link is translated too. Download as .html. Most sites can't be read from
-  another site (CORS), so: the user's own proxy in Settings (a URL template like
-  https://my-proxy.example/?url={url}), with a short guide and a tiny Cloudflare Worker to copy. The app has
-  one built in (the owner's Worker, open to every copy); a site can set another in change-me.txt
-  (web_proxy, or none). Without one, only sites that allow it work.
-- Size: up to 20,000 characters starts right away; above that it shows the size (characters, pages) and
-  the service and asks first. Progress and a Stop button while it runs.
-- Translation: segments are sent in batches (one per line); if a service returns a different number of
-  lines, that batch goes segment by segment.
-- Home-screen shortcuts (manifest): each gets its own icon (camera, speech bubbles, pen) instead of the
-  app icon, and a 4th, "Translate a file". (Done, Nov 2026.)
-
-## 12. Share more to OpenTranslate
-
-(Done, Nov 2026; not yet tried on a phone.) Before, "Share → OpenTranslate" (Android) took text, links and one photo. Plan (agreed Nov 2026):
-- .txt files: the text goes into the text box (UTF-8, else Windows-1252), up to 5,000 characters (what the
-  text box holds); a note when it was cut.
-- PDFs: pdf.js (Mozilla's PDF reader, exact version from jsDelivr like the voice engine) loads only when a
-  PDF arrives; its text goes into the text box. Pages without text (scans) open in camera text instead,
-  one page per photo (see below). Everything stays on the device; only the reader is downloaded.
-- Several photos: camera text opens the first one, with a strip of thumbnails to switch; each photo keeps
-  its own result. Up to 10. "Import" in camera text takes several photos too.
-- How: the manifest's share_target accepts image/*, text/plain and application/pdf; the service worker
-  keeps every file (not only the first photo) and opens ./?share=files. "Open with OpenTranslate" on a
-  computer (file_handlers) gets .pdf too, with the same code.
-- Test: submit a share form to ./share in Playwright (text, .txt, a text PDF, a scanned PDF, 3 photos);
-  then on your Android phone from Files, Gmail and WhatsApp.
-
 ## 10. App stores without Google Play: AltStore PAL, F-Droid, other Android stores, a plain APK
 
 Preferred over the Play Store (below). Ideas to check:
@@ -253,146 +84,6 @@ Try each on a real Android phone (and an iPhone) before building it out.
 Accessibility notices: a short "Accessibility" section at the bottom of Settings listing what doesn't
 work with screen readers or other assistive tech, and what to use instead. First entry: the floating
 captions on phones (a video, so not readable; use the captions screen instead). Later entries as found.
-
-## 14. Backup and move to another device
-
-(Done, Nov 2026; QR scanning not yet tried on a phone. Differences from the plan: QR codes are scanned in
-Import itself, not in camera text; opening a backup file with "Open with" isn't wired up, use Import.)
-Take settings, history and phrasebook to a new phone or computer, without an account. Plan (agreed Nov 2026):
-- In Settings: "Back up or move" with Export and Import.
-- What goes in: settings (engines, languages, options), phrasebook, history, recent languages. Downloads
-  (language packs, voices, models) don't: they're too big, and the new device downloads them again.
-- API keys: a checkbox "Include API keys", off by default, with a note that anyone who has the backup can
-  use them. Without it, the engines come over without their keys, and the app asks for them.
-- Three ways, same data:
-  - File: download an `opentranslate-backup-YYYY-MM-DD.json` (on Android: Share it). Import with a file
-    picker, or by opening the file with OpenTranslate (file_handlers, #12).
-  - Copy as text: the same backup as one text block to paste into a chat or an email to yourself; Import
-    has a "Paste" box.
-  - QR codes: the backup split into numbered codes ("2 of 5") with Back / Next buttons. The other device
-    scans them in camera text (BarcodeDetector: Android Chrome, Macs; not Windows Chrome) in any order and
-    shows which ones are still missing. The QR codes are drawn by a small library loaded only when needed.
-- Import asks before replacing: "Replace" or "Add to" (phrasebook and history are merged without duplicates;
-  settings are replaced). A backup from a newer app version still opens; unknown parts are skipped.
-- Test: export → import in a second browser profile (file, text); QR codes with a fake camera showing them.
-
-## 15. Show to someone
-
-(Done, Nov 2026; not yet tried on a phone.) Show the translation big to the person you're talking to, e.g. at a pharmacy or to a taxi driver. Plan
-(agreed Nov 2026):
-- A full-screen button (icon) next to Copy and Share under the text result.
-- The card: only the translation, as big as fits on the screen, nothing else (no original). Light text on
-  dark or the other way round, as the theme. Closes with ✕, Back or Escape.
-- Reads the translation aloud after 5 seconds ("Reading aloud in 5…"), with a Stop button; Play to hear it
-  again. No voice for the language: no countdown.
-- Keeps the screen on while open (Screen Wake Lock). A web app can't turn up the brightness (native app: #11).
-- Full screen (Fullscreen API) where the browser allows it; otherwise a page-filling layer.
-
-## 16. Highlight each word while reading aloud
-
-(Done, Nov 2026: Text result and Show to someone; not yet tried with a real ElevenLabs key or on a phone.)
-While a translation is read aloud, the word being spoken is marked, at normal and at the slower speed (the
-second press of Play is already slower). Plan (agreed Nov 2026):
-- Only with exact timings: the browser's own voices that report word boundaries (`onboundary`; many
-  on-device voices do, Google's online voices on Chrome don't) and ElevenLabs (its "with timestamps"
-  speech endpoint). Piper and other voices without timings play as now, without a highlight.
-- Always on while playing; the mark goes when it stops. In the Text result first; Show to someone (#15)
-  and the phrasebook can use it too.
-- Screen readers: the highlight is only visual (no announcements for each word).
-
-## 17. Speed and wording pass (whole app, phone first)
-
-(Done, Nov 2026; tried in Playwright with phone emulation, a slow network and a 4× slower CPU, not on a real
-phone.)
-- Works offline again with "Detect language": the language detector (franc-min, MIT) ships in
-  `vendor/franc/` and is in the offline cache. It used to load from a CDN, so on-device translation failed
-  without internet with "Failed to fetch dynamically imported module…".
-- Plain words instead of browser errors when something couldn't load (`errorText`, `describeError`).
-- Warm-up: the on-device engine and the pair's models load when the text box gets focus; Tesseract and its
-  language file start while the camera is aiming. Only with the languages already downloaded (no surprise
-  downloads), and the AI engines (Florence-2, PP-OCRv6) still ask first.
-- The last 60 translations and detections of each service are kept in memory: swapping back or
-  re-translating the same text is instant.
-- Starts with half the code: camera, conversation, handwriting, settings, file translation, feedback and
-  opened files load in idle time right after the start, or at once when opened. The rest is fetched at once
-  (`<link rel="modulepreload">`, written by `.github/scripts/preload.mjs` on every deploy). Measured on
-  the emulated phone: ready in 2.9 s instead of 5.1 s. (Since #18c the deploy bundles the scripts instead.)
-- Camera with "Detect language": if the text comes out as nonsense, Tesseract's script detection (OSD,
-  4 MB, downloaded the first time it's needed) finds the script and the photo is read again, e.g. with
-  Russian + English. The next photos start with that script. Tried with Cyrillic and Latin test images.
-- Wording: "Stop reading aloud" for the speaker (the mic keeps "Stop listening"); "Saved translations"
-  everywhere instead of "phrasebook"; "service" instead of "provider"; "Service is busy" instead of
-  "Slow down"; every message ends with a full stop.
-
-## 18. User experience pass (typical tasks on a phone)
-
-(Done, Nov 2026; tried in Playwright on an emulated Pixel 7 and iPhone SE, light and dark, not on a real
-phone.)
-- Photos: when a language file for reading photos can't be downloaded (bad connection), the camera says so
-  with "Try again" instead of waiting forever. Tesseract.js only reported this as an uncaught error.
-- The "Translation saved · Undo" message (and other messages with a button) closes when you move to
-  another tab, instead of covering the camera's shutter or the conversation's mic.
-- First visit: translates into the phone's language (was always Spanish); Conversation starts with
-  "your language" = the phone's language. Typed text that's already in the target language ("Detect
-  language", English into English) is translated into the last other language you used.
-- A first offline download is offered as a calm blue card ("Translate on this device", the size on the
-  button, where the files come from in small print) instead of a red error.
-- Detection of short texts: a close call ("Wo ist der Bahnhof?": Dutch 1.00, German 0.99) goes to a
-  language you use (the phone's or a recent one).
-- Phone text box: grows up to about a third of the screen, then scrolls inside, so the translation stays
-  in view. The line between your text and the translation resizes it (drag; arrow keys; double-tap or
-  Enter = automatic again); the size is remembered. A long translation no longer gets squashed under its
-  own buttons, and your text and the translation always share one text size.
-- Conversation: a short hint in the empty transcript (what to tap, who speaks which language).
-- Settings: services first, storage after them; Move up / Move down / Remove are in a "⋯" menu on each
-  row instead of three more buttons.
-- Language names: a service that only sends codes ("de") still shows "German".
-
-## 18b. Design audit fixes (UX and visual craft review)
-
-(Done, Nov 2026; checked in Playwright at 320, 390, 800 and 1280 px, light and dark, with axe-core: no
-problems found. Not tried on a real phone.)
-- Typed text that's already in the target language: the translation area now says so ("Your text is
-  already English, so it's translated into Spanish."), also before the first download, so "Download
-  Spanish" no longer looks like a mistake.
-- Phones, keyboard: the Tab order follows the screen (text box, then the language buttons, then
-  Conversation, Mic and Camera). Tabbing into the text box no longer hides those three; a tap or typing
-  still switches to typing mode.
-- Settings, first visit: a calm blue hint ("Choose how to translate") with a "Download a language"
-  button instead of a red warning. Section titles are now the largest heading, then Translation / Voice /
-  Text recognition, then the small list names.
-- One blue everywhere: the 1200px+ layout no longer switches to a brighter blue. The camera's fixed
-  dark colours, recording red, the "!" badge and white paper are named colours too.
-- Type and spacing scale: every font size is one of nine sizes (`--fs-xs` 12px to `--fs-5xl` 36px);
-  margins, paddings and gaps use `--sp-1`…`--sp-8` (4px steps). Odd sizes (11, 13, 15, 17px…) and
-  spacing (6, 10, 14, 18px…) were rounded to the nearest step.
-- Language buttons on phones: "Detect", and the detected language as "English" over a small "detected",
-  instead of a cut-off "Detect lan…".
-- The offline download card: "Where it comes from" opens the source address instead of showing it in
-  tiny type.
-- Motion: switches, the feedback progress bar, the snackbar and the language buttons only animate
-  movement and fading (smoother); sheets speed up as they close.
-- Small "Where it comes from", feedback and proxy-guide toggles are at least 44px tall; the version link
-  at least 24px.
-- Headings wrap into even lines; paragraphs avoid a single word on the last line.
-
-## 18c. New logo, small fixes and faster loading
-
-(Done, Nov 2026; checked in Playwright and on the live site, not on a real phone.)
-- New 文A logo (blue 文, green A) for the header, favicon, app icons, shortcut icons and the social preview
-  (`icons/opentranslate-social-preview.png`, uploaded on GitHub). The floating window has its own picture-in-picture icon; the Text tab uses a notes icon.
-- Text already in the target language: the target switches to the last other language you used, so the
-  language bar and the note say the same.
-- Settings: Camera text and Handwriting share one Tesseract and one set of languages, and both say so.
-  "Reload app" became "Update now" and only shows when a newer version exists.
-- Handwriting's pen-width slider is 44px tall; the version link is 44px on touch screens.
-- `.htaccess` compresses CSS, JS, HTML, JSON, SVG and WebAssembly. The web host only has gzip (no Brotli)
-  and only speaks HTTP/1.1 (no HTTP/2 or HTTP/3; that would need IONOS or Cloudflare in front).
-- Because HTTP/1.1 downloads at most 6 files at a time, the deploy now bundles the app's scripts
-  (`.github/scripts/bundle.mjs`, Rollup + esbuild): the app starts with 1 script instead of 38, and parts
-  opened later (camera, settings, documents, …) are separate files in `js/chunks/`, loaded when needed.
-  The repo itself stays unbundled. Measured with a slow 4G connection: ready in about 2.1 s instead of 3.1 s;
-  on the live site about 1.2 s. Offline start still works.
 
 ## 19. First-run welcome (idea)
 

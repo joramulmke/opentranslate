@@ -389,7 +389,7 @@ export function initConversation({ leave = () => {} } = {}) {
   /* ---------------- voice ---------------- */
 
   async function toggleMic() {
-    if (captions) { userStopped = true; captions.stop(); return; }
+    if (captions) { userStopped = true; captions.stop({ keep: true }); return; }   // the last words still come in
     if (stopDictation) { userStopped = true; stopDictation(); return; }
     if (mode === 'listening' && audioSource() === 'tab') { stopSpeaking(); userStopped = false; startLive(); return; }
     if (!canDictate()) {
@@ -434,8 +434,9 @@ export function initConversation({ leave = () => {} } = {}) {
         if (!on) return;
         status.textContent = st === 'transcribing' ? `Live captions · ${name} · transcribing…` : `Live captions · ${name}${tab ? ' · tab sound' : ''}`;
       },
-      onInterim: (t) => setLive(t),
-      onFinal: (t) => { setLive(''); addUtterance('them', t); },
+      onInterim: (t) => { if (on) setLive(t); },
+      // after Stop, the last words can still come in (captions.js, keep); not once you left Listening
+      onFinal: (t) => { if (!visible || mode !== 'listening') return; setLive(''); addUtterance('them', t); },
       onPaused: () => { toast('Live captions paused after 2 minutes of silence. Tap the mic to go on.', { duration: 8000 }); },
       onError: (e) => {
         const m = e?.message;

@@ -42,13 +42,35 @@ export async function openPdf(blob, onStatus = () => {}) {
 
 const hasWords = (s) => (s.match(/[\p{L}\p{N}]/gu) || []).length >= 15;
 
+/** Pages drawn as pictures for camera text (scans, photos of pages): canvases, in page order. */
+async function draw(doc, nums, onStatus) {
+  const out = [];
+  for (const n of nums) {
+    onStatus(`Preparing page ${n} of ${doc.numPages}…`);
+    const page = await doc.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: Math.min(4, SCAN_SIDE / Math.max(base.width, base.height)) });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+    page.cleanup();
+    out.push(canvas);
+  }
+  return out;
+}
+
 /**
  * Read a PDF.
  * @param {Blob} blob
  * @param {{ maxChars?: number, maxScans?: number, onStatus?: (text: string) => void }} opts
- * @returns {Promise<{ text: string, pages: number, textPages: number, cut: boolean, scans: HTMLCanvasElement[], scanPages: number }>}
+ * @returns {Promise<{ text: string, pages: number, textPages: number, cut: boolean, scans: HTMLCanvasElement[], scanPages: number, emptyPages: number[] }>}
  *   text: the text of the pages that have some (up to maxChars); scans: drawn pages without text, only
- *   when the PDF has no text at all (up to maxScans; scanPages counts them all).
+ *   when the PDF has no text at all (up to maxScans; scanPages counts them all); emptyPages: the numbers
+ *   of the pages without text that were looked at (for drawPages, when the PDF has text and scans).
  */
 export async function readPdf(blob, { maxChars = 5000, maxScans = 10, onStatus = () => {} } = {}) {
   const { task, doc } = await openPdf(blob, onStatus);
@@ -69,27 +91,16 @@ export async function readPdf(blob, { maxChars = 5000, maxScans = 10, onStatus =
     }
     let text = parts.join('\n\n');
     if (text.length > maxChars) { text = text.slice(0, maxChars); cut = true; }
-    const scans = [];
-    if (!parts.length) {
-      // a scan: draw the pages for camera text
-      for (const n of empty.slice(0, maxScans)) {
-        onStatus(`Preparing page ${n} of ${doc.numPages}…`);
-        const page = await doc.getPage(n);
-        const base = page.getViewport({ scale: 1 });
-        const viewport = page.getViewport({ scale: Math.min(4, SCAN_SIDE / Math.max(base.width, base.height)) });
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(viewport.width);
-        canvas.height = Math.round(viewport.height);
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({ canvas, canvasContext: ctx, viewport }).promise;
-        page.cleanup();
-        scans.push(canvas);
-      }
-    }
-    return { text, pages: doc.numPages, textPages: parts.length, cut, scans, scanPages: parts.length ? 0 : empty.length };
+    // a scan: draw the pages for camera text
+    const scans = parts.length ? [] : await draw(doc, empty.slice(0, maxScans), onStatus);
+    return { text, pages: doc.numPages, textPages: parts.length, cut, scans, scanPages: parts.length ? 0 : empty.length, emptyPages: empty };
   } finally {
     task.destroy();
   }
+}
+
+/** Some pages of a PDF drawn as pictures for camera text (a PDF with text pages and scanned pages). */
+export async function drawPages(blob, nums, { onStatus = () => {} } = {}) {
+  const { task, doc } = await openPdf(blob, onStatus);
+  try { return await draw(doc, nums, onStatus); } finally { task.destroy(); }
 }

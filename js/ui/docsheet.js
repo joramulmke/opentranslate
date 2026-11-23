@@ -6,7 +6,7 @@ import { siteValue, loadSiteConfig } from '../siteconfig.js';
 import { setupDialog, openDialog } from './sheet.js';
 import { toast, copyToClipboard } from './snackbar.js';
 import { icon } from './icons.js';
-import { isPhone, canShareFile, sendFiles } from './sendfile.js';
+import { isPhone, canShareFile, sendFiles, today, slugWords } from './sendfile.js';
 import { DEFAULT_PROXY, ASK_ABOVE, ACCEPT, FORMATS, extOf, outName, openDocument, translateTexts, sourceFor, fetchPage, openPage, workerCode } from '../features/doctranslate.js';
 
 const $ = (id) => document.getElementById(id);
@@ -312,7 +312,9 @@ async function translateWebsite(url) {
   el.frame.onload = () => hookLinks(page.url);
   el.frame.srcdoc = html;
   const host = (() => { try { return new URL(page.url).hostname.replace(/^www\./, ''); } catch { return 'page'; } })();
-  offer((share) => (share ? 'Share page (.html)' : 'Download (.html)'), new Blob([html], { type: 'text/html' }), `${host}.${state.target}.html`);
+  // like photos: the translated title's first words (else the site) + language + date
+  const fileName = `${[slugWords(page.title()) || host.replace(/\./g, '-'), state.target, today()].join('-')}.html`;
+  offer((share) => (share ? 'Share page (.html)' : 'Download (.html)'), new Blob([html], { type: 'text/html' }), fileName);
   // the translated text alone (IDEAS #5): Share text on phones, Copy text on computers
   const share = isPhone() && navigator.share;
   const tb = document.createElement('button');

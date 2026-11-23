@@ -42,6 +42,11 @@ async function shot(name, { width, height, scale }, view, prepare) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: scale, colorScheme: 'light',
     serviceWorkers: 'block', reducedMotion: 'reduce', locale: 'en-US' });
   const page = await ctx.newPage();
+  // English into Spanish, as a visitor from an English phone would set it: without this the app (rightly)
+  // notes that English text can't go into English and switches, and that note would be in the picture
+  await page.addInitScript(() => {
+    try { if (!localStorage.getItem('ot.settings.v1')) localStorage.setItem('ot.settings.v1', JSON.stringify({ target: 'es' })); } catch { /* */ }
+  });
   await page.goto(`${BASE}#${view}`);
   await page.waitForFunction(() => window.__otBooted === true);
   if (prepare) await prepare(page);

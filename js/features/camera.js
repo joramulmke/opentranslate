@@ -404,7 +404,9 @@ export function initCamera({ sendToText }) {
       if (zipSync) {
         const parts = {};
         for (const f of files) parts[f.name] = [new Uint8Array(await f.arrayBuffer()), { level: 0 }];   // JPEGs don't shrink
-        const name = `translated-photos-${state.target}-${today()}.zip`;
+        // like the photos: the first photo's first words + language + date, e.g. pharmacy-please-ring-en-2026-11-23.zip
+        const first = list.map((x) => x.shot).find((x) => x?.translated);
+        const name = `${[slugWords(first?.translated) || 'translated-photos', state.target, today()].join('-')}.zip`;
         await sendFiles([new File([zipSync(parts)], name, { type: 'application/zip' })], `${files.length} translated photos (.zip)`);
         return;
       }

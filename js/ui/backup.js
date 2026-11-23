@@ -182,6 +182,11 @@ async function drawQr(canvas, text) {
 /* ---------------- Settings UI ---------------- */
 
 const $ = (id) => document.getElementById(id);
+let importText = null;   // set by initBackup: opens Import with a backup's text
+
+/** A backup opened with or shared to the app: Import opens with it, ready to confirm. */
+export function openBackupImport(text) { importText?.(text); }
+
 const canScan = () => 'BarcodeDetector' in window && !!navigator.mediaDevices?.getUserMedia;
 const canCompress = () => typeof CompressionStream === 'function';
 
@@ -253,6 +258,10 @@ export function initBackup() {
     $('backup-scan').hidden = !canScan() || !canCompress();
     openDialog(dlg);
   });
+  importText = (text) => {
+    $('backup-import').click();
+    tryText(text);
+  };
   $('backup-pick').addEventListener('click', () => $('backup-file-input').click());
   $('backup-file-input').addEventListener('change', async (e) => {
     const f = e.target.files?.[0];

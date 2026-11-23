@@ -282,13 +282,15 @@ function boot() {
       navigate('camera', { replace: true });
       return true;
     },
+    // an OpenTranslate backup: Settings › Back up or move › Import, ready to confirm
+    toBackup: (text) => part('settings').then(() => import('./ui/backup.js')).then((b) => b.openBackupImport(text)),
   };
   const openFiles = (...a) => part('files').then((m) => m.openFiles(...a));
   onOpenedFiles((files) => openFiles(files, fileTargets));
   takeShare().then(async (shared) => {
     if (!shared) return;
     if (shared.kind === 'files') { await openFiles(shared.files, { ...fileTargets, text: shared.text }); return; }
-    fileTargets.toText(shared.text);
+    await openFiles([], { ...fileTargets, text: shared.text });   // a backup's text goes to Import
   });
 
   window.__otBooted = true;

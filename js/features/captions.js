@@ -4,6 +4,8 @@
 //    browser ends it (about every minute, after silence, or when the app was in the background).
 //  - Recording engines (your AI service's Whisper, ElevenLabs, on-device Whisper): the audio is cut at
 //    pauses; the next piece is already recording while the last one is transcribed, so nothing is lost.
+//    Stopped with stop({ keep: true }) (the Stop button), the words of the piece still being recorded
+//    and of pieces still being transcribed come in after onEnd; without keep (leaving) they're dropped.
 //  - Audio from the microphone, or (computers) a tab or the screen, shared with its sound. Shared sound
 //    always goes to a recording engine: the browser's speech service only listens to the microphone.
 // Optional: pause after 2 minutes without speech, to save battery.
@@ -30,7 +32,7 @@ export const usesBrowserService = () => browserSpeechAvailable() && speechOrder(
  * @param {{ source?: 'mic'|'tab', pauseWhenQuiet?: boolean,
  *   onInterim?: (text: string) => void, onFinal?: (text: string) => void, onState?: (state: string) => void,
  *   onPaused?: () => void, onError?: (e: Error) => void, onEnd?: () => void }} cbs
- * @returns {{ stop: () => void, setPauseWhenQuiet: (on: boolean) => void }}
+ * @returns {{ stop: (opts?: { keep?: boolean }) => void, setPauseWhenQuiet: (on: boolean) => void }}
  */
 export function startCaptions(lang, cbs = {}) {
   let stopped = false;
@@ -41,15 +43,15 @@ export function startCaptions(lang, cbs = {}) {
     if (!stopped && pauseWhenQuiet && Date.now() - lastHeard > QUIET_PAUSE_MS) { finish(); cbs.onPaused?.(); }
   }, 5000);
   const heard = () => { lastHeard = Date.now(); };
-  function finish() {
+  function finish({ keep = false } = {}) {
     if (stopped) return;
     stopped = true;
     clearInterval(quietTimer);
-    engine?.stop();
+    engine?.stop(keep);
     cbs.onInterim?.('');
     cbs.onEnd?.();
   }
-  const fail = (e) => { if (stopped) return; finish(); cbs.onError?.(e); };
+  const fail = (e) => { if (stopped) return; finish(); cbs.onError?.(e); };   // keep: false, nothing more comes
   const live = () => !stopped;
 
   if (cbs.source !== 'tab' && usesBrowserService()) {
@@ -141,16 +143,18 @@ function recordEngine(lang, source, { onInterim, onFinal, onState, heard, live, 
   let rec = null;
   let chain = Promise.resolve();
   let pending = 0;
+  let draining = false;   // stopped with keep: the last pieces are still transcribed and handed over
+  const deliver = () => live() || draining;
   const mimeType = MIME.find((m) => window.MediaRecorder?.isTypeSupported?.(m));
 
   const status = () => onState?.(pending ? 'transcribing' : 'listening');
   function enqueue(blob) {
     pending++; status();
     chain = chain.then(async () => {
-      if (!live()) return;
+      if (!deliver()) return;
       try {
         const { text } = await transcribe(blob, lang, { onStatus: () => {} });
-        if (live() && text) onFinal?.(text.trim());
+        if (deliver() && text) onFinal?.(text.trim());
       } catch (e) {
         const m = e?.message || '';
         // no engine, or the service refused: stop; anything else (a bad piece of audio): carry on
@@ -163,7 +167,7 @@ function recordEngine(lang, source, { onInterim, onFinal, onState, heard, live, 
     const r = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     const p = { r, chunks, heard: false, start: performance.now(), lastLoud: 0 };
     r.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-    r.onstop = () => { if (p.heard && live()) enqueue(new Blob(chunks, { type: r.mimeType || mimeType || 'audio/webm' })); };
+    r.onstop = () => { if (p.heard && deliver()) enqueue(new Blob(chunks, { type: r.mimeType || mimeType || 'audio/webm' })); };
     r.start(250);
     return p;
   }
@@ -201,12 +205,18 @@ function recordEngine(lang, source, { onInterim, onFinal, onState, heard, live, 
   })();
 
   return {
-    stop() {
+    /** keep: the piece being recorded is still transcribed, like those waiting; else all are dropped. */
+    stop(keep = false) {
       clearInterval(timer);
+      draining = keep;
       const r = rec; rec = null;
-      if (r && r.r.state !== 'inactive') r.r.stop();   // stopped: the last piece is dropped, not transcribed
-      stream?.getTracks().forEach((t) => t.stop());
-      ctx?.close().catch(() => {});
+      const close = () => {
+        stream?.getTracks().forEach((t) => t.stop());
+        ctx?.close().catch(() => {});
+        chain.then(() => { draining = false; });   // after the last piece: nothing more comes
+      };
+      // the recorder's own onstop (set in piece()) runs first and queues the last piece
+      if (r && r.r.state !== 'inactive') { r.r.addEventListener('stop', close, { once: true }); r.r.stop(); } else close();
     },
   };
 }
