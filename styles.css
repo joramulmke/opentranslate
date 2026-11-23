@@ -334,6 +334,8 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
   margin: 0; font-size: 32px; line-height: 40px; color: inherit;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
+/* the word being read aloud (IDEAS #16) */
+::highlight(spoken-word) { background-color: var(--primary-container); color: var(--on-primary-container); }
 .out-text.stale { opacity: .8; transition: opacity .2s; }
 .mock-chip {
   display: inline-block; margin-top: 12px; padding: 2px 10px; border-radius: 8px;
@@ -1558,3 +1560,48 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
   color: var(--primary); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; border-radius: 8px; }
 .wikt-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .wikt-link[hidden] { display: none; }
+
+/* Show to someone (IDEAS #15): the translation alone, as big as fits */
+dialog.show-card {
+  position: fixed; inset: 0; margin: 0; width: 100%; height: 100dvh; max-width: none; max-height: none;
+  border: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background: var(--surface); color: var(--on-surface); display: none; flex-direction: column;
+}
+dialog.show-card[open] { display: flex; animation: fade .2s; }
+dialog.show-card::backdrop { background: var(--surface); }
+.show-close { position: absolute; top: calc(8px + env(safe-area-inset-top)); inset-inline-end: calc(8px + env(safe-area-inset-right)); z-index: 1; }
+.show-box { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 56px 24px 8px; overflow: hidden; }
+.show-text {
+  margin: 0; max-width: 100%; max-height: 100%; font-weight: 600; line-height: 1.2; text-align: center;
+  overflow-wrap: normal; hyphens: manual; white-space: pre-wrap;
+}
+.show-text.break { overflow-wrap: anywhere; }
+.show-bar { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 8px 16px 20px; min-height: 72px; flex-wrap: wrap; }
+.show-status { font-size: 1.05rem; color: var(--on-surface-variant); }
+.show-play {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 24px; border: 0; border-radius: 24px;
+  background: var(--primary); color: var(--on-primary); font: inherit; font-size: 1.05rem; font-weight: 600; cursor: pointer;
+}
+.show-play svg { width: 22px; height: 22px; fill: currentColor; }
+.show-play:focus-visible { outline: 3px solid var(--on-surface); outline-offset: 2px; }
+
+/* Back up or move (IDEAS #14) */
+.backup-note { margin: 0 4px 8px; font-size: 13px; line-height: 18px; color: var(--on-surface-variant); }
+#backup-group .switch-row small { display: block; font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
+.backup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 4px; }
+.backup-actions .btn svg, .backup-qr-nav .btn svg { width: 18px; height: 18px; fill: currentColor; }
+.backup-body { padding: 0 20px 20px; overflow-y: auto; }
+.backup-qr-panel { display: flex; flex-direction: column; align-items: center; }
+.backup-qr { width: min(100%, 360px); height: auto; aspect-ratio: 1; image-rendering: pixelated; border-radius: 8px; }
+.backup-qr-nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 12px; }
+.backup-qr-count { min-width: 5em; text-align: center; font-weight: 600; }
+.backup-video { display: block; width: 100%; max-height: 40dvh; object-fit: cover; border-radius: 12px; background: #000; margin: 8px 0; }
+.backup-paste-label { display: block; margin: 12px 4px 4px; font-size: 14px; }
+.backup-paste {
+  display: block; width: 100%; box-sizing: border-box; font: 13px/1.4 ui-monospace, monospace; padding: 8px 12px;
+  border: 1px solid var(--outline); border-radius: 8px; background: var(--surface); color: var(--on-surface); resize: vertical;
+}
+.backup-confirm { margin-top: 16px; padding: 12px; border-radius: 12px; background: var(--surface-container); }
+.backup-summary { margin: 0 4px 8px; font-weight: 600; }
+.backup-mode { border: 0; padding: 0; margin: 0 0 8px; }
+.backup-mode legend { padding: 0 4px; font-size: 14px; color: var(--on-surface-variant); }

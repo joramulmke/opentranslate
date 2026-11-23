@@ -82,7 +82,19 @@ export function nextIsSlow(text, lang) {
   return !!lastPlay && lastPlay.key === `${lang}\u0000${text}` && Date.now() - lastPlay.end < REPLAY_WINDOW && !lastPlay.slow;
 }
 
-function playSystem(text, lang, slow, onStart) {
+/** Can a voice read this language right now, without downloading one first? */
+export function canReadAloud(lang) {
+  if (!lang || lang === 'auto') return false;
+  return hasSystemVoice(lang) || (systemTts() && !voices.length) || !!piperVoice(lang)
+    || !!kokoroFor(lang, settings.get().kokoroVoices || {}) || !!ttsApiEntry() || !!elevenEntry('tts');
+}
+
+// Word highlight (IDEAS #16): onWord(start, end) gives the character range of the word being spoken,
+// onWord(-1, -1) clears it. Only where the timing is exact: system voices that report word boundaries,
+// and ElevenLabs (its timestamps). Other voices just play.
+const wordEnd = (text, i) => { const m = /^[^\s]+/.exec(text.slice(i)); return i + (m ? m[0].length : 0); };
+
+function playSystem(text, lang, slow, onStart, onWord) {
   return new Promise((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = lang === 'zh' ? 'zh-CN' : lang === 'zh-Hant' ? 'zh-TW' : lang;
@@ -91,21 +103,40 @@ function playSystem(text, lang, slow, onStart) {
     u.rate = slow ? SLOW_RATE : NORMAL_RATE;
     const me = { stop: () => speechSynthesis.cancel() };
     u.onstart = () => onStart();
-    u.onend = () => resolve(current === me);
-    u.onerror = () => resolve(false);
+    u.onboundary = (ev) => {
+      if (!onWord || ev.name !== 'word' || current !== me) return;
+      const i = ev.charIndex;
+      // some voices leave out charLength; then the word runs to the next space
+      onWord(i, ev.charLength ? i + ev.charLength : wordEnd(text, i));
+    };
+    u.onend = () => { onWord?.(-1, -1); resolve(current === me); };
+    u.onerror = () => { onWord?.(-1, -1); resolve(false); };
     current = me;
     speechSynthesis.speak(u);
   });
 }
 
-function playBlob(blob, slow, onStart) {
+function playBlob(blob, slow, onStart, words, onWord) {
   return new Promise((resolve) => {
     player ??= new Audio();
     const url = URL.createObjectURL(blob);
     const me = { stop: () => { player.pause(); finish(false); } };
     let ended = false;
+    let frame = 0;
+    let shown = -1;
+    // words: [{ start, end, t }] (t = seconds into the recording); currentTime follows the playback rate
+    const follow = () => {
+      if (ended) return;
+      const now = player.currentTime;
+      let k = -1;
+      for (let i = 0; i < words.length && words[i].t <= now; i++) k = i;
+      if (k !== shown) { shown = k; if (k >= 0) onWord(words[k].start, words[k].end); }
+      frame = requestAnimationFrame(follow);
+    };
     const finish = (completed) => {
       if (ended) return; ended = true;
+      cancelAnimationFrame(frame);
+      if (words?.length && onWord) onWord(-1, -1);
       player.onended = player.onerror = player.onplaying = null;
       URL.revokeObjectURL(url);
       resolve(completed && current === me);
@@ -113,7 +144,7 @@ function playBlob(blob, slow, onStart) {
     player.src = url;
     player.playbackRate = slow ? SLOW_RATE / NORMAL_RATE : 1;   // recordings are made at normal speed
     if ('preservesPitch' in player) player.preservesPitch = true;
-    player.onplaying = () => onStart();
+    player.onplaying = () => { onStart(); if (words?.length && onWord && !frame) follow(); };
     player.onended = () => finish(true);
     player.onerror = () => finish(false);
     current = me;
@@ -151,7 +182,11 @@ async function pickEngine(text, lang) {
         if (e) return { engine, blob: await recording(engine, text, lang, () => createProvider('openai', e.config).speak(text, lang)) };
       } else if (engine === 'elevenlabs') {
         const e = elevenEntry('tts');
-        if (e) return { engine, blob: await recording(engine, text, lang, () => createProvider('elevenlabs', e.config).speak(text, lang)) };
+        if (e) {
+          // with word timings (same price): { blob, words }
+          const r = await recording(engine, text, lang, () => createProvider('elevenlabs', e.config).speakTimed(text, lang));
+          return { engine, blob: r.blob, words: r.words };
+        }
       }
     } catch (err) { lastError = err; }   // this engine failed: try the next one
   }
@@ -164,16 +199,16 @@ async function pickEngine(text, lang) {
  * can read that language (the UI shows a message), or Error('NO_TTS') if nothing can play sound.
  * onStart(slow) says whether this is the slow replay.
  */
-export async function speak(text, lang, { onStart, onEnd } = {}) {
+export async function speak(text, lang, { onStart, onEnd, onWord, normalSpeed = false } = {}) {
   stopSpeaking();
   const token = {};
   current = token;
   let pick;
   try { pick = await pickEngine(text, lang); } catch (e) { if (current === token) current = null; throw e; }
   if (current !== token) { onEnd?.(); return; }       // stopped (or replaced) while preparing
-  const slow = nextIsSlow(text, lang);
+  const slow = !normalSpeed && nextIsSlow(text, lang);
   const started = () => { if (slow) toast('Playing slower. Play again for normal speed.'); onStart?.(slow); };
-  const completed = pick.engine === 'system' ? await playSystem(text, lang, slow, started) : await playBlob(pick.blob, slow, started);
+  const completed = pick.engine === 'system' ? await playSystem(text, lang, slow, started, onWord) : await playBlob(pick.blob, slow, started, pick.words, onWord);
   // only a play that reached the end counts (not one stopped by the person)
   lastPlay = completed ? { key: `${lang}\u0000${text}`, end: Date.now(), slow } : null;
   current = null;

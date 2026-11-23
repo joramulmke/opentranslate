@@ -1,6 +1,7 @@
 // Entry point: wires the views, navigation, theme and service worker.
 // Phones (< 720px): home screen + full-screen sub-views with back buttons (no tab bar).
 // 720px+: tabs in a bottom bar (720-1023px) or a navigation rail (1024px+).
+import { initBackup } from './ui/backup.js';
 import { hydrateIcons, icon } from './ui/icons.js';
 import { initProvider, state } from './state.js';
 import { settings, onChange } from './store.js';
@@ -170,6 +171,7 @@ function boot() {
 
   initHistorySheet({ onSelect: (item) => sendToText(item.text, { source: item.source, target: item.target }) });
   initSettingsSheet({ onThemeChange: applyTheme });
+  initBackup();
 
   hooks.camera = initCamera({ sendToText });
   hooks.conversation = initConversation({ leave: () => goBack() });

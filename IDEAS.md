@@ -142,6 +142,9 @@ The store listing would also ask for an IARC age rating (then add iarc_rating_id
   on phones). Android 10+: AudioPlaybackCapture with MediaProjection (asks "start recording?" each time;
   apps can opt out, e.g. some call apps). iPhone: other apps' sound can't be captured, only the
   microphone, so this would be Android only.
+- Full brightness for Show to someone (#15): a web app can't turn up the screen brightness, a native app
+  can (Android: the window's screenBrightness, only while the card is open, no permission needed; iPhone:
+  UIScreen.brightness).
 
 ## 13. Live subtitles on phones (try on a real phone first)
 
@@ -163,3 +166,49 @@ Try each on a real Android phone (and an iPhone) before building it out.
 Accessibility notices: a short "Accessibility" section at the bottom of Settings listing what doesn't
 work with screen readers or other assistive tech, and what to use instead. First entry: the floating
 captions on phones (a video, so not readable; use the captions screen instead). Later entries as found.
+
+## 14. Backup and move to another device
+
+(Done, Nov 2026; QR scanning not yet tried on a phone. Differences from the plan: QR codes are scanned in
+Import itself, not in camera text; opening a backup file with "Open with" isn't wired up, use Import.)
+Take settings, history and phrasebook to a new phone or computer, without an account. Plan (agreed Nov 2026):
+- In Settings: "Back up or move" with Export and Import.
+- What goes in: settings (engines, languages, options), phrasebook, history, recent languages. Downloads
+  (language packs, voices, models) don't: they're too big, and the new device downloads them again.
+- API keys: a checkbox "Include API keys", off by default, with a note that anyone who has the backup can
+  use them. Without it, the engines come over without their keys, and the app asks for them.
+- Three ways, same data:
+  - File: download an `opentranslate-backup-YYYY-MM-DD.json` (on Android: Share it). Import with a file
+    picker, or by opening the file with OpenTranslate (file_handlers, #12).
+  - Copy as text: the same backup as one text block to paste into a chat or an email to yourself; Import
+    has a "Paste" box.
+  - QR codes: the backup split into numbered codes ("2 of 5") with Back / Next buttons. The other device
+    scans them in camera text (BarcodeDetector: Android Chrome, Macs; not Windows Chrome) in any order and
+    shows which ones are still missing. The QR codes are drawn by a small library loaded only when needed.
+- Import asks before replacing: "Replace" or "Add to" (phrasebook and history are merged without duplicates;
+  settings are replaced). A backup from a newer app version still opens; unknown parts are skipped.
+- Test: export → import in a second browser profile (file, text); QR codes with a fake camera showing them.
+
+## 15. Show to someone
+
+(Done, Nov 2026; not yet tried on a phone.) Show the translation big to the person you're talking to, e.g. at a pharmacy or to a taxi driver. Plan
+(agreed Nov 2026):
+- A full-screen button (icon) next to Copy and Share under the text result.
+- The card: only the translation, as big as fits on the screen, nothing else (no original). Light text on
+  dark or the other way round, as the theme. Closes with ✕, Back or Escape.
+- Reads the translation aloud after 5 seconds ("Reading aloud in 5…"), with a Stop button; Play to hear it
+  again. No voice for the language: no countdown.
+- Keeps the screen on while open (Screen Wake Lock). A web app can't turn up the brightness (native app: #11).
+- Full screen (Fullscreen API) where the browser allows it; otherwise a page-filling layer.
+
+## 16. Highlight each word while reading aloud
+
+(Done, Nov 2026: Text result and Show to someone; not yet tried with a real ElevenLabs key or on a phone.)
+While a translation is read aloud, the word being spoken is marked, at normal and at the slower speed (the
+second press of Play is already slower). Plan (agreed Nov 2026):
+- Only with exact timings: the browser's own voices that report word boundaries (`onboundary`; many
+  on-device voices do, Google's online voices on Chrome don't) and ElevenLabs (its "with timestamps"
+  speech endpoint). Piper and other voices without timings play as now, without a highlight.
+- Always on while playing; the mark goes when it stops. In the Text result first; Show to someone (#15)
+  and the phrasebook can use it too.
+- Screen readers: the highlight is only visual (no announcements for each word).
