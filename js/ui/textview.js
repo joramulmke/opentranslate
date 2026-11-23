@@ -2,7 +2,7 @@
 // On phones it also drives the home ↔ typing ("edit") states of the reference layout:
 //   home: big "Translate text" sheet + language pills + Conversation · Mic · Camera
 //   edit: input focused or holding text; top bar becomes back · history/clear · pen · more
-import { state, subscribe, set, langName, detect, translate, describeError, errorText, warmUp, setSource, setMode, fallbackNote } from '../state.js';
+import { state, subscribe, set, langName, detect, translate, describeError, errorText, warmUp, setSource, setTarget, setMode, fallbackNote } from '../state.js';
 import { settings, history, phrasebook, onChange, recentLangs } from '../store.js';
 import { isRtl } from '../languages.js';
 import { createLangBar } from './langbar.js';
@@ -312,9 +312,17 @@ async function runTranslate({ commit = false } = {}) {
       if (detected) { set({ detected }); source = detected.language; }
     }
     // typed in the language you translate into ("Detect language" → English, English typed):
-    // translate the other way, into the last other language you used
-    const target = state.source === 'auto' && detected && base(detected.language) === base(state.target) ? otherTarget() : state.target;
-    showAutoNote(target !== state.target ? { source, target } : null);
+    // switch the target to the last other language you used, so the language bar shows what is used.
+    // Changing the target re-runs this through the state subscription.
+    if (state.source === 'auto' && detected && base(detected.language) === base(state.target)) {
+      autoSwitch = { source: detected.language, target: otherTarget() };
+      setTarget(autoSwitch.target);
+      return;
+    }
+    const target = state.target;
+    const kept = autoSwitch && state.source === 'auto' && base(source) === base(autoSwitch.source) && target === autoSwitch.target;
+    if (!kept) autoSwitch = null;
+    showAutoNote(autoSwitch);
     const res = await translate(text, source, target);
     if (id !== reqId) return;
     if (state.source === 'auto' && !detected && res.detected) {
@@ -330,6 +338,8 @@ async function runTranslate({ commit = false } = {}) {
 }
 
 const base = (c) => String(c || '').split('-')[0];
+/** Set when the target was switched because the text was already in it; keeps the note up. */
+let autoSwitch = null;
 /** The language to translate into when the text is already in the target language. */
 function otherTarget() {
   const other = recentLangs.get('target').find((c) => base(c) !== base(state.target));
@@ -484,11 +494,12 @@ function showError(err) {
 function showAutoNote(n) {
   if (!el.autoNote) return;
   el.autoNote.hidden = !n;
-  el.autoNote.textContent = n ? `Your text is already ${langName(n.source)}, so it’s translated into ${langName(n.target)}.` : '';
+  el.autoNote.textContent = n ? `Your text is already ${langName(n.source)}, so it’s now translated into ${langName(n.target)}.` : '';
 }
 
 function clearOutput() {
   ++reqId;
+  autoSwitch = null;
   showAutoNote(null);
   endLoading();
   result = null;
