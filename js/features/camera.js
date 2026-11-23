@@ -1,13 +1,14 @@
 // Camera tab: live preview, capture or import, OCR, translated text overlaid on the photo.
 import { state, subscribe, detect, translate, describeError, langName, fallbackNote } from '../state.js';
 import { createLangBar } from '../ui/langbar.js';
-import { toast, copyToClipboard } from '../ui/snackbar.js';
+import { toast, copyToClipboard, hide as hideToast } from '../ui/snackbar.js';
 import { recognize, ocrLangFor, describeOcrStatus } from './ocr.js';
 import { ocrQuality } from './paddle.js';
 import { escapeHtml } from '../ui/langpicker.js';
 import { icon } from '../ui/icons.js';
 import { permissionState, onPermissionChange, blockedSteps, cameraCopy } from './permissions.js';
 import { groupLines, joinLines, spreadText, lineColors, drawTranslated, css } from './inplace.js';
+import { isPhone, canShareFile, sendFiles, today, slugWords } from '../ui/sendfile.js';
 
 const $ = (id) => document.getElementById(id);
 // Settings › Text recognition › Reading: Accurate keeps more detail of small print (a book page), Fast is quicker
@@ -167,6 +168,7 @@ export function initCamera({ sendToText }) {
 
   async function translateShot(id) {
     status(`Translating to ${langName(state.target)}…`);
+    shot.jpeg = null; shot.jpegBlob = null;
     try {
       let source = shot.lang || state.source;
       if (source === 'auto') {
@@ -190,6 +192,8 @@ export function initCamera({ sendToText }) {
         }
       }
       shot.done = true; shot.pair = `${state.source}>${state.target}`;
+      // ready before Share is tapped: a phone opens its share sheet only right after the tap
+      const sh = shot; sh.jpeg = translatedPhoto(sh).then((b) => (sh.jpegBlob = b));
       const note = [shot.note, fallbackNote(res)].filter(Boolean).join(' ');   // e.g. Classic stood in for Advanced
       if (note) toast(note);
       drawOverlays();
@@ -254,61 +258,80 @@ export function initCamera({ sendToText }) {
   }
 
   /* Share (phones) or Save (computers): a small menu with this photo, all photos (when there are
-     several) and the translated text (Share text on phones, Copy text on computers). IDEAS #5. */
-  const phone = () => matchMedia('(pointer: coarse)').matches;
+     several; on computers as one .zip or separately) and the translated text (Share text on phones,
+     Copy text on computers). IDEAS #5. The words say what will really happen: a phone that can't share
+     pictures saves them. */
   const shareMenu = $('cam-share-menu');
-  if (!phone()) { el.share.querySelector('span').textContent = 'Save'; el.share.setAttribute('aria-label', 'Save translated photo or copy text'); }
+  const sharesPhotos = () => canShareFile('photo.jpg');
+  const setShareLabel = () => {
+    const share = sharesPhotos();
+    el.share.querySelector('span').textContent = share ? 'Share' : 'Save';
+    el.share.setAttribute('aria-label', share ? 'Share translated photo or text' : 'Save translated photo or copy text');
+    const ic = el.share.querySelector('svg, i');
+    if (ic && ic.dataset.shareIcon !== String(share)) { ic.outerHTML = icon(share ? 'share' : 'download'); el.share.firstElementChild.dataset.shareIcon = String(share); }
+  };
+  setShareLabel();
+  matchMedia('(pointer: coarse)').addEventListener?.('change', setShareLabel);
   shareMenu.addEventListener('beforetoggle', (e) => {
     if (e.newState !== 'open') return;
-    const verb = phone() ? 'Share' : 'Save';
+    const verb = sharesPhotos() ? 'Share' : 'Save';
+    const n = album.length;
     const item = (act, ic, label) => `<button type="button" role="menuitem" data-share="${act}">${icon(ic)}<span>${escapeHtml(label)}</span></button>`;
     shareMenu.innerHTML = [
-      item('photo', 'image', album.length > 1 ? `${verb} this photo` : `${verb} photo`),
-      album.length > 1 ? item('all', 'photos', `${verb} all ${album.length} photos`) : '',
-      phone() && navigator.share ? item('text', 'share', 'Share text') : item('copy', 'copy', 'Copy text'),
+      item('photo', 'image', n > 1 ? `${verb} this photo` : `${verb} photo`),
+      n > 1 && verb === 'Share' ? item('all', 'photos', `Share all ${n} photos`) : '',
+      n > 1 && verb === 'Save' ? item('zip', 'photos', `Save all ${n} photos (.zip)`) : '',
+      n > 1 && verb === 'Save' ? item('all', 'photos', `Save all ${n} photos separately`) : '',
+      isPhone() && navigator.share ? item('text', 'share', 'Share text') : item('copy', 'copy', 'Copy text'),
     ].join('');
+  });
+  // keyboard: the first item gets focus, arrows move, Tab leaves; Escape closes (the popover does that)
+  shareMenu.addEventListener('toggle', (e) => {
+    if (e.newState === 'open') { el.share.setAttribute('aria-expanded', 'true'); shareMenu.querySelector('[role="menuitem"]')?.focus(); return; }
+    el.share.setAttribute('aria-expanded', 'false');
+    if (!document.activeElement || document.activeElement === document.body || shareMenu.contains(document.activeElement)) el.share.focus();
+  });
+  shareMenu.addEventListener('keydown', (e) => {
+    const list = [...shareMenu.querySelectorAll('[role="menuitem"]')];
+    const i = list.indexOf(document.activeElement);
+    const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: list.length - 1 }[e.key];
+    if (to !== undefined) { e.preventDefault(); list[(to + list.length) % list.length].focus(); }
+    if (e.key === 'Tab') shareMenu.hidePopover?.();
   });
   shareMenu.addEventListener('click', (e) => {
     const b = e.target.closest('[data-share]');
     if (!b) return;
     shareMenu.hidePopover?.();
-    ({ photo: sharePhoto, all: shareAll, text: () => shareText(false), copy: () => shareText(true) })[b.dataset.share]();
+    ({ photo: sharePhoto, all: () => shareAll(false), zip: () => shareAll(true), text: () => shareText(false), copy: () => shareText(true) })[b.dataset.share]();
   });
   function notReady() {
     if (shot?.translated) return false;
     toast(shot?.done ? 'There is no translation to share.' : 'Still translating…');
     return true;
   }
-  /** Phones: the share menu; computers (or when sharing files isn't possible): downloads. */
-  async function sendFiles(files) {
-    if (phone() && navigator.canShare?.({ files })) {
-      try { await navigator.share({ files }); return; } catch (e) {
-        if (e.name === 'AbortError') return;
-        // the tap is too long ago when reading the photos took a while: ask for one more tap
-        if (e.name === 'NotAllowedError') { toast(`${files.length} translated photos ready`, { action: 'Share', onAction: () => navigator.share({ files }).catch(() => {}) }); return; }
-        toast('Sharing didn’t work, saving instead.');
-      }
-    }
-    files.forEach((f, i) => setTimeout(() => {
-      const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(f), download: f.name });
-      document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    }, i * 300));   // one at a time, or the browser may drop some
-    toast(files.length > 1 ? `${files.length} translated photos saved` : 'Translated photo saved');
+  /** e.g. pharmacy-please-ring-en-2026-11-23.jpg; `taken` keeps names apart (-2, -3). */
+  function photoName(sh, taken = new Set(), ext = 'jpg') {
+    const base = [slugWords(sh?.translated) || 'translated', state.target, today()].join('-');
+    let name = `${base}.${ext}`;
+    for (let k = 2; taken.has(name); k++) name = `${base}-${k}.${ext}`;
+    taken.add(name);
+    return name;
   }
   async function sharePhoto() {
     if (notReady()) return;
-    const name = album.length > 1 ? `translated-${state.target}-${albumAt + 1}.jpg` : `translated-${state.target}.jpg`;
-    await sendFiles([new File([await translatedPhoto()], name, { type: 'image/jpeg' })]);
+    const sh = shot;
+    // usually made already, right after translating: then the share sheet opens straight from the tap
+    const blob = sh.jpegBlob || await (sh.jpeg ||= translatedPhoto(sh));
+    await sendFiles([new File([blob], photoName(sh), { type: 'image/jpeg' })], 'translated photo');
   }
-  /** Wait until photo i is read and translated into the current language (or failed). */
-  function settled(i, list) {
+  /** Wait until photo i is read and translated into the current language (or failed); false when stopped. */
+  function settled(i, list, stop) {
     const pair = () => `${state.source}>${state.target}`;
     return new Promise((ok) => {
       const t0 = Date.now();
       const tick = () => {
         const sh = album[i]?.shot;
-        if (album !== list) return ok(false);
+        if (album !== list || stop.cancelled) return ok(false);
         if (sh?.failed) return ok(true);
         if (sh?.done && (!sh.ocrText || sh.pair === pair() || sh.pair === null)) return ok(true);
         if (Date.now() - t0 > 180000) return ok(false);
@@ -317,24 +340,44 @@ export function initCamera({ sendToText }) {
       tick();
     });
   }
-  async function shareAll() {
-    const list = album; const back = albumAt; const files = [];
-    for (let i = 0; i < list.length; i++) {
-      if (album !== list) return;
-      const sh = list[i].shot;
-      if (!(sh?.done && (!sh.ocrText || sh.pair === `${state.source}>${state.target}`))) {
-        status(`Reading photo ${i + 1} of ${list.length}…`);
-        await showPhoto(i);
-        if (!(await settled(i, list))) return;
+  let sharingAll = null;
+  async function shareAll(zip) {
+    if (sharingAll) return;
+    const stop = sharingAll = { cancelled: false };
+    const list = album; const back = albumAt; const files = []; const taken = new Set();
+    const progress = (i) => toast(`Reading photo ${i + 1} of ${list.length}…`, { action: 'Cancel', onAction: () => { stop.cancelled = true; } });
+    try {
+      for (let i = 0; i < list.length; i++) {
+        if (album !== list || stop.cancelled) break;
+        const sh = list[i].shot;
+        if (!(sh?.done && (!sh.ocrText || sh.pair === `${state.source}>${state.target}`))) {
+          progress(i);
+          status(`Reading photo ${i + 1} of ${list.length}…`);
+          await showPhoto(i);
+          if (!(await settled(i, list, stop))) break;
+        }
+        const s2 = list[i].shot;
+        if (s2?.translated) files.push(new File([s2.jpegBlob || await (s2.jpeg ||= translatedPhoto(s2))], photoName(s2, taken), { type: 'image/jpeg' }));
       }
-      const s2 = list[i].shot;
-      if (s2?.translated) files.push(new File([await translatedPhoto(s2)], `translated-${state.target}-${i + 1}.jpg`, { type: 'image/jpeg' }));
-    }
-    if (album !== list) return;
-    if (albumAt !== back) await showPhoto(back);
-    if (!files.length) { toast('None of the photos has a translation to share.'); return; }
-    if (files.length < list.length) toast(`${list.length - files.length} of the photos had no text to translate.`);
-    await sendFiles(files);
+      if (album !== list) return;
+      if (albumAt !== back) await showPhoto(back);
+      if (stop.cancelled) { status(''); toast('Stopped. Nothing was shared.'); return; }
+      hideToast();
+      if (!files.length) { toast('None of the photos has a translation to share.'); return; }
+      if (files.length < list.length) toast(`${list.length - files.length} of the photos had no text to translate.`);
+      // the .zip maker comes from the internet the first time; offline, the photos are saved one by one
+      const zipSync = zip && await import('./doctranslate.js').then((m) => m.zipLib()).then((z) => z.zipSync).catch(() => null);
+      if (zipSync) {
+        const parts = {};
+        for (const f of files) parts[f.name] = [new Uint8Array(await f.arrayBuffer()), { level: 0 }];   // JPEGs don't shrink
+        const name = `translated-photos-${state.target}-${today()}.zip`;
+        await sendFiles([new File([zipSync(parts)], name, { type: 'application/zip' })], `${files.length} translated photos (.zip)`);
+        return;
+      }
+      await sendFiles(files, files.length > 1 ? 'translated photos' : 'translated photo', zip ? 'The .zip needs internet the first time, so ' : '');
+    } catch (e) {
+      toast(e.message || 'The photos could not be saved.');
+    } finally { if (sharingAll === stop) sharingAll = null; }
   }
   async function shareText(copy) {
     if (notReady()) return;

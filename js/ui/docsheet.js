@@ -6,11 +6,11 @@ import { siteValue, loadSiteConfig } from '../siteconfig.js';
 import { setupDialog, openDialog } from './sheet.js';
 import { toast, copyToClipboard } from './snackbar.js';
 import { icon } from './icons.js';
+import { isPhone, canShareFile, sendFiles } from './sendfile.js';
 import { DEFAULT_PROXY, ASK_ABOVE, ACCEPT, FORMATS, extOf, outName, openDocument, translateTexts, sourceFor, fetchPage, openPage, workerCode } from '../features/doctranslate.js';
 
 const $ = (id) => document.getElementById(id);
 const nf = (n) => n.toLocaleString('en');
-const phone = () => matchMedia('(pointer: coarse)').matches;
 
 let el = null;
 let dlg = null;
@@ -168,12 +168,14 @@ function fail(id, e) {
   el.again.hidden = false;
 }
 
-/** A download button (and Share on phones). */
+/** A download button, or Share on phones that can share this kind of file. `label` may be
+ *  (share) => text, so the words say what will really happen. */
 function offer(label, blob, name) {
+  const share = canShareFile(name);
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'btn btn-filled';
-  b.innerHTML = `${icon(phone() && navigator.share ? 'share' : 'download')}<span></span>`;
-  b.querySelector('span').textContent = label;
+  b.innerHTML = `${icon(share ? 'share' : 'download')}<span></span>`;
+  b.querySelector('span').textContent = typeof label === 'function' ? label(share) : label;
   b.addEventListener('click', () => save(blob, name));
   el.actions.append(b);
   return b;
@@ -181,13 +183,7 @@ function offer(label, blob, name) {
 async function save(blob, name) {
   const data = blob instanceof Blob ? blob : await blob();
   if (!data.size) return;
-  const file = new File([data], name, { type: data.type });
-  if (phone() && navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file] }); return; } catch (e) { if (e.name === 'AbortError') return; }
-  }
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(file), download: name });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+  await sendFiles([new File([data], name, { type: data.type })], name);
 }
 
 /* ---------------- files ---------------- */
@@ -216,7 +212,7 @@ async function translateFile(file) {
   const name = outName(file.name, state.target);
   el.doneText.textContent = `Translated to ${langName(state.target)}: ${doc.label}, ${nf(doc.texts.length)} ${doc.texts.length === 1 ? 'piece' : 'pieces'} of text.`
     + (['docx', 'pptx', 'odt', 'odp'].includes(ext) ? ' Formatting inside a paragraph (e.g. one bold word) now covers the whole paragraph.' : '');
-  offer(phone() ? `Share ${name}` : `Download ${name}`, blob, name).focus();
+  offer((share) => `${share ? 'Share' : 'Download'} ${name}`, blob, name).focus();
 }
 
 /* ---------------- PDF: page view and original layout ---------------- */
@@ -316,9 +312,9 @@ async function translateWebsite(url) {
   el.frame.onload = () => hookLinks(page.url);
   el.frame.srcdoc = html;
   const host = (() => { try { return new URL(page.url).hostname.replace(/^www\./, ''); } catch { return 'page'; } })();
-  offer(phone() ? 'Share page (.html)' : 'Download (.html)', new Blob([html], { type: 'text/html' }), `${host}.${state.target}.html`);
+  offer((share) => (share ? 'Share page (.html)' : 'Download (.html)'), new Blob([html], { type: 'text/html' }), `${host}.${state.target}.html`);
   // the translated text alone (IDEAS #5): Share text on phones, Copy text on computers
-  const share = phone() && navigator.share;
+  const share = isPhone() && navigator.share;
   const tb = document.createElement('button');
   tb.type = 'button'; tb.className = 'btn btn-tonal';
   tb.innerHTML = `${icon(share ? 'share' : 'copy')}<span>${share ? 'Share text' : 'Copy text'}</span>`;
