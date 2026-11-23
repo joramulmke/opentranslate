@@ -14,7 +14,10 @@ import { setupDialog, openDialog, closeDialog } from '../ui/sheet.js';
 import { icon } from '../ui/icons.js';
 import { speak, stopSpeaking, canDictate, dictate, dictationMessage } from './speech.js';
 import { ensureMicrophone } from './permissions.js';
-import { toast } from '../ui/snackbar.js';
+import { toast, copyToClipboard } from '../ui/snackbar.js';
+import { startCaptions, canShareAudio, usesBrowserService } from './captions.js';
+import { speechOrder } from './stt.js';
+import { pipSupported } from './pip.js';
 
 const $ = (id) => document.getElementById(id);
 const KEY = 'ot.conversation.v1';
@@ -24,7 +27,7 @@ const MODES = {
   text: { label: 'Text only', icon: 'notes' },
 };
 const other = (w) => (w === 'them' ? 'me' : 'them');
-const MAX_QUIET_RESTARTS = 2;   // Listening: how often silence may restart the mic before pausing
+const CAP_SIZES = [0.8, 1, 1.3, 1.7, 2.2];   // Listening: caption text sizes (A− / A+)
 
 export function initConversation({ leave = () => {} } = {}) {
   const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } })();
@@ -38,7 +41,10 @@ export function initConversation({ leave = () => {} } = {}) {
   let utterances = [];
   let stopDictation = null;
   let userStopped = false;
-  let quiet = 0;
+  let captions = null;     // Listening: the running live captions (captions.js)
+  let liveLi = null;       // Listening: the line being heard, greyed until it's final
+  let follow = true;       // keep scrolled to the newest line (false once the user scrolls up)
+  let capWin = null;       // floating captions window (computers)
   let typing = false;
   let visible = false;
 
@@ -94,6 +100,36 @@ export function initConversation({ leave = () => {} } = {}) {
       r.setAttribute('aria-checked', String(on));
       r.tabIndex = on ? 0 : -1;
     });
+    const listening = mode === 'listening';
+    $('setup-split-row').hidden = listening;
+    $('setup-pause-row').hidden = !listening;
+    $('setup-pause').checked = pauseWhenQuiet();
+    $('setup-audio').hidden = !listening || !canShareAudio();
+    for (const r of setup.querySelectorAll('[name="setup-audio"]')) r.checked = r.value === audioSource();
+    const cost = costNote();
+    $('setup-cost').hidden = !listening || !cost;
+    $('setup-cost').textContent = cost;
+  }
+
+  /* ---------------- Listening options (remembered) ---------------- */
+  const pauseWhenQuiet = () => settings.get().captionsPause !== false;
+  const audioSource = () => (settings.get().captionsSource === 'tab' && canShareAudio() ? 'tab' : 'mic');
+  const capSize = () => { const i = settings.get().captionSize; return Number.isInteger(i) && CAP_SIZES[i] ? i : 1; };
+  /** Which engine Listening will use, as a note about costs or tab sound; '' when there's nothing to say. */
+  function costNote() {
+    const tab = audioSource() === 'tab';
+    const engine = tab || !usesBrowserService() ? speechOrder().find((e) => e !== 'browser') : 'browser';
+    const notes = [];
+    if (tab && usesBrowserService()) notes.push('The browser’s speech service only hears the microphone, so tab sound uses your next speech engine (Settings › Voice).');
+    if (engine === 'api') notes.push('Your AI service charges for speech recognition by the minute: live captions can add up.');
+    if (engine === 'elevenlabs') notes.push('ElevenLabs charges for speech recognition by the minute: live captions can add up.');
+    return notes.join(' ');
+  }
+  function setPauseWhenQuiet(on) {
+    settings.set({ captionsPause: on });
+    captions?.setPauseWhenQuiet(on);
+    renderCaptionBar();
+    if (setup.open) $('setup-pause').checked = on;
   }
 
   function chooseMode(m) {
@@ -124,8 +160,10 @@ export function initConversation({ leave = () => {} } = {}) {
   $('setup-swap').addEventListener('click', swapLangs);
   $('setup-start').addEventListener('click', () => closeDialog(setup, 'start'));
   splitSwitch.addEventListener('change', () => { split = splitSwitch.checked; persist(); renderScreen(); });
+  $('setup-pause').addEventListener('change', (e) => setPauseWhenQuiet(e.target.checked));
+  $('setup-audio').addEventListener('change', (e) => { settings.set({ captionsSource: e.target.value }); renderSetup(); renderCaptionBar(); });
   clearBtn.addEventListener('click', () => {
-    utterances = []; stopSpeaking(); renderTranscript(); clearBtn.hidden = true;
+    utterances = []; stopSpeaking(); renderTranscript(); renderPip(); clearBtn.hidden = true; $('cap-transcript').disabled = true;
     toast('Transcript cleared');
     $('setup-start').focus();
   });
@@ -177,6 +215,8 @@ export function initConversation({ leave = () => {} } = {}) {
     modeBtn.innerHTML = `${icon(m.icon)}<span id="convo-mode-label">${m.label}</span>`;
     modeBtn.setAttribute('aria-label', `Mode: ${m.label}. Change setup`);
     turnBox.hidden = mode === 'listening';
+    view.classList.toggle('is-listening', mode === 'listening');
+    renderCaptionBar();
     view.classList.toggle('is-split', splitOn());
     shared.hidden = splitOn();
     splitBox.hidden = !splitOn();
@@ -187,15 +227,36 @@ export function initConversation({ leave = () => {} } = {}) {
   function idleStatus() {
     const name = langName(langs[speakerNow()]);
     if (!canDictate()) return `Voice input isn't available here. Tap the keyboard to type in ${name}.`;
-    if (mode === 'listening') return `Tap mic to start listening to ${name}`;
+    if (mode === 'listening') return audioSource() === 'tab' ? `Tap mic to caption a tab or the screen in ${name}` : `Tap mic to start live captions of ${name}`;
     return `Tap mic to start · ${name}`;
   }
 
   function renderMic() {
     const name = langName(langs[speakerNow()]);
-    bigMic.setAttribute('aria-pressed', String(!!stopDictation));
-    bigMic.setAttribute('aria-label', stopDictation ? 'Stop listening' : (mode === 'listening' ? `Listen to ${name}` : `Speak ${name}`));
-    if (!stopDictation) status.textContent = idleStatus();
+    const on = !!(stopDictation || captions);
+    bigMic.setAttribute('aria-pressed', String(on));
+    bigMic.setAttribute('aria-label', on ? 'Stop listening' : (mode === 'listening' ? `Start live captions of ${name}` : `Speak ${name}`));
+    if (!on) status.textContent = idleStatus();
+  }
+
+  /* ---------------- live captions tools ---------------- */
+
+  function renderCaptionBar() {
+    const bar = $('caption-bar');
+    bar.hidden = mode !== 'listening';
+    view.style.setProperty('--cap', String(CAP_SIZES[capSize()]));
+    $('cap-smaller').disabled = capSize() === 0;
+    $('cap-larger').disabled = capSize() === CAP_SIZES.length - 1;
+    $('cap-pause').setAttribute('aria-pressed', String(pauseWhenQuiet()));
+    const src = $('cap-source');
+    src.hidden = !canShareAudio();
+    const tab = audioSource() === 'tab';
+    src.innerHTML = `${icon(tab ? 'openIn' : 'mic')}<span>${tab ? 'Tab sound' : 'Microphone'}</span>`;
+    src.setAttribute('aria-label', `Listening to: ${tab ? 'a tab or the screen' : 'the microphone'}. Change`);
+    src.disabled = !!captions;
+    $('cap-popout').hidden = !pipSupported();
+    $('cap-share').hidden = !navigator.share;
+    $('cap-transcript').disabled = !utterances.length;
   }
 
   function renderComposer({ focus = false } = {}) {
@@ -260,7 +321,7 @@ export function initConversation({ leave = () => {} } = {}) {
 
   function scrollDown() {
     requestAnimationFrame(() => {
-      sheetEl.scrollTop = sheetEl.scrollHeight;
+      if (follow) sheetEl.scrollTop = sheetEl.scrollHeight;
       splitThem.scrollTop = splitThem.scrollHeight;
       splitMe.scrollTop = splitMe.scrollHeight;
     });
@@ -270,14 +331,18 @@ export function initConversation({ leave = () => {} } = {}) {
     text = text.trim();
     if (!text) return;
     const to = other(from);
-    const u = { from, fromLang: langs[from], toLang: langs[to], text, translated: null, error: null, els: null };
+    const u = { from, fromLang: langs[from], toLang: langs[to], text, translated: null, error: null, els: null, time: new Date() };
     utterances.push(u);
     renderUtterance(u);
+    if (liveLi) shared.append(liveLi);   // the line being heard stays last
+    $('cap-transcript').disabled = false;
+    renderPip();
     if (mode !== 'listening') { turn = to; renderScreen(); }   // alternate turns automatically
     try {
       const res = await translate(u.text, u.fromLang, u.toLang);
       u.translated = res.text;
       renderUtterance(u);
+      renderPip();
       if (fallbackNote(res)) toast(fallbackNote(res));   // e.g. Classic stood in for Advanced, or the next service did
       if (mode === 'conversation') speak(res.text, u.toLang).catch(() => {});
     } catch (e) {
@@ -290,7 +355,9 @@ export function initConversation({ leave = () => {} } = {}) {
   /* ---------------- voice ---------------- */
 
   async function toggleMic() {
+    if (captions) { userStopped = true; captions.stop(); return; }
     if (stopDictation) { userStopped = true; stopDictation(); return; }
+    if (mode === 'listening' && audioSource() === 'tab') { stopSpeaking(); userStopped = false; startLive(); return; }
     if (!canDictate()) {
       toast(dictationMessage('UNSUPPORTED'), { duration: 6000 });
       typing = true; renderComposer({ focus: true });
@@ -299,9 +366,140 @@ export function initConversation({ leave = () => {} } = {}) {
     if (!(await ensureMicrophone())) return;
     stopSpeaking();
     userStopped = false;
-    quiet = 0;
-    listenOnce();
+    if (mode === 'listening') startLive(); else listenOnce();
   }
+
+  /* Listening: live captions until stopped (captions.js). The words being heard show greyed as the last
+     line; each final piece becomes a caption and is translated. */
+  function setLive(text) {
+    if (!text) { liveLi?.remove(); liveLi = null; return; }
+    if (!liveLi) {
+      liveLi = document.createElement('li');
+      liveLi.className = 'utt from-them live';
+      liveLi.setAttribute('aria-hidden', 'true');   // screen readers hear final captions only
+      liveLi.innerHTML = '<p class="utt-orig"></p>';
+    }
+    const p = liveLi.firstChild;
+    p.textContent = text;
+    p.lang = langs.them; p.dir = dirOf(langs.them);
+    shared.append(liveLi);
+    scrollDown();
+  }
+
+  function startLive() {
+    const code = langs.them;
+    const name = langName(code);
+    const tab = audioSource() === 'tab';
+    follow = true;
+    let on = true;   // until onEnd (the first onState comes before startCaptions returns)
+    captions = startCaptions(code, {
+      source: tab ? 'tab' : 'mic',
+      pauseWhenQuiet: pauseWhenQuiet(),
+      onState: (st) => {
+        if (!on) return;
+        status.textContent = st === 'transcribing' ? `Live captions · ${name} · transcribing…` : `Live captions · ${name}${tab ? ' · tab sound' : ''}`;
+      },
+      onInterim: (t) => setLive(t),
+      onFinal: (t) => { setLive(''); addUtterance('them', t); },
+      onPaused: () => { toast('Live captions paused after 2 minutes of silence. Tap the mic to go on.', { duration: 8000 }); },
+      onError: (e) => {
+        const m = e?.message;
+        const msg = m === 'NO_SHARED_AUDIO' ? 'No sound was shared. Choose a tab or the screen and turn on its audio.'
+          : m === 'SHARING_ENDED' ? 'Sharing ended, so live captions stopped.'
+            : m === 'NotAllowedError' && tab ? '' : dictationMessage(e);
+        if (msg) toast(msg, { duration: 7000 });
+      },
+      onEnd: () => {
+        on = false;
+        captions = null;
+        setLive('');
+        renderMic();
+        renderCaptionBar();
+        if (!userStopped && visible) status.textContent = 'Paused. Tap mic to go on.';
+      },
+    });
+    renderMic();
+    renderCaptionBar();
+  }
+
+  /* ---------------- transcript: copy, share, download ---------------- */
+
+  function transcriptText() {
+    const t = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const head = `${MODES[mode].label} · ${langName(langs.them)} → ${langName(langs.me)} · ${new Date().toLocaleDateString()}`;
+    return [head, '', ...utterances.map((u) => `[${t(u.time || new Date())}] ${u.translated ?? ''}\n        ${u.text}`)].join('\n');
+  }
+  $('cap-transcript-menu').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-transcript]');
+    if (!b) return;
+    $('cap-transcript-menu').hidePopover?.();
+    if (!utterances.length) { toast('Nothing in the transcript yet'); return; }
+    const text = transcriptText();
+    if (b.dataset.transcript === 'copy') copyToClipboard(text, 'Transcript copied');
+    else if (b.dataset.transcript === 'share') navigator.share({ title: 'Transcript', text }).catch(() => {});
+    else {
+      const a = Object.assign(document.createElement('a'), {
+        href: URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' })),
+        download: `transcript-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-')}.txt`,
+      });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }
+  });
+
+  /* ---------------- floating captions window (computers, Document Picture-in-Picture) ---------------- */
+
+  async function popOut() {
+    if (capWin) { capWin.focus(); return; }
+    try { capWin = await window.documentPictureInPicture.requestWindow({ width: 480, height: 220 }); } catch { return; }
+    const doc = capWin.document;
+    doc.title = 'Live captions';
+    for (const link of document.querySelectorAll('link[rel="stylesheet"]')) doc.head.append(Object.assign(doc.createElement('link'), { rel: 'stylesheet', href: link.href }));
+    doc.head.append(Object.assign(doc.createElement('style'), { textContent: `
+      html, body { height: 100%; margin: 0; }
+      body { display: flex; flex-direction: column; justify-content: flex-end; padding: 12px 16px; box-sizing: border-box; overflow: hidden;
+        background: var(--surface, #fff); color: var(--on-surface, #1b1b1f); font: 15px/1.35 system-ui, sans-serif; }
+      ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+      .t { margin: 0; font-size: calc(22px * var(--cap, 1)); line-height: 1.3; }
+      li:last-child .t { font-size: calc(26px * var(--cap, 1)); }
+      .o { margin: 2px 0 0; font-size: 14px; color: var(--on-surface-variant, #44474f); }
+      .empty { color: var(--on-surface-variant, #44474f); }` }));
+    doc.documentElement.dataset.theme = document.documentElement.dataset.theme || '';
+    doc.documentElement.lang = 'en';
+    doc.body.innerHTML = '<ol id="caps" aria-live="polite"></ol>';
+    capWin.addEventListener('pagehide', () => { capWin = null; }, { once: true });
+    renderPip();
+  }
+  function renderPip() {
+    if (!capWin) return;
+    const doc = capWin.document;
+    doc.documentElement.style.setProperty('--cap', String(CAP_SIZES[capSize()]));
+    const last = utterances.filter((u) => u.from === 'them' || mode !== 'listening').slice(-3);
+    doc.getElementById('caps').innerHTML = last.length
+      ? last.map((u) => `<li><p class="t" lang="${u.toLang}" dir="${dirOf(u.toLang)}">${escapeHtml(u.translated ?? '…')}</p><p class="o" lang="${u.fromLang}" dir="${dirOf(u.fromLang)}">${escapeHtml(u.text)}</p></li>`).join('')
+      : '<li class="empty">Captions appear here.</li>';
+  }
+
+  /* ---------------- captions toolbar ---------------- */
+
+  const sizeBy = (d) => { settings.set({ captionSize: Math.max(0, Math.min(CAP_SIZES.length - 1, capSize() + d)) }); renderCaptionBar(); renderPip(); scrollDown(); };
+  $('cap-smaller').addEventListener('click', () => sizeBy(-1));
+  $('cap-larger').addEventListener('click', () => sizeBy(1));
+  $('cap-pause').addEventListener('click', () => setPauseWhenQuiet(!pauseWhenQuiet()));
+  $('cap-source').addEventListener('click', () => { settings.set({ captionsSource: audioSource() === 'tab' ? 'mic' : 'tab' }); renderCaptionBar(); renderMic(); });
+  $('cap-popout').addEventListener('click', popOut);
+  // follow the newest line unless the user scrolled up to read; then offer a way back
+  // (only the user's own scrolling counts: wheel, touch, keys, scrollbar; not new lines or a bigger text size)
+  let userScroll = 0;
+  const intent = () => { userScroll = performance.now(); };
+  for (const ev of ['wheel', 'touchmove', 'keydown', 'pointerdown']) sheetEl.addEventListener(ev, intent, { passive: true });
+  sheetEl.addEventListener('scroll', () => {
+    const atEnd = sheetEl.scrollTop + sheetEl.clientHeight >= sheetEl.scrollHeight - 40;
+    if (atEnd) follow = true;
+    else if (performance.now() - userScroll < 1000) follow = false;
+    $('convo-jump').hidden = follow || mode !== 'listening';
+  }, { passive: true });
+  $('convo-jump').addEventListener('click', () => { follow = true; $('convo-jump').hidden = true; sheetEl.scrollTo({ top: sheetEl.scrollHeight, behavior: 'smooth' }); });
 
   function listenOnce() {
     const who = speakerNow();
@@ -315,17 +513,12 @@ export function initConversation({ leave = () => {} } = {}) {
       onText: (t) => { interim.textContent = t; interim.lang = code; interim.dir = dirOf(code); },
       onEnd: (finalText) => {
         finish();
-        if (finalText) { quiet = 0; addUtterance(who, finalText); }
-        // Listening keeps captioning until the user stops it or leaves the screen
-        if (mode === 'listening' && !userStopped && visible) listenOnce();
+        if (finalText) addUtterance(who, finalText);
       },
       onError: (e) => {
         finish();
-        const silent = e?.message === 'no-speech';
-        if (silent && mode === 'listening' && !userStopped && visible && quiet++ < MAX_QUIET_RESTARTS) { listenOnce(); return; }
         const m = dictationMessage(e);
         if (m) toast(m, { duration: 6000 });
-        if (silent && mode === 'listening') status.textContent = 'Paused. Tap mic to keep listening.';
       },
     });
     renderMic();
@@ -379,6 +572,8 @@ export function initConversation({ leave = () => {} } = {}) {
       visible = false;
       userStopped = true;
       stopDictation?.();
+      captions?.stop();
+      capWin?.close();
       stopSpeaking();
       if (setup.open) setup.close();
     },

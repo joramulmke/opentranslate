@@ -116,7 +116,11 @@
         {
           "name": "photo",
           "accept": [
-            "image/*"
+            "image/*",
+            "text/plain",
+            ".txt",
+            "application/pdf",
+            ".pdf"
           ]
         }
       ]
@@ -153,6 +157,9 @@
         ],
         "text/plain": [
           ".txt"
+        ],
+        "application/pdf": [
+          ".pdf"
         ]
       },
       "launch_type": "single-client"

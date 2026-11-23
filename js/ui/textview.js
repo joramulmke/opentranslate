@@ -16,7 +16,7 @@ import { ensureMicrophone } from '../features/permissions.js';
 import { downloadPacks, formatMB } from './offlineui.js';
 
 const $ = (id) => document.getElementById(id);
-const MAX = 5000;
+export const MAX = 5000;   // characters the text box holds
 const DEBOUNCE_MS = 550;
 const HISTORY_IDLE_MS = 2500;
 

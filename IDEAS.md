@@ -13,6 +13,33 @@ PP-OCRv6 and AI vision already return.
 Continuous speech recognition and translation as running captions, for talks or calls. Big, readable
 text, scrolling; each line translated as soon as it is final.
 
+(Done, Nov 2026: in Conversation › Listening, with microphone or tab sound, the pause switch, text size,
+transcript and floating captions on computers. Tried with a recording engine; Chrome's own speech service
+and tab sound still need a try on a real computer and phone. Phones: see #13.)
+Plan (agreed Nov 2026): build it into Conversation › Listening, which already listens, translates only
+their language and restarts the mic by itself (it pauses after two silences today).
+- Runs until you stop it or leave: no pause after silence (after ~2 minutes of silence it pauses, to save
+  battery, and says so). A switch "Pause after 2 minutes of silence" (on by default, remembered) in the
+  Listening setup and on the captions screen turns that off, e.g. for a long talk with breaks. Chrome's speech service: `continuous = true` in Listening, restarted when Chrome
+  ends it (about every minute). Recording engines (Whisper, ElevenLabs, on-device): the next recording
+  starts at once while the last one is transcribed, so no words get lost between pieces.
+- Captions: translation big, original small under it (as now); the words being heard show greyed until
+  they're final; only final lines are translated (no extra API calls). Scrolls to the newest line, unless
+  you scrolled up: then a "Jump to latest" button. Screen readers hear final lines only.
+- Text size: A− / A+ on the captions screen, 4 steps, remembered.
+- Audio: Microphone (default) or, on a computer, "Tab or screen audio" (a video call, a YouTube tab) via
+  screen sharing with audio. That needs a recording engine; with Chrome's speech service chosen, the app
+  says so and uses the next engine. Hidden where the browser can't share audio (phones; see #13 for
+  "Sound from this phone", and #11 for other apps' sound in a native app).
+- Save the transcript: Copy, Share, or download as .txt (both languages, with times).
+- Floating window (#8): "Pop out captions" on a computer shows the latest lines big in the always-on-top
+  window; the main tab keeps the microphone. On phones: floating captions as a video, see #13.
+- Keep screen on: already done (Conversation keeps the screen on).
+- Costs: Whisper and ElevenLabs charge per minute, so continuous captions can add up; the setup says so
+  when one of them is chosen.
+- Test: Playwright with a fake microphone (a WAV file) and a mocked transcription API; Chrome's own speech
+  service only on a real device.
+
 
 ## 4. Look up a word on Wiktionary
 
@@ -64,6 +91,22 @@ Plan (agreed Nov 2026, built):
    
 ## 9. File and Website Translation
 
+## 12. Share more to OpenTranslate
+
+(Done, Nov 2026; not yet tried on a phone.) Before, "Share → OpenTranslate" (Android) took text, links and one photo. Plan (agreed Nov 2026):
+- .txt files: the text goes into the text box (UTF-8, else Windows-1252), up to 5,000 characters (what the
+  text box holds); a note when it was cut.
+- PDFs: pdf.js (Mozilla's PDF reader, exact version from jsDelivr like the voice engine) loads only when a
+  PDF arrives; its text goes into the text box. Pages without text (scans) open in camera text instead,
+  one page per photo (see below). Everything stays on the device; only the reader is downloaded.
+- Several photos: camera text opens the first one, with a strip of thumbnails to switch; each photo keeps
+  its own result. Up to 10. "Import" in camera text takes several photos too.
+- How: the manifest's share_target accepts image/*, text/plain and application/pdf; the service worker
+  keeps every file (not only the first photo) and opens ./?share=files. "Open with OpenTranslate" on a
+  computer (file_handlers) gets .pdf too, with the same code.
+- Test: submit a share form to ./share in Playwright (text, .txt, a text PDF, a scanned PDF, 3 photos);
+  then on your Android phone from Files, Gmail and WhatsApp.
+
 ## 10. App stores without Google Play: AltStore PAL, F-Droid, other Android stores, a plain APK
 
 Preferred over the Play Store (below). Ideas to check:
@@ -94,3 +137,29 @@ Android has no widgets for PWAs. The way there: wrap OpenTranslate as a Play Sto
 built with Bubblewrap) and write the widget natively (Kotlin), e.g. a quick "translate" box or a phrase of the
 day from saved phrases. Needs a Play developer account, app signing and Digital Asset Links on joram.eu.
 The store listing would also ask for an IARC age rating (then add iarc_rating_id to the manifest).
+- Live subtitles (#2) from other apps' sound: a native app can caption a video call, YouTube or a podcast
+  playing on the phone itself, which a web app can't (no browser lets web apps capture screen or app audio
+  on phones). Android 10+: AudioPlaybackCapture with MediaProjection (asks "start recording?" each time;
+  apps can opt out, e.g. some call apps). iPhone: other apps' sound can't be captured, only the
+  microphone, so this would be Android only.
+
+## 13. Live subtitles on phones (try on a real phone first)
+
+Two things for live subtitles (#2) on phones, where there's no tab audio and no floating window like #8.
+Try each on a real Android phone (and an iPhone) before building it out.
+- "Sound from this phone": an audio choice that turns off echo cancellation (and noise suppression), so
+  the microphone also hears the phone's own loudspeaker, e.g. a video playing in another app. Quality
+  depends on the phone; only offered where it works well enough.
+- Floating captions: the latest caption lines drawn on a canvas, turned into a video (canvas.captureStream)
+  and put into the phone's floating video window (requestPictureInPicture). Works where floating videos
+  work (Chrome on Android, Safari on iPhone). Only the captions, no buttons. Microphone in the background
+  (checked Nov 2026): Chrome on Android stops its own speech service as soon as the page is hidden, so
+  floating captions need a recording engine (Whisper, ElevenLabs, on-device). A page recording the
+  microphone itself can stay alive (Chrome shows a "using your microphone" notification), but whether the
+  captions keep coming still has to be tried on a real phone.
+- Screen readers can't read text inside a video, so the floating captions say nothing to them. That goes
+  into the accessibility notices (below); the captions screen in the app stays fully readable.
+
+Accessibility notices: a short "Accessibility" section at the bottom of Settings listing what doesn't
+work with screen readers or other assistive tech, and what to use instead. First entry: the floating
+captions on phones (a video, so not readable; use the captions screen instead). Later entries as found.

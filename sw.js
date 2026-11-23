@@ -59,6 +59,9 @@ const SHELL = [
   './js/ui/settingssearch.js',
   './js/ui/tags.js',
   './js/share.js',
+  './js/features/pdf.js',
+  './js/features/openfiles.js',
+  './js/features/captions.js',
   './js/features/bgfetch.js',
   './js/features/persist.js',
   './js/features/wiktionary.js',
@@ -91,21 +94,26 @@ self.addEventListener('message', (e) => {
   if (e.data === 'skipWaiting') self.skipWaiting();
 });
 
-// "Share to OpenTranslate" (manifest share_target): keep what was shared, then open the app on it.
+// "Share to OpenTranslate" (manifest share_target): keep what was shared (text, and up to 10 files: photos,
+// .txt files, PDFs), then open the app on it. js/share.js picks it up.
 const SHARE_CACHE = 'ot-share-v1';
+const SHARE_MAX_FILES = 10;
+const shareable = (f) => f && typeof f !== 'string' && f.size > 0
+  && (/^image\//.test(f.type) || /^text\/plain|^application\/pdf/.test(f.type) || /\.(txt|pdf)$/i.test(f.name || ''));
 async function receiveShare(req) {
   const scope = self.registration.scope;
-  let photo = null;
+  let files = [];
   try {
     const fd = await req.formData();
     const pick = (k) => String(fd.get(k) || '').slice(0, 20000);
-    photo = fd.getAll('photo').find((f) => f && typeof f !== 'string' && /^image\//.test(f.type)) || null;
+    files = fd.getAll('photo').filter(shareable).slice(0, SHARE_MAX_FILES);
     const c = await caches.open(SHARE_CACHE);
-    await c.put(new URL('__shared.json', scope), new Response(JSON.stringify({ title: pick('title'), text: pick('text'), url: pick('url') }), { headers: { 'Content-Type': 'application/json' } }));
-    if (photo) await c.put(new URL('__shared-photo', scope), new Response(photo, { headers: { 'Content-Type': photo.type } }));
-    else await c.delete(new URL('__shared-photo', scope));
-  } catch { /* nothing readable: just open the app */ }
-  return Response.redirect(new URL(photo ? './?share=photo#text' : './?share=text#text', scope).href, 303);
+    for (const k of await c.keys()) await c.delete(k);   // nothing left over from an earlier share
+    const list = files.map((f) => ({ name: String(f.name || '').slice(0, 200), type: f.type || '' }));
+    await c.put(new URL('__shared.json', scope), new Response(JSON.stringify({ title: pick('title'), text: pick('text'), url: pick('url'), files: list }), { headers: { 'Content-Type': 'application/json' } }));
+    await Promise.all(files.map((f, i) => c.put(new URL(`__shared-file-${i}`, scope), new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }))));
+  } catch { files = []; /* nothing readable: just open the app */ }
+  return Response.redirect(new URL(files.length ? './?share=files#text' : './?share=text#text', scope).href, 303);
 }
 
 // Downloads that went on in the background (js/features/bgfetch.js): put each file into the cache its

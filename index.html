@@ -188,6 +188,7 @@
           </div>
           <div class="cam-status" id="cam-status" hidden role="status"><span class="spinner" aria-hidden="true"></span><span id="cam-status-text">Scanning text…</span></div>
           <div class="cam-hint" id="cam-hint">Point at text, then tap the shutter</div>
+          <div class="shot-strip" id="shot-strip" role="group" aria-label="Photos" hidden></div>
         </div>
         <div class="cam-controls" id="cam-controls">
           <button class="cam-side-btn" id="cam-import" type="button" aria-label="Import a photo"><i data-icon="photos"></i><span>Import</span></button>
@@ -195,7 +196,7 @@
           <button class="cam-side-btn" id="cam-toggle-orig" type="button" aria-label="Show original text" aria-pressed="false" hidden><i data-icon="translate"></i><span>Original</span></button>
           <button class="cam-side-btn" id="cam-retake" type="button" aria-label="Retake photo" hidden><i data-icon="refresh"></i><span>Retake</span></button>
           <button class="cam-side-btn" id="cam-open-text" type="button" aria-label="Open text in Text tab" hidden><i data-icon="openIn"></i><span>Open text</span></button>
-          <input type="file" id="cam-file" accept="image/*" hidden>
+          <input type="file" id="cam-file" accept="image/*" multiple hidden>
         </div>
       </section>
 
@@ -213,6 +214,20 @@
           </div>
           <button class="icon-btn" id="convo-options" type="button" aria-label="Conversation setup" aria-haspopup="dialog"><i data-icon="tune"></i></button>
         </header>
+        <!-- Listening: live captions tools -->
+        <div class="caption-bar" id="caption-bar" role="toolbar" aria-label="Captions" hidden>
+          <button class="cap-btn" type="button" id="cap-smaller" aria-label="Smaller captions" title="Smaller captions"><span aria-hidden="true">A−</span></button>
+          <button class="cap-btn" type="button" id="cap-larger" aria-label="Larger captions" title="Larger captions"><span aria-hidden="true">A+</span></button>
+          <button class="cap-chip" type="button" id="cap-pause" aria-pressed="true" title="Stops listening after 2 minutes of silence, to save battery">Pause when quiet</button>
+          <button class="cap-chip" type="button" id="cap-source" hidden><i data-icon="mic"></i><span>Microphone</span></button>
+          <button class="cap-btn" type="button" id="cap-transcript" aria-label="Transcript: copy, share or download" title="Transcript" popovertarget="cap-transcript-menu"><i data-icon="notes"></i></button>
+          <button class="cap-btn" type="button" id="cap-popout" aria-label="Pop out captions into a floating window" title="Pop out captions" hidden><i data-icon="openIn"></i></button>
+        </div>
+        <div class="cap-menu" id="cap-transcript-menu" popover role="menu" aria-label="Transcript">
+          <button type="button" role="menuitem" data-transcript="copy"><i data-icon="copy"></i><span>Copy transcript</span></button>
+          <button type="button" role="menuitem" data-transcript="share" id="cap-share"><i data-icon="share"></i><span>Share transcript</span></button>
+          <button type="button" role="menuitem" data-transcript="download"><i data-icon="download"></i><span>Download as .txt</span></button>
+        </div>
         <div class="convo-sheet" id="convo-sheet">
           <ol class="convo-shared" id="convo-shared" aria-label="Transcript" aria-live="polite" aria-relevant="additions text"></ol>
           <!-- face-to-face: their half is rotated to face the person opposite -->
@@ -220,6 +235,7 @@
             <ol class="split-half split-them" id="split-them" aria-hidden="true"></ol>
             <ol class="split-half split-me" id="split-me" aria-label="Transcript" aria-live="polite"></ol>
           </div>
+          <button class="btn btn-tonal jump-latest" id="convo-jump" type="button" hidden><i data-icon="down"></i><span>Jump to latest</span></button>
         </div>
         <form class="convo-composer" id="convo-composer" hidden>
           <label class="visually-hidden" for="convo-input" id="convo-input-label">Message</label>
@@ -513,7 +529,14 @@
         <i data-icon="notes"></i><span class="setup-mode-copy"><strong>Text only</strong><small>Take turns. Translations are shown; nothing is read out loud.</small></span><i data-icon="check" class="setup-check"></i></button>
     </div>
     <div class="setup-extras">
-      <label class="switch-row"><span>Face-to-face split screen<small>Their side is shown upside down for the person opposite</small></span><input type="checkbox" id="setup-split" role="switch"></label>
+      <label class="switch-row" id="setup-split-row"><span>Face-to-face split screen<small>Their side is shown upside down for the person opposite</small></span><input type="checkbox" id="setup-split" role="switch"></label>
+      <label class="switch-row" id="setup-pause-row" hidden><span>Pause after 2 minutes of silence<small>Saves battery. Turn it off for a long talk with breaks.</small></span><input type="checkbox" id="setup-pause" role="switch"></label>
+      <div class="setup-audio" id="setup-audio" role="radiogroup" aria-labelledby="setup-audio-label" hidden>
+        <span class="setup-audio-label" id="setup-audio-label">Listen to</span>
+        <label><input type="radio" name="setup-audio" value="mic"> Microphone</label>
+        <label><input type="radio" name="setup-audio" value="tab"> Tab or screen sound<small>A video call or a video in another tab</small></label>
+      </div>
+      <p class="setup-note" id="setup-cost" hidden></p>
       <button class="text-btn" type="button" id="setup-clear" hidden>Clear transcript</button>
     </div>
     <div class="setup-foot">
