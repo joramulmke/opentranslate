@@ -5,9 +5,9 @@
 // both the service worker and a later start of the app can read it. Elsewhere bgDownload() returns null and
 // the feature downloads as before, while the app is open.
 const META = 'ot-bg-v1';
-const ICON = { src: new URL('../../icons/icon-192.png', import.meta.url).href, sizes: '192x192', type: 'image/png' };
+const ICON = { src: new URL('icons/icon-192.png', document.baseURI).href, sizes: '192x192', type: 'image/png' };
 const chan = typeof BroadcastChannel === 'function' ? new BroadcastChannel('ot-bg') : null;
-const metaUrl = (id) => new URL(`../../__bg/${encodeURIComponent(id)}`, import.meta.url).href;
+const metaUrl = (id) => new URL(`__bg/${encodeURIComponent(id)}`, document.baseURI).href;
 
 async function readMeta(id) {
   try { return await (await (await caches.open(META)).match(metaUrl(id)))?.json() ?? null; } catch { return null; }

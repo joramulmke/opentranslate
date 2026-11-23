@@ -211,7 +211,7 @@ const pending = new Map();   // id -> { resolve, reject, onProgress }
 
 function getWorker() {
   if (worker) return worker;
-  worker = new Worker(new URL('./llm-worker.js', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('js/features/llm-worker.js', document.baseURI), { type: 'module' });
   worker.onmessage = ({ data }) => {
     const p = pending.get(data.id);
     if (!p) return;

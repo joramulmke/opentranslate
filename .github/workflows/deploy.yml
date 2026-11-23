@@ -54,8 +54,9 @@ jobs:
           else
             echo "sw.js not found, skipping cache update"
           fi
-          # the modules the app starts with, fetched at once (.github/scripts/preload.mjs)
-          node .github/scripts/preload.mjs
+          # js/app.js and what it imports packed into one file, the parts opened later into js/chunks/;
+          # also rewrites the offline list in sw.js and the preload list in index.html (.github/scripts/bundle.mjs)
+          node .github/scripts/bundle.mjs /tmp/bundle_files.txt
           # Settings shows this as "Version abc1234 · date" (js/ui/version.js)
           printf '{ "commit": "%s", "date": "%s" }\n' "$GITHUB_SHA" "$(git log -1 --format=%cI "$GITHUB_SHA")" > version.json
           cat version.json
@@ -110,7 +111,11 @@ jobs:
             FILES=$(printf '%s\n' "$FILES" | grep -v '^sw\.js$' | grep -v '^version\.json$' || true)
             FILES="sw.js"$'\n'"version.json"$'\n'"$FILES"
           fi
-          printf '%s\n' "$FILES" | grep -v '^[[:space:]]*$' > /tmp/changed_files.txt || true
+          # the bundle (not in git, new names each time) and index.html, which names it: always uploaded.
+          # Chunks of earlier deploys stay on the server unused; old copies of the app may still ask for them.
+          FILES=$(printf '%s\n' "$FILES" | grep -v '^index\.html$' || true)
+          FILES="index.html"$'\n'"$(cat /tmp/bundle_files.txt)"$'\n'"$FILES"
+          printf '%s\n' "$FILES" | grep -v '^[[:space:]]*$' | awk '!seen[$0]++' > /tmp/changed_files.txt || true
           echo "FULL_SYNC=$FULL_SYNC" >> "$GITHUB_ENV"
           echo "Files to upload so far:"; cat /tmp/changed_files.txt
           echo "Total: $(wc -l < /tmp/changed_files.txt)"
@@ -366,7 +371,8 @@ jobs:
           MIRROR_HOST: ${{ secrets.MIRROR_HOST }}
           REPO: ${{ github.event.repository.name }}
         run: |
-          git checkout -- .   # the deploy changed the cache name in sw.js and stamped version.json
+          git checkout -- .   # the deploy changed sw.js, index.html and js/app.js and stamped version.json
+          git clean -fdq js/chunks   # the bundle's chunks: the mirror gets the code as it is in the repo
           git remote add mirror "git@$MIRROR_HOST:joramulmke/$REPO.git" \
             || git remote set-url mirror "git@$MIRROR_HOST:joramulmke/$REPO.git"
           HOUR=$(TZ="Europe/Berlin" date +%H)

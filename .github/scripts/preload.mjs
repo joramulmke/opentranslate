@@ -1,7 +1,8 @@
 // Lists every module the app needs to start (js/app.js and what it imports, not the parts loaded later
 // with import()) as <link rel="modulepreload"> in index.html, between the two marker comments. The browser
 // then fetches them all at once instead of one import level after the other: on a slow phone network the
-// app starts about 0.7 s sooner. Run by the deploy (so the list is never stale); by hand: node .github/scripts/preload.mjs
+// app starts about 0.7 s sooner. For the unbundled app (local copies): node .github/scripts/preload.mjs
+// The deploy bundles instead (.github/scripts/bundle.mjs), which writes its own list.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 

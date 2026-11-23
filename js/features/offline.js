@@ -12,9 +12,9 @@ const RECORDS = 'https://firefox.settings.services.mozilla.com/v1/buckets/main/c
 const FILES = 'https://firefox-settings-attachments.cdn.mozilla.net/';
 const CACHE = 'ot-offline-models-v1';
 const INDEX_KEY = 'ot.offline.v1';
-const WORKER_URL = new URL('../../vendor/bergamot/translator-worker.js', import.meta.url);
+const WORKER_URL = new URL('vendor/bergamot/translator-worker.js', document.baseURI);
 // shipped with the app (and in the offline cache), so "Detect language" works without internet too
-const FRANC = new URL('../../vendor/franc/franc-min.js', import.meta.url).href;
+const FRANC = new URL('vendor/franc/franc-min.js', document.baseURI).href;
 const MAX_MAJOR = 2;          // newer model generations may need a newer engine build
 const MAX_LOADED = 2;         // the engine's memory is capped at 2 GB; a pivot needs two models
 const PIVOT = 'en';
