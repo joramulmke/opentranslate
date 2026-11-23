@@ -43,6 +43,7 @@ const SHELL = [
   './js/features/hwr.js',
   './js/features/stt.js',
   './js/features/camera.js',
+  './js/features/inplace.js',
   './js/features/conversation.js',
   './js/features/handwriting.js',
   './js/features/offline.js',
