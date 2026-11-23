@@ -79,7 +79,11 @@ export function createLangBar(host, opts = {}) {
     const sLabel = state.source === 'auto'
       ? (state.detected?.language ? `${langName(state.detected.language)} · Detected` : 'Detect language')
       : langName(state.source);
-    src.querySelector('.pill-label').textContent = sLabel;
+    // short on screen so it isn't cut off on phones: "English" over a small "detected", or "Detect"
+    const autoDet = state.source === 'auto' ? state.detected?.language : null;
+    const sl = src.querySelector('.pill-label');
+    sl.textContent = state.source === 'auto' ? (autoDet ? langName(autoDet) : 'Detect') : langName(state.source);
+    if (autoDet) { const sub = document.createElement('small'); sub.className = 'pill-sub'; sub.textContent = 'detected'; sl.append(sub); }
     tgt.querySelector('.pill-label').textContent = langName(state.target);
     src.setAttribute('aria-label', `Source language: ${sLabel}. Change`);
     tgt.setAttribute('aria-label', `Target language: ${langName(state.target)}. Change`);

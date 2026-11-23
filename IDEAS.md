@@ -348,6 +348,34 @@ phone.)
   row instead of three more buttons.
 - Language names: a service that only sends codes ("de") still shows "German".
 
+## 18b. Design audit fixes (UX and visual craft review)
+
+(Done, Nov 2026; checked in Playwright at 320, 390, 800 and 1280 px, light and dark, with axe-core: no
+problems found. Not tried on a real phone.)
+- Typed text that's already in the target language: the translation area now says so ("Your text is
+  already English, so it's translated into Spanish."), also before the first download, so "Download
+  Spanish" no longer looks like a mistake.
+- Phones, keyboard: the Tab order follows the screen (text box, then the language buttons, then
+  Conversation, Mic and Camera). Tabbing into the text box no longer hides those three; a tap or typing
+  still switches to typing mode.
+- Settings, first visit: a calm blue hint ("Choose how to translate") with a "Download a language"
+  button instead of a red warning. Section titles are now the largest heading, then Translation / Voice /
+  Text recognition, then the small list names.
+- One blue everywhere: the 1200px+ layout no longer switches to a brighter blue. The camera's fixed
+  dark colours, recording red, the "!" badge and white paper are named colours too.
+- Type and spacing scale: every font size is one of nine sizes (`--fs-xs` 12px to `--fs-5xl` 36px);
+  margins, paddings and gaps use `--sp-1`…`--sp-8` (4px steps). Odd sizes (11, 13, 15, 17px…) and
+  spacing (6, 10, 14, 18px…) were rounded to the nearest step.
+- Language buttons on phones: "Detect", and the detected language as "English" over a small "detected",
+  instead of a cut-off "Detect lan…".
+- The offline download card: "Where it comes from" opens the source address instead of showing it in
+  tiny type.
+- Motion: switches, the feedback progress bar, the snackbar and the language buttons only animate
+  movement and fading (smoother); sheets speed up as they close.
+- Small "Where it comes from", feedback and proxy-guide toggles are at least 44px tall; the version link
+  at least 24px.
+- Headings wrap into even lines; paragraphs avoid a single word on the last line.
+
 ## 19. First-run welcome (idea)
 
 On the first visit, one screen instead of the red "!" on the menu: "Which languages do you need?"

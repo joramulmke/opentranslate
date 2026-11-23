@@ -43,6 +43,7 @@ export function initSettingsSheet({ onThemeChange }) {
   $('btn-svc-cancel').addEventListener('click', () => closeEditor());
   $('svc-fields').addEventListener('input', (e) => e.target.removeAttribute('aria-invalid'));
   $('btn-offline-done').addEventListener('click', () => closeManager());
+  $('setup-hint-offline').addEventListener('click', () => openManager());
   // Escape inside the editor / manager closes just that panel, not the whole sheet
   $('svc-editor').addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !e.target.closest('select')) { e.preventDefault(); e.stopPropagation(); closeEditor(); }
@@ -305,7 +306,7 @@ function renderLists() {
     !builtIn && ['delete', 'Remove', 'delete'],
   ])}
         </span></li>`;
-    }).join('') : `<li class="svc-empty">${kind === 'advanced' ? 'No AI model yet. Add one to use Advanced translation.' : 'Nothing yet.'}</li>`;
+    }).join('') : `<li class="svc-empty">${kind === 'advanced' ? 'No AI model yet. Add one to use Advanced translation.' : 'Nothing yet. Add a LibreTranslate server below.'}</li>`;
   }
   renderEngines();
   if (hadId && !document.activeElement?.closest?.('.svc-row')) {

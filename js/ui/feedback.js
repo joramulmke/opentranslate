@@ -155,7 +155,7 @@ function render() {
   const id = list[step];
   const n = list.length;
   $('fb-progress').textContent = `Step ${step + 1} of ${n}`;
-  $('fb-bar').style.setProperty('--p', `${((step + 1) / n) * 100}%`);
+  $('fb-bar').style.setProperty('--p', String((step + 1) / n));
   $('fb-back').hidden = step === 0;
   $('fb-next').hidden = id === 'review';
   $('fb-send').hidden = id !== 'review';
@@ -253,7 +253,7 @@ async function send() {
     ${withShot && !copied ? `<p class="field-help fb-note">The screenshot couldn't be copied in this browser.
       <a href="${shot.url}" download="${saveName}">Save the screenshot</a> and drag it into the issue.</p>` : ''}`;
   $('fb-progress').textContent = 'Done';
-  $('fb-bar').style.setProperty('--p', '100%');
+  $('fb-bar').style.setProperty('--p', '1');
   $('fb-back').hidden = $('fb-send').hidden = true;
   $('fb-q').focus();
   a = {};   // sent: start fresh next time
