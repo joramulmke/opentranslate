@@ -112,6 +112,9 @@ phone and computer: clean. Manual: 320px reflow, reduced motion, text spacing, f
 - Conversation: screen readers hear each finished translation once, in its language, from a hidden line;
   the transcript on screen and its animation are unchanged (it is no longer a live region itself).
 - Handwriting: the pen-width slider is 40px tall and reads "6 pixels".
+- Reduced motion (the device setting) also means calm text in Conversation and Listening: no words
+  appearing while someone speaks, only whole sentences (a static "…" line shows something is being heard).
+  "Jump to latest" no longer slides then. Chosen over a separate setting; live words stay the default.
 Still to try with real TalkBack / VoiceOver / NVDA on a phone and a computer.
 
 ## 6. Persistent downloads

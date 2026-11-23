@@ -56,6 +56,8 @@ export function initConversation({ leave = () => {} } = {}) {
   const splitMe = $('split-me');
   const status = $('convo-status');
   const interim = $('convo-interim');
+  // Reduced motion also means calm text: whole sentences only, no words appearing as they're spoken
+  const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   const bigMic = $('convo-bigmic');
   const typeBtn = $('convo-type');
   const modeBtn = $('convo-mode');
@@ -390,6 +392,7 @@ export function initConversation({ leave = () => {} } = {}) {
      line; each final piece becomes a caption and is translated. */
   function setLive(text) {
     if (!text) { liveLi?.remove(); liveLi = null; return; }
+    if (calm()) text = '…';   // reduced motion: no words changing while they're heard, only whole sentences
     if (!liveLi) {
       liveLi = document.createElement('li');
       liveLi.className = 'utt from-them live';
@@ -516,7 +519,7 @@ export function initConversation({ leave = () => {} } = {}) {
     else if (performance.now() - userScroll < 1000) follow = false;
     $('convo-jump').hidden = follow || mode !== 'listening';
   }, { passive: true });
-  $('convo-jump').addEventListener('click', () => { follow = true; $('convo-jump').hidden = true; sheetEl.scrollTo({ top: sheetEl.scrollHeight, behavior: 'smooth' }); });
+  $('convo-jump').addEventListener('click', () => { follow = true; $('convo-jump').hidden = true; sheetEl.scrollTo({ top: sheetEl.scrollHeight, behavior: calm() ? 'auto' : 'smooth' }); });
 
   function listenOnce() {
     const who = speakerNow();
@@ -527,7 +530,7 @@ export function initConversation({ leave = () => {} } = {}) {
       onState: (st) => {
         status.textContent = st === 'listening' ? `Listening · ${name}…` : st === 'transcribing' ? 'Transcribing…' : st;
       },
-      onText: (t) => { interim.textContent = t; interim.lang = code; interim.dir = dirOf(code); },
+      onText: (t) => { if (calm()) return; interim.textContent = t; interim.lang = code; interim.dir = dirOf(code); },
       onEnd: (finalText) => {
         finish();
         if (finalText) addUtterance(who, finalText);
