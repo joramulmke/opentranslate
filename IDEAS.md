@@ -94,6 +94,18 @@ Polish (done, Nov 2026; tried in a test with phone emulation, not on a real phon
 - The share menu works with the keyboard (arrows, Home/End, Escape back to the button).
 - Not done: a label on the shared photo (the photo stays clean).
 
+Accessibility (done, Nov 2026; axe-core WCAG 2.2 AA scan clean before and after; tested in emulation):
+- ✕ and Escape on "Reading photo 2 of 3…" stop the work like Cancel (before, the message went away but the
+  photos were still shared a moment later).
+- Right-to-left translations (Arabic, Hebrew, Persian, Urdu…): the boxes on the photo, the saved photo,
+  PDF pages, the page view and saved .html / web pages / EPUB pages get the right direction (dir="rtl").
+  Not done: .txt has no direction mark, and Word / OpenDocument files keep their paragraph direction.
+- The share menu has an edge in Windows High Contrast (forced colours), like other floating menus.
+- Messages sit above the camera's bottom buttons, so they never hide a focused button (WCAG 2.4.11).
+- A saved or shared photo carries its words as a description (EXIF ImageDescription and XMP
+  dc:description): "Pharmacy, please ring (German: Apotheke, bitte klingeln)". Galleries such as Google
+  Photos can show it; few screen readers read it yet.
+
 ## 6. Persistent downloads
 
 (Done, Nov 2026; not yet tried in Firefox or on a phone.) Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when

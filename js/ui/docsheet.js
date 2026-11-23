@@ -253,7 +253,7 @@ async function translatePdf(file, id) {
       fig.className = 'docs-layout-page';
       fig.innerHTML = `<div class="docs-layout-wait"><span class="spinner" aria-hidden="true"></span>Drawing page ${i + 1} of ${pdf.pages.length}…</div>`;
       el.layout.append(fig);
-      const canvas = await pdf.drawPage(i, perPage[i]);
+      const canvas = await pdf.drawPage(i, perPage[i], state.target);
       const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.85));
       jpegs[i] = { blob, w: canvas.width, h: canvas.height, wPt: pdf.pages[i].width, hPt: pdf.pages[i].height };
       const img = new Image();

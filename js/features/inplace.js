@@ -153,10 +153,13 @@ function wrap(ctx, text, maxWidth) {
  * @param {string[]|null} texts  one text per line, or null: block is drawn over all of them
  * @param {Array<{bg,fg}>} colors  per line (block: the first is used)
  * @param {string} [block]  the whole translation, when texts is null
+ * @param {{rtl?: boolean}} [opts]  rtl: Arabic, Hebrew… start at the right edge and run right to left
  */
-export function drawTranslated(ctx, lines, texts, colors, block = '') {
+export function drawTranslated(ctx, lines, texts, colors, block = '', { rtl = false } = {}) {
   ctx.save();
   ctx.textBaseline = 'middle';
+  ctx.direction = rtl ? 'rtl' : 'ltr';
+  ctx.textAlign = rtl ? 'right' : 'left';
   if (texts) {
     lines.forEach((l, i) => {
       const r = boxOf(l);
@@ -178,7 +181,7 @@ export function drawTranslated(ctx, lines, texts, colors, block = '') {
       }
       ctx.fillStyle = css(fg);
       if (width > r.w) ctx.scale(r.w / width, 1);   // still too long: squeeze it
-      const x = width > r.w ? (-r.w / 2) * (width / r.w) : -r.w / 2;
+      const x = (rtl ? r.w / 2 : -r.w / 2) * (width > r.w ? width / r.w : 1);   // the start edge, in squeezed units
       ctx.fillText(text, x, r.h * 0.04);
       ctx.restore();
     });
@@ -198,7 +201,7 @@ export function drawTranslated(ctx, lines, texts, colors, block = '') {
     ctx.fillStyle = css(bg);
     ctx.fillRect(u.x0, u.y0, w, Math.max(h, rows.length * size * 1.25));
     ctx.fillStyle = css(fg);
-    rows.forEach((row, k) => ctx.fillText(row, u.x0 + size * 0.2, u.y0 + size * 1.25 * (k + 0.5)));
+    rows.forEach((row, k) => ctx.fillText(row, rtl ? u.x1 - size * 0.2 : u.x0 + size * 0.2, u.y0 + size * 1.25 * (k + 0.5)));
   }
   ctx.restore();
 }
