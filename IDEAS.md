@@ -81,6 +81,19 @@ Share translated photos, files and websites (done, Nov 2026; not yet tried on a 
   translated page's text as it reads on screen).
 - Translated files: unchanged (Share on phones, Download on computers).
 
+Polish (done, Nov 2026; tried in a test with phone emulation, not on a real phone):
+- The translated photo is made right after translating, so Share opens the share menu straight from the
+  tap (a phone refuses a share that comes too long after it).
+- Buttons say what really happens: "Share" only where the phone can share that kind of file (e.g. some
+  phones can't share .html or Office files: then "Download"); otherwise the camera says "Save".
+- When sharing doesn't work, files and websites now say so (and offer one more tap), like the camera.
+- File names: first words of the translation + language + date, e.g. pharmacy-please-ring-en-2026-11-23.jpg.
+- Several photos on a computer: the menu has "Save all as .zip" and "Save all separately". The .zip maker
+  is loaded from the internet the first time; without it, the photos are saved one by one.
+- "Share all" shows "Reading photo 3 of 8…" with Cancel; Cancel stops and shares nothing.
+- The share menu works with the keyboard (arrows, Home/End, Escape back to the button).
+- Not done: a label on the shared photo (the photo stays clean).
+
 ## 6. Persistent downloads
 
 (Done, Nov 2026; not yet tried in Firefox or on a phone.) Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when

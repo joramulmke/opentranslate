@@ -7,7 +7,7 @@ import { spreadText } from './inplace.js';
 
 const FFLATE = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js';
 let fflate = null;
-const zipLib = () => (fflate ||= import(FFLATE).catch((e) => {
+export const zipLib = () => (fflate ||= import(FFLATE).catch((e) => {
   fflate = null;
   throw new Error(`The file reader could not be loaded. Check the internet connection and try again. (${e.message || e})`);
 }));
