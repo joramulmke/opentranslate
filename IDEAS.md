@@ -169,6 +169,8 @@ captions on phones (a video, so not readable; use the captions screen instead). 
 
 ## 14. Backup and move to another device
 
+(Done, Nov 2026; QR scanning not yet tried on a phone. Differences from the plan: QR codes are scanned in
+Import itself, not in camera text; opening a backup file with "Open with" isn't wired up, use Import.)
 Take settings, history and phrasebook to a new phone or computer, without an account. Plan (agreed Nov 2026):
 - In Settings: "Back up or move" with Export and Import.
 - What goes in: settings (engines, languages, options), phrasebook, history, recent languages. Downloads
@@ -189,7 +191,7 @@ Take settings, history and phrasebook to a new phone or computer, without an acc
 
 ## 15. Show to someone
 
-Show the translation big to the person you're talking to, e.g. at a pharmacy or to a taxi driver. Plan
+(Done, Nov 2026; not yet tried on a phone.) Show the translation big to the person you're talking to, e.g. at a pharmacy or to a taxi driver. Plan
 (agreed Nov 2026):
 - A full-screen button (icon) next to Copy and Share under the text result.
 - The card: only the translation, as big as fits on the screen, nothing else (no original). Light text on
@@ -201,6 +203,7 @@ Show the translation big to the person you're talking to, e.g. at a pharmacy or 
 
 ## 16. Highlight each word while reading aloud
 
+(Done, Nov 2026: Text result and Show to someone; not yet tried with a real ElevenLabs key or on a phone.)
 While a translation is read aloud, the word being spoken is marked, at normal and at the slower speed (the
 second press of Play is already slower). Plan (agreed Nov 2026):
 - Only with exact timings: the browser's own voices that report word boundaries (`onboundary`; many

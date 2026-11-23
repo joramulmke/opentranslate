@@ -1584,3 +1584,24 @@ dialog.show-card::backdrop { background: var(--surface); }
 }
 .show-play svg { width: 22px; height: 22px; fill: currentColor; }
 .show-play:focus-visible { outline: 3px solid var(--on-surface); outline-offset: 2px; }
+
+/* Back up or move (IDEAS #14) */
+.backup-note { margin: 0 4px 8px; font-size: 13px; line-height: 18px; color: var(--on-surface-variant); }
+#backup-group .switch-row small { display: block; font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
+.backup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 4px; }
+.backup-actions .btn svg, .backup-qr-nav .btn svg { width: 18px; height: 18px; fill: currentColor; }
+.backup-body { padding: 0 20px 20px; overflow-y: auto; }
+.backup-qr-panel { display: flex; flex-direction: column; align-items: center; }
+.backup-qr { width: min(100%, 360px); height: auto; aspect-ratio: 1; image-rendering: pixelated; border-radius: 8px; }
+.backup-qr-nav { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 12px; }
+.backup-qr-count { min-width: 5em; text-align: center; font-weight: 600; }
+.backup-video { display: block; width: 100%; max-height: 40dvh; object-fit: cover; border-radius: 12px; background: #000; margin: 8px 0; }
+.backup-paste-label { display: block; margin: 12px 4px 4px; font-size: 14px; }
+.backup-paste {
+  display: block; width: 100%; box-sizing: border-box; font: 13px/1.4 ui-monospace, monospace; padding: 8px 12px;
+  border: 1px solid var(--outline); border-radius: 8px; background: var(--surface); color: var(--on-surface); resize: vertical;
+}
+.backup-confirm { margin-top: 16px; padding: 12px; border-radius: 12px; background: var(--surface-container); }
+.backup-summary { margin: 0 4px 8px; font-weight: 600; }
+.backup-mode { border: 0; padding: 0; margin: 0 0 8px; }
+.backup-mode legend { padding: 0 4px; font-size: 14px; color: var(--on-surface-variant); }

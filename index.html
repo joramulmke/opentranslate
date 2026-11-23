@@ -329,6 +329,49 @@
   </dialog>
 
   <!-- History / Saved -->
+  <!-- Back up or move (IDEAS #14): QR codes / import -->
+  <dialog class="sheet bottom" id="backup-dialog" aria-labelledby="backup-title">
+    <div class="drag-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="backup-title">Import a backup</h2>
+      <span class="spacer"></span>
+      <button class="icon-btn" type="button" data-close aria-label="Close"><i data-icon="close"></i></button>
+    </div>
+    <div class="backup-body">
+      <div id="backup-qr-panel" class="backup-qr-panel" hidden>
+        <p class="backup-note">On the other device: Settings › Back up or move › Import › Scan QR codes. Scan each code; the order doesn’t matter.</p>
+        <canvas id="backup-qr-canvas" class="backup-qr" role="img" aria-label="QR code"></canvas>
+        <div class="backup-qr-nav">
+          <button type="button" class="btn btn-tonal" id="backup-qr-prev"><i data-icon="back"></i>Back</button>
+          <span id="backup-qr-count" class="backup-qr-count" aria-live="polite">1 of 1</span>
+          <button type="button" class="btn btn-tonal" id="backup-qr-next">Next<i data-icon="forward"></i></button>
+        </div>
+      </div>
+      <div id="backup-import-panel" hidden>
+        <div class="backup-actions">
+          <button type="button" class="btn btn-tonal" id="backup-pick"><i data-icon="upload"></i>Open a file</button>
+          <button type="button" class="btn btn-tonal" id="backup-scan"><i data-icon="camera"></i><span>Scan QR codes</span></button>
+        </div>
+        <input type="file" id="backup-file-input" accept=".json,application/json" hidden>
+        <video id="backup-video" class="backup-video" playsinline muted hidden></video>
+        <p id="backup-scan-status" class="backup-note" aria-live="polite"></p>
+        <label class="backup-paste-label" for="backup-paste">Or paste a backup copied as text</label>
+        <textarea id="backup-paste" class="backup-paste" rows="3" spellcheck="false" autocomplete="off"></textarea>
+        <button type="button" class="btn btn-text" id="backup-paste-go">Read pasted backup</button>
+        <div id="backup-confirm" class="backup-confirm" hidden>
+          <p id="backup-summary" class="backup-summary"></p>
+          <fieldset class="backup-mode">
+            <legend>Phrasebook and history</legend>
+            <label class="radio-row"><input type="radio" name="backup-mode" value="add" checked><span>Add to what’s here</span></label>
+            <label class="radio-row"><input type="radio" name="backup-mode" value="replace"><span>Replace what’s here</span></label>
+          </fieldset>
+          <p class="backup-note">Settings are replaced. Without API keys in the backup, keys already set up here are kept.</p>
+          <button type="button" class="btn btn-filled" id="backup-do-import">Import</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
   <!-- Show to someone (IDEAS #15) -->
   <dialog class="show-card" id="show-card" aria-label="Translation, full screen">
     <button class="icon-btn show-close" id="show-close" type="button" aria-label="Close"><i data-icon="close"></i></button>
@@ -483,6 +526,17 @@
           <label class="radio-row"><input type="radio" name="theme" value="system"><span>System default</span></label>
           <label class="radio-row"><input type="radio" name="theme" value="light"><span>Light</span></label>
           <label class="radio-row"><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+        </div>
+      </fieldset>
+      <fieldset class="settings-group" id="backup-group">
+        <legend>Back up or move</legend>
+        <p class="backup-note">Your settings, phrasebook and history, to keep or to take to another phone or computer. Downloads (languages, voices, models) aren’t included: the other device downloads them again.</p>
+        <label class="switch-row"><span>Include API keys<small>Anyone who has the backup can use your keys. Keep it private.</small></span><input type="checkbox" id="backup-keys" role="switch"></label>
+        <div class="backup-actions">
+          <button type="button" class="btn btn-tonal" id="backup-file"><i data-icon="download"></i>Save file</button>
+          <button type="button" class="btn btn-tonal" id="backup-copy"><i data-icon="copy"></i>Copy as text</button>
+          <button type="button" class="btn btn-tonal" id="backup-qr"><i data-icon="share"></i>QR codes</button>
+          <button type="button" class="btn btn-tonal" id="backup-import"><i data-icon="upload"></i>Import</button>
         </div>
       </fieldset>
       <p class="about">OpenTranslate · prototype. Translations come from the provider you choose; nothing is sent anywhere else.</p>
