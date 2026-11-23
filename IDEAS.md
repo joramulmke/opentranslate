@@ -316,7 +316,7 @@ phone.)
 - Starts with half the code: camera, conversation, handwriting, settings, file translation, feedback and
   opened files load in idle time right after the start, or at once when opened. The rest is fetched at once
   (`<link rel="modulepreload">`, written by `.github/scripts/preload.mjs` on every deploy). Measured on
-  the emulated phone: ready in 2.9 s instead of 5.1 s.
+  the emulated phone: ready in 2.9 s instead of 5.1 s. (Since #18c the deploy bundles the scripts instead.)
 - Camera with "Detect language": if the text comes out as nonsense, Tesseract's script detection (OSD,
   4 MB, downloaded the first time it's needed) finds the script and the photo is read again, e.g. with
   Russian + English. The next photos start with that script. Tried with Cyrillic and Latin test images.
@@ -375,6 +375,25 @@ problems found. Not tried on a real phone.)
 - Small "Where it comes from", feedback and proxy-guide toggles are at least 44px tall; the version link
   at least 24px.
 - Headings wrap into even lines; paragraphs avoid a single word on the last line.
+
+## 18c. New logo, small fixes and faster loading
+
+(Done, Nov 2026; checked in Playwright and on the live site, not on a real phone.)
+- New 文A logo (blue 文, green A) for the header, favicon, app icons, shortcut icons and the social preview
+  (`icons/opentranslate-social-preview.png`, still to be uploaded on GitHub: Settings › General › Social
+  preview). The floating window has its own picture-in-picture icon; the Text tab uses a notes icon.
+- Text already in the target language: the target switches to the last other language you used, so the
+  language bar and the note say the same.
+- Settings: Camera text and Handwriting share one Tesseract and one set of languages, and both say so.
+  "Reload app" became "Update now" and only shows when a newer version exists.
+- Handwriting's pen-width slider is 44px tall; the version link is 44px on touch screens.
+- `.htaccess` compresses CSS, JS, HTML, JSON, SVG and WebAssembly. The web host only has gzip (no Brotli)
+  and only speaks HTTP/1.1 (no HTTP/2 or HTTP/3; that would need IONOS or Cloudflare in front).
+- Because HTTP/1.1 downloads at most 6 files at a time, the deploy now bundles the app's scripts
+  (`.github/scripts/bundle.mjs`, Rollup + esbuild): the app starts with 1 script instead of 38, and parts
+  opened later (camera, settings, documents, …) are separate files in `js/chunks/`, loaded when needed.
+  The repo itself stays unbundled. Measured with a slow 4G connection: ready in about 2.1 s instead of 3.1 s;
+  on the live site about 1.2 s. Offline start still works.
 
 ## 19. First-run welcome (idea)
 
