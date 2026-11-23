@@ -4,6 +4,7 @@
 // Storage ("ot-paddle-v1"). Same result shape as Tesseract (ocr.js), so camera and handwriting can use either.
 // Photos of book pages are rarely flat and straight: each line gets a box turned along it (and following it
 // where the page bends), the page may lie sideways or upside down, and the lines are read column by column.
+import { keepDownloadsSafe } from './persist.js';
 import { ORT_FILES, ORT_MB, loadOrt, cachedFile, haveFile } from './ort.js';
 import { bgDownload, bgResume } from './bgfetch.js';
 import { settings } from '../store.js';
@@ -71,6 +72,7 @@ export async function refreshPaddle() {
 /** Download the two models (and the runtime, unless the offline voices already have it). */
 export function downloadPaddle({ onProgress } = {}) {
   if (job) return job.promise;
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   job = { progress: 0 };
   job.promise = (async () => {
     const total = (PADDLE.sizeMB + ORT_MB) * 1e6;

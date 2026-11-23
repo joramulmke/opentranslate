@@ -14,6 +14,8 @@ import { initVersion } from './ui/version.js';
 import { loadSiteConfig } from './siteconfig.js';
 import { initMenu, openMenu } from './ui/menu.js';
 import { initInstall } from './ui/install.js';
+import { initPersist } from './features/persist.js';
+import { pipSupported, openPip } from './features/pip.js';
 import { initFeedback, openFeedback } from './ui/feedback.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
@@ -218,7 +220,10 @@ function boot() {
     install: initInstall($('menu-install')),
     settings: () => openSettings(),
     feedback: openFeedback,
+    pip: () => openPip().catch((e) => console.warn('[OpenTranslate] floating window:', e)),
   });
+  $('menu-pip').hidden = !pipSupported();
+  initPersist();
   initFeedback({ currentTab: () => currentTab });
 
   onChange((what) => { if (what === 'phrasebook') textView.refreshStar(); });

@@ -16,7 +16,7 @@ text, scrolling; each line translated as soon as it is final.
 
 ## 4. Look up a word on Wiktionary
 
-When the input is only a word or a few (e.g. "test", "Prüfung", "church community"), show a link to
+(Done, Nov 2026.) When the input is only a word or a few (e.g. "test", "Prüfung", "church community"), show a link to
 https://www.wiktionary.org/ for it: meanings, gender, plural, pronunciation. Not for whole sentences.
 
 Plan (agreed Nov 2026):
@@ -34,10 +34,10 @@ Plan (agreed Nov 2026):
 
 ## 6. Persistent downloads
 
-Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when
+(Done, Nov 2026; not yet tried in Firefox or on a phone.) Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when
    space runs low. One call asks it to keep them; the right moment is right after the first download.
 
-Plan (agreed Nov 2026):
+Plan (agreed Nov 2026, built):
 - On the first tap on Download, the app asks the user first, with its own sheet (`sheet()` from
   `js/features/permissions.js`):
   "Keep downloads safe? Downloads can be large. When space on this device runs low, the browser may delete
@@ -60,7 +60,7 @@ Plan (agreed Nov 2026):
 
 ## 8. pip
    
-A floating translator window (Picture-in-Picture): on a computer, a small always-on-top window for translating while you work in other apps. It also fits the live subtitles idea.
+(Done, Nov 2026: Chrome/Edge on computers. Live captions in it: later, with #2.) A floating translator window (Picture-in-Picture): on a computer, a small always-on-top window for translating while you work in other apps. It also fits the live subtitles idea.
    
 ## 9. File and Website Translation
 

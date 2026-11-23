@@ -3,6 +3,7 @@
 //     any model of its catalogue (llmcatalog.js), or your own MLC-compiled model by URL. Downloaded once from
 //     Hugging Face and kept in Cache Storage; after that it works without internet.
 //   - Gemini Nano, built into Chrome (Prompt API): Chrome downloads and manages the model itself.
+import { keepDownloadsSafe } from './persist.js';
 import { registerProvider, ProviderError, OpenAICompatibleProvider } from '../providers.js';
 import { LLM_CATALOG, LLM_CURATED, prettyName } from './llmcatalog.js';
 import { bgDownload, bgResume } from './bgfetch.js';
@@ -259,6 +260,7 @@ export const llmTitle = (key) => specOf(key).title;
 export function downloadModel(key, { onProgress } = {}) {
   const running = jobs.get(key);
   if (running) return running.promise;
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   const spec = specOf(key);
   const job = { progress: 0, phase: 'download' };
   job.promise = (async () => {

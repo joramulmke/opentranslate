@@ -9,6 +9,7 @@ import { createLangBar } from './langbar.js';
 import { pickLanguage } from './langpicker.js';
 import { icon } from './icons.js';
 import { toast, copyToClipboard } from './snackbar.js';
+import { wiktionaryLink } from '../features/wiktionary.js';
 import { isPhone } from './layout.js';
 import { speak, stopSpeaking, nextIsSlow, canDictate, dictate, dictationMessage } from '../features/speech.js';
 import { ensureMicrophone } from '../features/permissions.js';
@@ -43,7 +44,7 @@ export function initTextView(opts) {
     out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'),
     errActions: $('out-error-actions'), mockChip: $('mock-chip'), why: $('btn-why'), whyList: $('why-list'),
     speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), shareBtn: $('btn-share'), starBtn: $('btn-star'),
-    inputCard: $('input-card'), live: $('out-live'),
+    inputCard: $('input-card'), live: $('out-live'), wikt: $('wikt-link'),
   };
 
   createLangBar(el.view.querySelector('[data-langbar]'), { onSwap: swapTexts });
@@ -265,6 +266,21 @@ function showWhy(tried, answered) {
   }), ...(tried.length && answered ? [Object.assign(document.createElement('li'), { className: 'why-ok', textContent: `${answered}: translated this` })] : []));
 }
 
+const arrow = () => { const a = document.createElement('span'); a.setAttribute('aria-hidden', 'true'); a.textContent = '↗'; return a; };
+
+/** "Look up "test" on Wiktionary": only for a word or a few, never a sentence. */
+function showWiktionary(r) {
+  if (!el.wikt) return;
+  const link = r && wiktionaryLink(r);
+  el.wikt.hidden = !link;
+  if (!link) return;
+  el.wikt.href = link.url;
+  const w = document.createElement('span');
+  w.lang = r.target; w.textContent = link.word;
+  el.wikt.replaceChildren('Look up “', w, '” on Wiktionary ', arrow());
+  el.wikt.setAttribute('aria-label', `Look up ${link.word} on Wiktionary (opens in a new tab)`);
+}
+
 function showResult(r) {
   endLoading();
   result = r;
@@ -281,6 +297,7 @@ function showResult(r) {
   el.mockChip.textContent = r.mock ? 'Offline demo translation' : fallbackNote(r);
   el.mockChip.hidden = !r.mock && !r.via && !r.note;
   showWhy(r.mock ? [] : r.tried || [], r.answered);
+  showWiktionary(r.mock ? null : r);
   // one short polite announcement instead of a live region around the whole card
   if (el.live) {
     const t = document.createElement('span');
@@ -295,6 +312,7 @@ function showResult(r) {
 function showError(err) {
   endLoading();
   result = null;
+  showWiktionary(null);
   setOutState('error');
   const { code, title, message } = describeError(err);
   el.placeholder.hidden = true;
@@ -350,6 +368,7 @@ function clearOutput() {
   el.err.hidden = true;
   el.mockChip.hidden = true;
   showWhy([]);
+  showWiktionary(null);
   el.placeholder.hidden = false;
   if (el.live) el.live.textContent = '';
   setOutputActions(false);

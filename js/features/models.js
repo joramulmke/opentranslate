@@ -1,6 +1,7 @@
 // Downloadable on-device models that run with transformers.js (speech recognition, handwriting, camera text):
 // one place that loads them, knows whether they are downloaded, how big they are, where they come
 // from, and can delete them. transformers.js keeps the files in Cache Storage ("transformers-cache").
+import { keepDownloadsSafe } from './persist.js';
 import { settings } from '../store.js';
 import { bgDownload, bgResume } from './bgfetch.js';
 
@@ -185,6 +186,7 @@ export async function downloadModel(key, { onProgress } = {}) {
   settings.set({ [m.okKey]: true });
   if (present.has(key) || jobs.has(key) || pipes.has(key) || !modelRunsHere(key)) { await getPipeline(key, { onProgress }); return; }
   // keeps going when the app is closed, where the browser can (Chrome on Android); it isn't loaded yet then
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   const job = { progress: 0 };
   jobs.set(key, job); emit();
   try {

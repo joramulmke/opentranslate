@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS = {
   paddleOk: null,              // answer to the PP-OCRv6 download question
   visionModelOk: null,         // answer to the Florence-2 download question (camera text)
   ocrQuality: 'accurate',      // camera text: accurate (sharper photo, finer detection) | fast
+  keepSafe: null,              // keep downloads safe: null = not asked yet, true/false = the answer (features/persist.js)
   whisperModel: 'whisper',     // on-device speech model size: whisper-tiny | whisper (base) | whisper-small | whisper-turbo
 };
 
