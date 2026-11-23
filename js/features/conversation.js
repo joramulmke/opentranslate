@@ -519,7 +519,13 @@ export function initConversation({ leave = () => {} } = {}) {
     else if (performance.now() - userScroll < 1000) follow = false;
     $('convo-jump').hidden = follow || mode !== 'listening';
   }, { passive: true });
-  $('convo-jump').addEventListener('click', () => { follow = true; $('convo-jump').hidden = true; sheetEl.scrollTo({ top: sheetEl.scrollHeight, behavior: calm() ? 'auto' : 'smooth' }); });
+  $('convo-jump').addEventListener('click', () => {
+    follow = true; $('convo-jump').hidden = true;
+    // the button goes away, so focus goes on to the newest caption instead of being lost
+    const last = [...shared.querySelectorAll(':scope > li.utt:not(.live)')].pop();
+    if (last) { last.tabIndex = -1; last.focus({ preventScroll: true }); } else bigMic.focus();
+    sheetEl.scrollTo({ top: sheetEl.scrollHeight, behavior: calm() ? 'auto' : 'smooth' });
+  });
 
   function listenOnce() {
     const who = speakerNow();
@@ -530,7 +536,7 @@ export function initConversation({ leave = () => {} } = {}) {
       onState: (st) => {
         status.textContent = st === 'listening' ? `Listening · ${name}…` : st === 'transcribing' ? 'Transcribing…' : st;
       },
-      onText: (t) => { if (calm()) return; interim.textContent = t; interim.lang = code; interim.dir = dirOf(code); },
+      onText: (t) => { interim.textContent = t && calm() ? '…' : t; interim.lang = code; interim.dir = dirOf(code); },   // calm: only a sign that words are heard
       onEnd: (finalText) => {
         finish();
         if (finalText) addUtterance(who, finalText);
