@@ -38,13 +38,21 @@ Keep downloads safe (persistent storage): downloads can be several GB, and the b
    space runs low. One call asks it to keep them; the right moment is right after the first download.
 
 Plan (agreed Nov 2026):
-- No own "Keep downloads safe?" sheet: Chrome/Edge decide by themselves (installed, bookmarked, used a lot),
-  Firefox shows its own prompt, Safari decides by itself. Asking ourselves too would just ask twice.
-- Ask once, on the first tap on Download (`navigator.storage.persisted()`, then `persist()`), so Firefox's prompt
-  appears in context. Remember that we asked. A helper `ensurePersisted()` in `js/ui/storage.js`, called from the
-  download buttons (language packs, voices, models, PP-OCRv6, on-device AI; `js/features/offline.js`, `bgfetch.js`).
-- Show the result in Settings › storage line: "· Kept safe", or "· May be deleted when space runs low" with a hint
-  "Install the app to keep them safe". Nothing shown where the browser has no storage API.
+- On the first tap on Download, the app asks the user first, with its own sheet (`sheet()` from
+  `js/features/permissions.js`):
+  "Keep downloads safe? Downloads can be large. When space on this device runs low, the browser may delete
+  them without asking. OpenTranslate can ask the browser to keep them." Buttons: "Keep them safe" / "Not now".
+  The download starts either way.
+- Only after "Keep them safe" does the app ask the browser (`navigator.storage.persist()`). Firefox then shows
+  its own prompt; Chrome, Edge and Safari decide by themselves (installed, bookmarked, used a lot).
+- If the browser says no, ask the browser again later without a new sheet, because its answer can change:
+  after the app is installed (`appinstalled`, or the first start as an installed app), and at the next
+  downloads. Stop once it says yes. (Firefox remembers a "Block" and won't prompt again.)
+- "Not now" in the sheet: don't ask again by sheet. Settings gets a switch "Keep downloads safe" to change it.
+- A helper `ensurePersisted()` in `js/ui/storage.js`, called from the download buttons (language packs, voices,
+  models, PP-OCRv6, on-device AI; `js/features/offline.js`, `bgfetch.js`).
+- Show the result in Settings › storage line: "· Kept safe", or "· May be deleted when space runs low" with a
+  hint "Install the app to keep them safe". Nothing shown where the browser has no storage API.
 
 ## 7. background fetch
 
