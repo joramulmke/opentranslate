@@ -674,7 +674,7 @@ dialog.convo-setup { overflow-y: auto; }
 }
 .pad-tools { display: flex; align-items: center; gap: 2px; padding: 0 4px 0 4px; height: 48px; background: var(--pad-strip); flex: none; }
 .stroke-ctl { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; max-width: 220px; padding: 0 8px; color: var(--on-surface-variant); }
-.stroke-ctl input { flex: 1; min-width: 40px; accent-color: var(--primary); }
+.stroke-ctl input { flex: 1; min-width: 40px; height: 40px; margin: 0; accent-color: var(--primary); cursor: pointer; }   /* a 40px tall grab area */
 .pad-tools #pad-recognize { margin-left: auto; }
 .pad-area { position: relative; flex: 1; min-height: 120px; }
 .pad { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }

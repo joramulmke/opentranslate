@@ -392,7 +392,7 @@ export function initCamera({ sendToText }) {
     try { await navigator.share({ text }); } catch (e) { if (e.name !== 'AbortError') copyToClipboard(text, 'Sharing didn’t work, translation copied'); }
   }
 
-  /* Zoom: pinch, Ctrl + wheel (or a trackpad pinch), double-tap, or + / − keys; drag to move. */
+  /* Zoom: pinch, Ctrl + wheel (or a trackpad pinch), double-tap, or + / − keys; drag or arrow keys (Shift: bigger steps) to move. */
   const zoom = { s: 1, x: 0, y: 0 };
   let zoomedBox = null;   // the box tapped to zoom to it
   const pointers = new Map();
@@ -487,10 +487,15 @@ export function initCamera({ sendToText }) {
     if (!shot || e.target.closest('input, textarea, [role="menu"], dialog')) return;
     const r = el.shot.getBoundingClientRect();
     const cx = r.left + r.width / 2; const cy = r.top + r.height / 2;
+    // arrows move a zoomed photo (not the photo strip, whose arrows change photo)
+    const pan = zoom.s > 1 && !e.target.closest('#shot-strip') && { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
     if (e.key === '+' || e.key === '=') zoomAt(zoom.s * 1.25, cx, cy);
     else if (e.key === '-') zoomAt(zoom.s / 1.25, cx, cy);
     else if (e.key === '0') resetZoom();
-    else return;
+    else if (pan) {
+      const step = (e.shiftKey ? 0.5 : 0.15) * Math.min(r.width, r.height) / zoom.s;   // Shift: bigger steps
+      zoom.x += pan[0] * step; zoom.y += pan[1] * step; zoomedBox = null; applyZoom();
+    } else return;
     e.preventDefault();
   });
 

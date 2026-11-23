@@ -125,6 +125,8 @@ export function initHandwriting({ sendToText }) {
   el.canvas.addEventListener('pointercancel', end);
 
   el.undo.addEventListener('click', () => { strokes.pop(); redraw(); clearTimeout(timer); if (strokes.length) timer = setTimeout(runRecognition, AUTO_RECOGNIZE_MS); else clearCandidates(); });
+  // screen readers say "6 pixels", not just "6"
+  el.width.addEventListener('input', () => el.width.setAttribute('aria-valuetext', `${el.width.value} pixels`));
   el.clear.addEventListener('click', () => { strokes = []; redraw(); clearCandidates(); clearTimeout(timer); ++job; status(''); });
   el.recognizeBtn.addEventListener('click', () => { clearTimeout(timer); runRecognition(); });
   window.addEventListener('keydown', (e) => {

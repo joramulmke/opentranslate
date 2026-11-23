@@ -232,11 +232,11 @@
           <button type="button" role="menuitem" data-transcript="download"><i data-icon="download"></i><span>Download as .txt</span></button>
         </div>
         <div class="convo-sheet" id="convo-sheet">
-          <ol class="convo-shared" id="convo-shared" aria-label="Transcript" aria-live="polite" aria-relevant="additions text"></ol>
+          <ol class="convo-shared" id="convo-shared" aria-label="Transcript"></ol>
           <!-- face-to-face: their half is rotated to face the person opposite -->
           <div class="convo-split" id="convo-split" hidden>
             <ol class="split-half split-them" id="split-them" aria-hidden="true"></ol>
-            <ol class="split-half split-me" id="split-me" aria-label="Transcript" aria-live="polite"></ol>
+            <ol class="split-half split-me" id="split-me" aria-label="Transcript"></ol>
           </div>
           <button class="btn btn-tonal jump-latest" id="convo-jump" type="button" hidden><i data-icon="down"></i><span>Jump to latest</span></button>
         </div>
@@ -252,6 +252,8 @@
           </div>
           <p class="convo-interim" id="convo-interim" aria-hidden="true"></p>
           <p class="convo-status" id="convo-status" role="status">Tap mic to start</p>
+          <!-- screen readers: each finished translation once (the lists above change while they fill in) -->
+          <p class="visually-hidden" id="convo-announce" aria-live="polite"></p>
           <div class="convo-bottom-row">
             <button class="mode-pill" id="convo-mode" type="button" aria-haspopup="dialog"><i data-icon="voiceOver"></i><span id="convo-mode-label">Conversation</span></button>
             <button class="mic-stadium" id="convo-bigmic" type="button" aria-label="Speak" aria-pressed="false"><i data-icon="mic"></i></button>
@@ -292,7 +294,7 @@
             <button class="icon-btn" id="pad-clear" type="button" aria-label="Clear drawing"><i data-icon="delete"></i></button>
             <label class="stroke-ctl" title="Stroke width"><i data-icon="lineWeight"></i>
               <span class="visually-hidden">Stroke width</span>
-              <input type="range" id="pad-width" min="2" max="18" step="1" value="6">
+              <input type="range" id="pad-width" min="2" max="18" step="1" value="6" aria-valuetext="6 pixels">
             </label>
             <button class="text-btn" id="pad-recognize" type="button">Recognize</button>
             <button class="icon-btn" id="pad-expand" type="button" aria-label="Enlarge writing area" aria-pressed="false"><i data-icon="fullscreen"></i></button>
@@ -436,7 +438,7 @@
     <div class="show-box"><p class="show-text" id="show-text"></p></div>
     <div class="show-bar">
       <span class="show-status" id="show-status" aria-live="polite"></span>
-      <button class="show-play" id="show-play" type="button"></button>
+      <button class="show-play" id="show-play" type="button" aria-label="Read aloud"></button>
     </div>
   </dialog>
 
