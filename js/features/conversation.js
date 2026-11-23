@@ -342,6 +342,7 @@ export function initConversation({ leave = () => {} } = {}) {
       const res = await translate(u.text, u.fromLang, u.toLang);
       u.translated = res.text;
       renderUtterance(u);
+      announce(u);
       renderPip();
       if (fallbackNote(res)) toast(fallbackNote(res));   // e.g. Classic stood in for Advanced, or the next service did
       if (mode === 'conversation') speak(res.text, u.toLang).catch(() => {});
@@ -349,7 +350,23 @@ export function initConversation({ leave = () => {} } = {}) {
       const { title, message } = describeError(e);
       u.error = `${title}. ${message}`;
       renderUtterance(u);
+      announce(u);
     }
+  }
+
+  /** Read a finished translation (or its error) once to screen readers, in its own language's voice.
+   *  The transcript itself isn't a live region: it fills in step by step, and re-renders when languages change. */
+  function announce(u) {
+    const box = $('convo-announce');
+    if (!box) return;
+    const line = document.createElement('span');
+    if (u.error) line.textContent = `Not translated. ${u.error}`;
+    else {
+      line.append(`${langName(u.toLang)}: `);
+      const t = Object.assign(document.createElement('span'), { lang: u.toLang, dir: dirOf(u.toLang), textContent: u.translated });
+      line.append(t);
+    }
+    box.replaceChildren(line);
   }
 
   /* ---------------- voice ---------------- */

@@ -106,6 +106,14 @@ Accessibility (done, Nov 2026; axe-core WCAG 2.2 AA scan clean before and after;
   dc:description): "Pharmacy, please ring (German: Apotheke, bitte klingeln)". Galleries such as Google
   Photos can show it; few screen readers read it yet.
 
+Whole-app accessibility audit (Nov 2026): axe-core WCAG 2.2 AA on every tab and dialog, light and dark,
+phone and computer: clean. Manual: 320px reflow, reduced motion, text spacing, focus, live regions: fine. Fixed:
+- A zoomed photo moves with the arrow keys (Shift: bigger steps); + / − / 0 zoom as before.
+- Conversation: screen readers hear each finished translation once, in its language, from a hidden line;
+  the transcript on screen and its animation are unchanged (it is no longer a live region itself).
+- Handwriting: the pen-width slider is 40px tall and reads "6 pixels".
+Still to try with real TalkBack / VoiceOver / NVDA on a phone and a computer.
+
 ## 6. Persistent downloads
 
 (Done, Nov 2026; not yet tried in Firefox or on a phone.) Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when
