@@ -61,6 +61,7 @@ const SHELL = [
   './js/share.js',
   './js/features/pdf.js',
   './js/features/openfiles.js',
+  './js/features/captions.js',
   './js/features/bgfetch.js',
   './js/features/persist.js',
   './js/features/wiktionary.js',

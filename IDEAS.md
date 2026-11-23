@@ -13,6 +13,9 @@ PP-OCRv6 and AI vision already return.
 Continuous speech recognition and translation as running captions, for talks or calls. Big, readable
 text, scrolling; each line translated as soon as it is final.
 
+(Done, Nov 2026: in Conversation › Listening, with microphone or tab sound, the pause switch, text size,
+transcript and floating captions on computers. Tried with a recording engine; Chrome's own speech service
+and tab sound still need a try on a real computer and phone. Phones: see #13.)
 Plan (agreed Nov 2026): build it into Conversation › Listening, which already listens, translates only
 their language and restarts the mic by itself (it pauses after two silences today).
 - Runs until you stop it or leave: no pause after silence (after ~2 minutes of silence it pauses, to save
