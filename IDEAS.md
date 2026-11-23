@@ -17,8 +17,8 @@ Half there before (Nov 2026): a light box with the translation over each line. P
   translations than line by line.
 - Save and share the translated photo as a picture (the photo with the boxes drawn in), also the
   "NEXT" from #5.
-- Pinch (or Ctrl + wheel) to zoom and drag to move the photo. Tapping a box does nothing; "Original"
-  still shows the original text.
+- Pinch (or Ctrl + wheel) to zoom and drag to move the photo. Tapping a box zooms in until its line
+  fills the screen; tapping it again zooms back out. "Original" still shows the original text.
 
 ## 2. Live subtitles in Conversation
 

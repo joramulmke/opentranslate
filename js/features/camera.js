@@ -269,10 +269,10 @@ export function initCamera({ sendToText }) {
 
   /* Zoom: pinch, Ctrl + wheel (or a trackpad pinch), double-tap, or + / − keys; drag to move. */
   const zoom = { s: 1, x: 0, y: 0 };
+  let zoomedBox = null;   // the box tapped to zoom to it
   const pointers = new Map();
   function applyZoom() {
-    const r = el.shot.getBoundingClientRect();
-    const w = r.width / zoom.s; const h = r.height / zoom.s;
+    const w = el.shot.offsetWidth; const h = el.shot.offsetHeight;   // size without the zoom
     zoom.s = Math.min(5, Math.max(1, zoom.s));
     // keep the photo covering where it was: no empty space at its edges
     zoom.x = Math.min(0, Math.max(w * (1 - zoom.s), zoom.x));
@@ -281,7 +281,7 @@ export function initCamera({ sendToText }) {
     el.shot.style.transform = zoom.s === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
     el.wrap.classList.toggle('zoomed', zoom.s > 1);
   }
-  function resetZoom() { zoom.s = 1; zoom.x = 0; zoom.y = 0; el.shot.style.transform = ''; el.wrap.classList.remove('zoomed'); }
+  function resetZoom() { zoomedBox = null; zoom.s = 1; zoom.x = 0; zoom.y = 0; el.shot.style.transform = ''; el.wrap.classList.remove('zoomed'); }
   /** Zoom to s, keeping the screen point (px, py) where it is. */
   function zoomAt(s, px, py) {
     const r = el.shot.getBoundingClientRect();
@@ -296,10 +296,31 @@ export function initCamera({ sendToText }) {
     e.preventDefault();
     zoomAt(zoom.s * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
   }, { passive: false });
-  el.wrap.addEventListener('dblclick', (e) => { if (shot) zoomAt(zoom.s > 1 ? 1 : 2.5, e.clientX, e.clientY); });
+  let boxTapAt = 0;   // a double tap on a box is two box taps, not the photo's double tap
+  el.wrap.addEventListener('dblclick', (e) => { if (shot && performance.now() - boxTapAt > 600) zoomAt(zoom.s > 1 ? 1 : 2.5, e.clientX, e.clientY); });
+  /** Tap a box: zoom in until its line fills the screen; tap it again to zoom back out. */
+  function zoomToBox(box) {
+    if (zoomedBox === box && zoom.s > 1) { resetZoom(); zoomedBox = null; return; }
+    const r = box.getBoundingClientRect();
+    const sr = el.shot.getBoundingClientRect();
+    const wr = el.wrap.getBoundingClientRect();
+    const cs = getComputedStyle(el.wrap);
+    const top = wr.top + parseFloat(cs.paddingTop); const bottom = wr.bottom - parseFloat(cs.paddingBottom);
+    const qx = (r.left + r.width / 2 - sr.left) / zoom.s; const qy = (r.top + r.height / 2 - sr.top) / zoom.s;
+    const w = r.width / zoom.s; const h = r.height / zoom.s;
+    const ns = Math.min(5, Math.max(1.5, Math.min((0.92 * wr.width) / w, (0.5 * (bottom - top)) / h)));
+    const left = sr.left - zoom.x; const topL = sr.top - zoom.y;
+    zoom.s = ns;
+    zoom.x = wr.left + wr.width / 2 - left - ns * qx;
+    zoom.y = (top + bottom) / 2 - topL - ns * qy;
+    applyZoom();
+    zoomedBox = box;
+  }
+  let tap = null;   // a press that may be a tap on a box
   el.wrap.addEventListener('pointerdown', (e) => {
     if (!shot || e.target.closest('button')) return;
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    tap = pointers.size === 1 ? { box: e.target.closest('.ocr-box'), x: e.clientX, y: e.clientY } : null;
     el.wrap.setPointerCapture?.(e.pointerId);
   });
   el.wrap.addEventListener('pointermove', (e) => {
@@ -319,7 +340,11 @@ export function initCamera({ sendToText }) {
     } else { p.x = e.clientX; p.y = e.clientY; }
   });
   const lift = (e) => pointers.delete(e.pointerId);
-  el.wrap.addEventListener('pointerup', lift);
+  el.wrap.addEventListener('pointerup', (e) => {
+    const t = tap; tap = null;
+    lift(e);
+    if (t?.box && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 10 && el.overlays.contains(t.box)) { boxTapAt = performance.now(); zoomToBox(t.box); }
+  });
   el.wrap.addEventListener('pointercancel', lift);
   el.view.addEventListener('keydown', (e) => {
     if (!shot || e.target.closest('input, textarea, [role="menu"], dialog')) return;
