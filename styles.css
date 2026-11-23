@@ -361,6 +361,12 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .error-msg { font-size: 17px; line-height: 24px; opacity: .85; overflow-wrap: anywhere; }
 .error-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin: 8px -8px 0 0; }
 .error-actions .text-btn { color: var(--error); font-size: 16px; }
+.error-note { font-size: 13px; line-height: 18px; opacity: .75; overflow-wrap: anywhere; }
+/* a first download: an offer, not an error */
+.error-card.prompt { background: var(--primary-container); color: var(--on-primary-container); }
+.error-card.prompt > .ic { color: var(--primary); }
+.error-card.prompt .error-actions .text-btn { color: var(--primary); }
+.error-card.prompt .error-actions .text-btn:first-child { background: var(--primary); color: var(--on-primary); border-radius: 999px; padding-inline: 20px; }
 .output-card[data-state="error"] .pane-label,
 .output-card[data-state="error"] .output-body,
 .output-card[data-state="error"] .out-footer { display: none; }
@@ -503,6 +509,13 @@ h1, h2, h3 { margin: 0; font-weight: 400; }
 .view-convo.is-split .convo-sheet { overflow: hidden; }
 
 /* transcript: translation large, original small underneath, newest at the bottom */
+/* empty conversation: a short hint in the middle until the first line */
+.convo-empty { display: none; position: absolute; inset: 0; margin: auto; height: fit-content; max-width: 340px; padding: 24px;
+  text-align: center; color: var(--on-surface-variant); pointer-events: none; }
+.convo-empty > .ic { width: 40px; height: 40px; color: var(--primary); display: block; margin: 0 auto 12px; }
+.convo-empty strong { display: block; font-size: 20px; line-height: 28px; font-weight: 500; color: var(--on-surface); }
+.convo-empty p { margin: 8px 0 0; font-size: 15px; line-height: 22px; }
+.convo-sheet:has(.convo-shared:empty):not(:has(.convo-split:not([hidden]) li)) .convo-empty { display: block; }
 .convo-shared { list-style: none; margin: 0; padding: 16px 24px 24px; min-height: 100%; display: flex; flex-direction: column; justify-content: flex-end; gap: 20px; }
 .utt { display: grid; gap: 4px; animation: viewIn .25s var(--ease-emph); }
 .utt p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -919,9 +932,15 @@ dialog.menu [role="menuitem"][hidden] { display: none; }
   .src-footer .char-count { flex: 1; }
   #btn-speak-src { order: -1; }
   .output-card[data-state="empty"] { display: none; }
-  .out-divider { display: block; flex: none; width: 54%; height: 2px; margin: 12px auto 20px; border-radius: 1px; background: var(--secondary-container); }
+  .out-divider { display: block; flex: none; width: 54%; height: 2px; margin: 12px auto 20px; border-radius: 1px; background: var(--secondary-container);
+    position: relative; cursor: row-resize; touch-action: none; transition: transform .15s, background-color .15s; }
+  /* a finger-sized grip around the thin line */
+  .out-divider::before { content: ''; position: absolute; inset: -16px 0; }
+  .out-divider:hover, .out-divider.dragging, .out-divider:focus-visible { transform: scaleY(2); background: var(--primary); }
+  .out-divider:focus-visible { outline: 3px solid var(--primary); outline-offset: 10px; }
   .out-divider:has(+ .output-card[data-state="empty"]) { display: none; }
-  .output-card { margin: 0 24px !important; min-height: 0; border-radius: var(--radius-lg) !important; }
+  /* flex: none: the panes scroll instead of squashing a long translation under its own buttons */
+  .output-card { margin: 0 24px !important; min-height: 0; border-radius: var(--radius-lg) !important; flex: none; }
   .output-card[data-state="result"], .output-card[data-state="loading"] { background: var(--output-surface) !important; color: var(--on-output); }
   .output-card .pane-label { padding-top: 18px; }
   .output-card[data-state="loading"] .out-footer { display: none; }
@@ -1177,6 +1196,7 @@ dialog.menu [role="menuitem"][hidden] { display: none; }
   .error-card > .ic { width: 24px; height: 24px; }
   .error-title { font-size: 18px; line-height: 24px; font-weight: 500; }
   .error-msg { font-size: 14px; line-height: 20px; }
+  .error-note { font-size: 12px; line-height: 16px; }
   .error-actions .text-btn { font-size: 14px; }
 
   /* round History · Saved */
@@ -1328,6 +1348,13 @@ dialog.menu .needs-setup::after { position: static; margin-left: auto; box-shado
 .svc-copy strong { font-weight: 400; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .svc-copy small { font-size: 12px; color: var(--on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .svc-actions { display: flex; flex: none; }
+/* "⋯" menu on a service row (Move up / Move down / Remove) */
+.row-menu { position: fixed; inset: auto; margin: 0; padding: 8px 0; min-width: 180px; border: 0; border-radius: 8px;
+  background: var(--surface-container); color: var(--on-surface); box-shadow: 0 4px 12px rgb(0 0 0 / .25); }
+.row-menu button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 0 16px; border: 0;
+  background: none; color: inherit; font: inherit; font-size: 15px; text-align: start; cursor: pointer; }
+.row-menu button:hover, .row-menu button:focus-visible { background: color-mix(in srgb, var(--on-surface) 8%, transparent); outline: none; }
+.row-menu button .ic { width: 20px; height: 20px; color: var(--on-surface-variant); }
 .icon-btn.sm { width: 44px; height: 44px; }
 .icon-btn.sm .ic { width: 20px; height: 20px; }
 .icon-btn:disabled { opacity: .38; cursor: default; }

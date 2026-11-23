@@ -1,8 +1,8 @@
 // M3 snackbar. toast('Copied') or toast('Removed', { action: 'Undo', onAction }); a full stop is added if missing
 //
 // Accessibility:
-// - Messages with an action (Undo) stay until the person uses it, dismisses it, or another
-//   message replaces it: no time limit (WCAG 2.2.1 / 2.2.3).
+// - Messages with an action (Undo) stay until the person uses it, dismisses it, another
+//   message replaces it, or they move to another tab: no time limit (WCAG 2.2.1 / 2.2.3).
 // - Plain messages hide after a while, but never while hovered or focused.
 // - ✕ and Escape mean "stop" for a message that has one (onDismiss), e.g. Cancel on "Reading photo 2 of 3…".
 // - It sits above bottom button bars marked data-toast-above, so it never hides a focused button there (WCAG 2.4.11).
@@ -80,6 +80,12 @@ function place(el, host) {
   const under = host === document.body ? [...document.querySelectorAll('[data-toast-above]')].find((b) => b.getClientRects().length && b.checkVisibility?.() !== false) : null;
   const top = under ? under.getBoundingClientRect().top : innerHeight;
   el.style.bottom = top < innerHeight ? `${Math.round(innerHeight - top + 8)}px` : '';
+}
+
+/** Moving to another tab: an Undo that belongs to the screen you left goes with it, instead of
+ *  covering the camera's shutter or the conversation's mic. (Its own action isn't run.) */
+export function leaveScreen() {
+  if (bar().classList.contains('show') && !document.getElementById('snackbar-action').hidden) hide();
 }
 
 export function hide() {

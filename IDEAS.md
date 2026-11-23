@@ -323,3 +323,43 @@ phone.)
 - Wording: "Stop reading aloud" for the speaker (the mic keeps "Stop listening"); "Saved translations"
   everywhere instead of "phrasebook"; "service" instead of "provider"; "Service is busy" instead of
   "Slow down"; every message ends with a full stop.
+
+## 18. User experience pass (typical tasks on a phone)
+
+(Done, Nov 2026; tried in Playwright on an emulated Pixel 7 and iPhone SE, light and dark, not on a real
+phone.)
+- Photos: when a language file for reading photos can't be downloaded (bad connection), the camera says so
+  with "Try again" instead of waiting forever. Tesseract.js only reported this as an uncaught error.
+- The "Translation saved · Undo" message (and other messages with a button) closes when you move to
+  another tab, instead of covering the camera's shutter or the conversation's mic.
+- First visit: translates into the phone's language (was always Spanish); Conversation starts with
+  "your language" = the phone's language. Typed text that's already in the target language ("Detect
+  language", English into English) is translated into the last other language you used.
+- A first offline download is offered as a calm blue card ("Translate on this device", the size on the
+  button, where the files come from in small print) instead of a red error.
+- Detection of short texts: a close call ("Wo ist der Bahnhof?": Dutch 1.00, German 0.99) goes to a
+  language you use (the phone's or a recent one).
+- Phone text box: grows up to about a third of the screen, then scrolls inside, so the translation stays
+  in view. The line between your text and the translation resizes it (drag; arrow keys; double-tap or
+  Enter = automatic again); the size is remembered. A long translation no longer gets squashed under its
+  own buttons, and your text and the translation always share one text size.
+- Conversation: a short hint in the empty transcript (what to tap, who speaks which language).
+- Settings: services first, storage after them; Move up / Move down / Remove are in a "⋯" menu on each
+  row instead of three more buttons.
+- Language names: a service that only sends codes ("de") still shows "German".
+
+## 19. First-run welcome (idea)
+
+On the first visit, one screen instead of the red "!" on the menu: "Which languages do you need?"
+(the phone's language is already picked; add the one you'll read or speak). Then either download them for
+offline use (size shown, one tap) or add a service (LibreTranslate server, AI key). Skippable; never shown
+again once a service or a language is set up. Replaces the setup badge and the first "Translate on this
+device" card.
+
+## 20. Language packs (idea)
+
+One download per language that covers everything for it: offline translation, the photo language file
+(Tesseract), an offline voice (Piper) and, if wanted, on-device speech recognition. Shown as one row per
+language in Settings with the total size and what's included, and offered from the language picker
+("Get everything for Japanese, 120 MB"). Good for travel: set up at home on Wi-Fi, everything works abroad
+without data. Deleting a pack removes all its parts.

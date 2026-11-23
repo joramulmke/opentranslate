@@ -7,7 +7,7 @@
 //          conversation = take turns (alternates automatically), translations read aloud
 //          text         = take turns, nothing read aloud
 import { translate, describeError, langName, fallbackNote } from '../state.js';
-import { settings } from '../store.js';
+import { settings, deviceLanguage } from '../store.js';
 import { isRtl } from '../languages.js';
 import { pickLanguage, escapeHtml } from '../ui/langpicker.js';
 import { setupDialog, openDialog, closeDialog } from '../ui/sheet.js';
@@ -32,8 +32,8 @@ const CAP_SIZES = [0.8, 1, 1.3, 1.7, 2.2];   // Listening: caption text sizes (A
 export function initConversation({ leave = () => {} } = {}) {
   const saved = (() => { try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch { return {}; } })();
   const langs = {
-    them: saved.them || saved.b || 'es',   // older saves used a (person 1, you) / b (person 2)
-    me: saved.me || saved.a || 'en',
+    them: saved.them || saved.b || (deviceLanguage() === 'es' ? 'en' : 'es'),   // older saves used a (person 1, you) / b (person 2)
+    me: saved.me || saved.a || deviceLanguage(),   // a first visit: you speak the phone's language
   };
   let mode = MODES[saved.mode] ? saved.mode : 'conversation';
   let split = !!saved.split;
@@ -239,6 +239,21 @@ export function initConversation({ leave = () => {} } = {}) {
     bigMic.setAttribute('aria-pressed', String(on));
     bigMic.setAttribute('aria-label', on ? 'Stop listening' : (mode === 'listening' ? `Start live captions of ${name}` : `Speak ${name}`));
     if (!on) status.textContent = idleStatus();
+    renderEmpty();
+  }
+
+  /** Until the first line: one or two sentences on what to do. */
+  function renderEmpty() {
+    const box = document.getElementById('convo-empty');
+    if (!box) return;
+    const me = langName(langs.me), them = langName(langs.them);
+    const [title, text] = mode === 'listening'
+      ? ['Live captions', `Tap the mic and let it listen. What’s said in ${them} shows up here in ${me}.`]
+      : mode === 'text'
+        ? ['Start the conversation', `Tap the mic and speak, or tap the keyboard to type. Switch between ${me} and ${them} with the buttons above the mic. Translations are shown, not read out.`]
+        : ['Start the conversation', `Tap the mic and speak ${me}. When it’s their turn, switch to ${them} with the buttons above the mic and hand over the phone. Translations are read out loud.`];
+    document.getElementById('convo-empty-title').textContent = title;
+    document.getElementById('convo-empty-text').textContent = canDictate() ? text : `Voice input isn’t available here. Tap the keyboard to type in ${me} or ${them}.`;
   }
 
   /* ---------------- live captions tools ---------------- */

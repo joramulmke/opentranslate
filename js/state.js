@@ -261,7 +261,9 @@ try { displayNames = new Intl.DisplayNames(['en'], { type: 'language' }); } catc
 export function langName(code) {
   if (!code) return '';
   if (code === 'auto') return 'Detect language';
-  const hit = state.languages.find((l) => l.code === code) || STATIC_LANGUAGES.find((l) => l.code === code);
+  // a service's own name, unless it only repeats the code ("de"): then the app's name ("German")
+  const own = state.languages.find((l) => l.code === code && l.name && l.name.toLowerCase() !== code.toLowerCase());
+  const hit = own || STATIC_LANGUAGES.find((l) => l.code === code);
   if (hit) return hit.name;
   try { return displayNames?.of(code) || code; } catch { return code; }
 }
@@ -375,7 +377,7 @@ export function describeError(err) {
   }
   const code = err?.code || 'SERVER';
   const map = {
-    NEEDS_DOWNLOAD: ['Download needed', `${err.message} Download it once to translate without internet.`],
+    NEEDS_DOWNLOAD: err?.detail?.offline ? ['Translate on this device', err.message] : ['Download needed', `${err.message} Download it once to translate without internet.`],
     BROWSER_BLOCKED: ['Not available in this browser', err.message],
     NO_PROVIDER: ['No translation service', err.message || 'Choose a service in Settings to start translating.'],
     NETWORK: ["Can’t translate", `Check your connection and try again.${err.message && !LOAD_FAILED.test(err.message) ? ` ${err.message}` : ''}`],

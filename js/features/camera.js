@@ -180,7 +180,8 @@ export function initCamera({ sendToText }) {
       if (id !== job) return;
       shot.failed = true;   // read again when shown again; "Save all" goes on without it
       status('');
-      toast(errorText(e, 'Text recognition failed.'));
+      // e.g. the language file couldn't be downloaded on a bad connection: read the same photo again
+      toast(errorText(e, 'Text recognition failed.'), { action: 'Try again', onAction: () => processCanvas(canvas) });
       return;
     }
     if (id !== job) return;

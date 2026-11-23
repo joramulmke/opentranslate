@@ -6,6 +6,7 @@ import { keepDownloadsSafe } from './persist.js';
 import { registerProvider, ProviderError } from '../providers.js';
 import { STATIC_LANGUAGES } from '../languages.js';
 import { bgDownload, bgResume, langLabel } from './bgfetch.js';
+import { recentLangs, deviceLanguage } from '../store.js';
 
 const RECORDS = 'https://firefox.settings.services.mozilla.com/v1/buckets/main/collections/translations-models/records';
 const FILES = 'https://firefox-settings-attachments.cdn.mozilla.net/';
@@ -476,8 +477,16 @@ async function detectLang(text) {
   const usable = new Set([PIVOT, ...installedLanguages()]);
   let only = Object.keys(ISO3).filter((c) => usable.has(ISO3[c]));
   if (only.length < 2) only = Object.keys(ISO3);
-  const [best] = francAll(text, { only, minLength: 3 }).filter(([c]) => ISO3[c]);
+  const ranked = francAll(text, { only, minLength: 3 }).filter(([c]) => ISO3[c]);
+  let [best] = ranked;
   if (!best || best[0] === 'und') return { language: PIVOT, confidence: 0 };
+  // a close call on a short text ("Wo ist der Bahnhof?" scores Dutch 1.00, German 0.99): a language
+  // you use (the phone's, or one you translated from or into lately) wins
+  const margin = text.length < 40 ? 0.15 : 0.05;
+  const mine = new Set([deviceLanguage(), ...(globalThis.navigator?.languages || []).map((l) => l.split('-')[0]),
+    ...recentLangs.get('source'), ...recentLangs.get('target')].map((c) => String(c).split('-')[0]));
+  const preferred = ranked.find(([c, score]) => mine.has(ISO3[c]) && score >= best[1] - margin);
+  if (preferred) best = preferred;
   return { language: ISO3[best[0]], confidence: Math.max(0, Math.min(1, best[1])) };
 }
 
@@ -525,8 +534,8 @@ registerProvider({
           await loadRegistry().catch(() => {});
           const size = missing.reduce((a, l) => a + (packSize(l) || 0), 0);
           throw new ProviderError('NEEDS_DOWNLOAD',
-            `${missing.map(nameOf).join(' and ')} ${missing.length > 1 ? "aren't" : "isn't"} downloaded to this device yet. ${missing.length > 1 ? 'They come' : 'It comes'} from ${MODEL_SOURCE.where}.`,
-            { langs: missing, size });
+            `Download ${missing.map(nameOf).join(' and ')} once. After that, translations stay on this device and work without internet.`,
+            { langs: missing, size, offline: true, source: `From ${MODEL_SOURCE.where}.` });
         }
         const models = route(source, target);
         if (!models) throw new ProviderError('UNSUPPORTED_PAIR', `There's no offline model for ${nameOf(source)} → ${nameOf(target)}.`);
