@@ -380,8 +380,7 @@ problems found. Not tried on a real phone.)
 
 (Done, Nov 2026; checked in Playwright and on the live site, not on a real phone.)
 - New 文A logo (blue 文, green A) for the header, favicon, app icons, shortcut icons and the social preview
-  (`icons/opentranslate-social-preview.png`, still to be uploaded on GitHub: Settings › General › Social
-  preview). The floating window has its own picture-in-picture icon; the Text tab uses a notes icon.
+  (`icons/opentranslate-social-preview.png`, uploaded on GitHub). The floating window has its own picture-in-picture icon; the Text tab uses a notes icon.
 - Text already in the target language: the target switches to the last other language you used, so the
   language bar and the note say the same.
 - Settings: Camera text and Handwriting share one Tesseract and one set of languages, and both say so.
