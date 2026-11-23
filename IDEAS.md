@@ -90,14 +90,14 @@ Plan (agreed Nov 2026, built):
 
 ## 12. Share more to OpenTranslate
 
-Today "Share → OpenTranslate" (Android) takes text, links and one photo. Plan (agreed Nov 2026):
-- .txt files: the text goes into the text box (UTF-8, else Windows-1252), up to 20,000 characters; a
-  note when it was cut.
+(Done, Nov 2026; not yet tried on a phone.) Before, "Share → OpenTranslate" (Android) took text, links and one photo. Plan (agreed Nov 2026):
+- .txt files: the text goes into the text box (UTF-8, else Windows-1252), up to 5,000 characters (what the
+  text box holds); a note when it was cut.
 - PDFs: pdf.js (Mozilla's PDF reader, exact version from jsDelivr like the voice engine) loads only when a
   PDF arrives; its text goes into the text box. Pages without text (scans) open in camera text instead,
   one page per photo (see below). Everything stays on the device; only the reader is downloaded.
 - Several photos: camera text opens the first one, with a strip of thumbnails to switch; each photo keeps
-  its own result. Up to 10.
+  its own result. Up to 10. "Import" in camera text takes several photos too.
 - How: the manifest's share_target accepts image/*, text/plain and application/pdf; the service worker
   keeps every file (not only the first photo) and opens ./?share=files. "Open with OpenTranslate" on a
   computer (file_handlers) gets .pdf too, with the same code.
@@ -149,8 +149,11 @@ Try each on a real Android phone (and an iPhone) before building it out.
   depends on the phone; only offered where it works well enough.
 - Floating captions: the latest caption lines drawn on a canvas, turned into a video (canvas.captureStream)
   and put into the phone's floating video window (requestPictureInPicture). Works where floating videos
-  work (Chrome on Android, Safari on iPhone). Only the captions, no buttons. Open question: does the
-  microphone keep running while the app is in the background with only the video floating?
+  work (Chrome on Android, Safari on iPhone). Only the captions, no buttons. Microphone in the background
+  (checked Nov 2026): Chrome on Android stops its own speech service as soon as the page is hidden, so
+  floating captions need a recording engine (Whisper, ElevenLabs, on-device). A page recording the
+  microphone itself can stay alive (Chrome shows a "using your microphone" notification), but whether the
+  captions keep coming still has to be tried on a real phone.
 - Screen readers can't read text inside a video, so the floating captions say nothing to them. That goes
   into the accessibility notices (below); the captions screen in the app stays fully readable.
 

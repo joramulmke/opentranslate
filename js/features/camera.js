@@ -23,13 +23,16 @@ export function initCamera({ sendToText }) {
     status: $('cam-status'), statusText: $('cam-status-text'), hint: $('cam-hint'), controls: $('cam-controls'),
     shutter: $('cam-shutter'), importBtn: $('cam-import'), import2: $('cam-import-2'), retry: $('cam-retry'),
     file: $('cam-file'), retake: $('cam-retake'), toggleOrig: $('cam-toggle-orig'), openText: $('cam-open-text'),
+    stage: $('camera-stage'), strip: $('shot-strip'),
   };
   createLangBar(el.view.querySelector('[data-langbar]'), { variant: 'dark' });
 
   let stream = null;
   let visible = false;
-  let shot = null;     // { w, h, ocrText, ocrSource, lines, translated }
+  let shot = null;     // { w, h, ocrText, ocrSource, lines, translated, src, done, pair }
   let job = 0;
+  let album = [];      // several photos: [{ source: Blob|canvas, shot, thumb }]
+  let albumAt = 0;
 
   async function startStream() {
     stopStream();
@@ -127,8 +130,9 @@ export function initCamera({ sendToText }) {
   async function processCanvas(canvas) {
     const id = ++job;
     stopStream();
-    shot = { w: canvas.width, h: canvas.height, lines: [], ocrText: '', translated: null };
-    el.img.src = canvas.toDataURL('image/jpeg', 0.9);
+    shot = { w: canvas.width, h: canvas.height, lines: [], ocrText: '', translated: null, src: canvas.toDataURL('image/jpeg', 0.9) };
+    if (album[albumAt] && !album[albumAt].shot) album[albumAt].shot = shot;
+    el.img.src = shot.src;
     el.toggleOrig.setAttribute('aria-pressed', 'false');
     setMode(true);
     requestAnimationFrame(fitShot);
@@ -150,7 +154,7 @@ export function initCamera({ sendToText }) {
     shot.note = ocr.note || '';   // e.g. AI vision didn't work and the device read the photo
     shot.lang = ocr.lang || null;  // e.g. a Florence-2 description is English, whatever the photo's language
     shot.description = !!ocr.description;
-    if (!shot.ocrText) { status(''); toast(`No text found. Try moving closer or improving the light.${shot.note ? ' ' + shot.note : ''}`); return; }
+    if (!shot.ocrText) { shot.done = true; status(''); toast(`No text found. Try moving closer or improving the light.${shot.note ? ' ' + shot.note : ''}`); return; }
     await translateShot(id);
   }
 
@@ -166,12 +170,14 @@ export function initCamera({ sendToText }) {
       const res = await translate(shot.ocrText, source, state.target);
       if (id !== job) return;
       shot.translated = res.text;
+      shot.done = true; shot.pair = `${state.source}>${state.target}`;
       const note = [shot.note, fallbackNote(res)].filter(Boolean).join(' ');   // e.g. Classic stood in for Advanced
       if (note) toast(note);
       drawOverlays();
       status('');
     } catch (e) {
       if (id !== job) return;
+      shot.done = true; shot.pair = null;
       status('');
       drawOverlays(true);
       const { title, message } = describeError(e);
@@ -213,6 +219,7 @@ export function initCamera({ sendToText }) {
   el.shutter.addEventListener('click', async () => {
     const v = el.video;
     if (!v.videoWidth || el.shutter.disabled) return;
+    clearAlbum();
     el.view.animate([{ filter: 'brightness(2)' }, { filter: 'none' }], { duration: 180 });
     el.shutter.disabled = true;
     const photo = await takePhoto(v);
@@ -242,27 +249,88 @@ export function initCamera({ sendToText }) {
   const pickFile = () => el.file.click();
   el.importBtn.addEventListener('click', pickFile);
   el.import2.addEventListener('click', pickFile);
-  /** An imported or shared photo: read it like a taken one. */
-  async function openImage(f) {
+  /* Several photos (shared, imported, or the pages of a scanned PDF): a strip of thumbnails to switch
+     between them. Each keeps its own result; one that wasn't finished is read again when it's shown. */
+  function clearAlbum() {
+    for (const a of album) if (a.thumb?.startsWith('blob:')) URL.revokeObjectURL(a.thumb);
+    album = []; albumAt = 0;
+    renderStrip();
+  }
+  function thumbOf(source) {
+    if (source instanceof Blob) return URL.createObjectURL(source);
+    const c = document.createElement('canvas');
+    const k = 112 / Math.max(source.width, source.height);
+    c.width = Math.max(1, Math.round(source.width * k)); c.height = Math.max(1, Math.round(source.height * k));
+    c.getContext('2d').drawImage(source, 0, 0, c.width, c.height);
+    return c.toDataURL('image/jpeg', 0.7);
+  }
+  function renderStrip() {
+    const many = album.length > 1;
+    el.strip.hidden = !many;
+    el.stage.classList.toggle('has-strip', many);
+    if (!many) { el.strip.replaceChildren(); return; }
+    el.strip.innerHTML = album.map((a, i) => `<button type="button" class="shot-thumb" data-i="${i}" aria-label="Photo ${i + 1} of ${album.length}"${i === albumAt ? ' aria-current="true"' : ''}><img alt="" src="${a.thumb}"></button>`).join('');
+    el.strip.querySelector('[aria-current]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  async function showPhoto(i) {
+    const a = album[i];
+    if (!a) return false;
+    albumAt = i;
+    renderStrip();
+    el.empty.hidden = true;
+    if (a.shot?.done) {
+      ++job;
+      stopStream();
+      shot = a.shot;
+      el.img.src = shot.src;
+      el.toggleOrig.setAttribute('aria-pressed', 'false');
+      setMode(true);
+      status('');
+      requestAnimationFrame(fitShot);
+      if (shot.lines.length) drawOverlays(!shot.translated);
+      if (shot.ocrText && shot.pair !== `${state.source}>${state.target}`) translateShot(++job);
+      return true;
+    }
+    a.shot = null;
     try {
-      const bmp = await createImageBitmap(f);
-      el.empty.hidden = true;
-      processCanvas(toCanvas(bmp, bmp.width, bmp.height));
+      const src = a.source instanceof Blob ? await createImageBitmap(a.source) : a.source;
+      if (albumAt !== i) return true;
+      processCanvas(toCanvas(src, src.width, src.height));
       return true;
     } catch {
-      toast('That file could not be opened as an image');
+      toast(album.length > 1 ? `Photo ${i + 1} could not be opened as an image` : 'That file could not be opened as an image');
       return false;
     }
   }
+  /** Imported or shared photos (Blobs) or drawn pages (canvases): read them like taken ones. Up to 10. */
+  async function openImages(list) {
+    clearAlbum();
+    album = [...list].slice(0, 10).map((source) => ({ source, shot: null, thumb: '' }));
+    if (album.length > 1) for (const a of album) a.thumb = thumbOf(a.source);
+    const ok = await showPhoto(0);
+    if (!ok) clearAlbum();
+    return ok;
+  }
+  el.strip.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-i]');
+    if (b && Number(b.dataset.i) !== albumAt) showPhoto(Number(b.dataset.i));
+  });
+  el.strip.addEventListener('keydown', (e) => {
+    const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+    if (!d || album.length < 2) return;
+    e.preventDefault();
+    const i = (albumAt + d + album.length) % album.length;
+    showPhoto(i).then(() => el.strip.querySelector(`[data-i="${i}"]`)?.focus());
+  });
   el.file.addEventListener('change', async () => {
-    const f = el.file.files?.[0];
+    const files = [...(el.file.files || [])];
     el.file.value = '';
-    if (f) openImage(f);
+    if (files.length) openImages(files);
   });
   el.retry.addEventListener('click', startStream);
   // If the user unblocks the camera in site settings while the tab is open, start right away.
   onPermissionChange('camera', (st) => { if (st === 'granted' && visible && !shot && !stream) startStream(); });
-  el.retake.addEventListener('click', () => { ++job; shot = null; setMode(false); startStream(); });
+  el.retake.addEventListener('click', () => { ++job; shot = null; clearAlbum(); setMode(false); startStream(); });
   el.toggleOrig.addEventListener('click', () => {
     const on = el.toggleOrig.getAttribute('aria-pressed') !== 'true';
     el.toggleOrig.setAttribute('aria-pressed', String(on));
@@ -285,7 +353,8 @@ export function initCamera({ sendToText }) {
   });
 
   return {
-    openImage,
+    openImages,
+    openImage: (f) => openImages([f]),
     onShow() { visible = true; if (!shot) { setMode(false); gate(); } },
     onHide() { visible = false; stopStream(); },
   };

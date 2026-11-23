@@ -19,7 +19,8 @@ import { pipSupported, openPip } from './features/pip.js';
 import { initFeedback, openFeedback } from './ui/feedback.js';
 import { isPhone, isRail, onLayoutChange } from './ui/layout.js';
 import { initCamera } from './features/camera.js';
-import { takeShare, takeLinkText, onOpenedFile } from './share.js';
+import { takeShare, takeLinkText, onOpenedFiles } from './share.js';
+import { openFiles } from './features/openfiles.js';
 import { initConversation } from './features/conversation.js';
 import { initHandwriting } from './features/handwriting.js';
 
@@ -242,28 +243,21 @@ function boot() {
     textView.setInput(linkText, { translateNow: true });
   }
 
-  // a file opened with the installed app on a computer (manifest file_handlers): an image goes to camera text,
-  // a text file is translated
-  onOpenedFile(async (file) => {
-    if (file.type.startsWith('image/')) {
-      if (await hooks.camera?.openImage?.(file)) navigate('camera', { replace: true });
-      return;
-    }
-    const text = (await file.text()).slice(0, 20000).trim();
-    if (!text) return;
-    navigate('text', { replace: true });
-    textView.setInput(text, { translateNow: true });
-  });
-
-  // shared from another app (manifest share_target, see sw.js): a photo goes to camera text, text is translated
+  // files opened with the installed app on a computer (manifest file_handlers) or shared from another app
+  // (manifest share_target, see sw.js): photos go to camera text, PDFs and .txt files into the text box
+  const fileTargets = {
+    toText: (text) => { navigate('text', { replace: true }); textView.setInput(text, { translateNow: true }); },
+    toCamera: async (images) => {
+      if (!(await hooks.camera?.openImages?.(images))) return false;
+      navigate('camera', { replace: true });
+      return true;
+    },
+  };
+  onOpenedFiles((files) => openFiles(files, fileTargets));
   takeShare().then(async (shared) => {
     if (!shared) return;
-    if (shared.kind === 'photo') {
-      if (await hooks.camera?.openImage?.(shared.photo)) navigate('camera', { replace: true });
-      return;
-    }
-    navigate('text', { replace: true });
-    textView.setInput(shared.text, { translateNow: true });
+    if (shared.kind === 'files') { await openFiles(shared.files, { ...fileTargets, text: shared.text }); return; }
+    fileTargets.toText(shared.text);
   });
 
   window.__otBooted = true;
