@@ -155,6 +155,7 @@
 
           <div class="card output-card" id="output-card" data-state="empty" aria-busy="false">
             <div class="pane-label" id="tgt-label">Spanish</div>
+            <p class="auto-note" id="auto-note" hidden></p>
             <div class="output-body">
               <p class="placeholder" id="out-placeholder">Translation</p>
               <div class="skeleton" id="out-skeleton" hidden aria-hidden="true"><span></span><span></span><span></span></div>
@@ -176,7 +177,7 @@
               <i data-icon="warning"></i>
               <strong class="error-title" id="out-error-title">Can't translate</strong>
               <span class="error-msg" id="out-error-msg"></span>
-              <small class="error-note" id="out-error-note" hidden></small>
+              <details class="error-note" id="out-error-note" hidden><summary>Where it comes from</summary><small id="out-error-note-text"></small></details>
               <div class="error-actions" id="out-error-actions"></div>
             </div>
           </div>
@@ -519,7 +520,11 @@
       <p class="svc-empty settings-search-none" id="settings-search-none" hidden></p>
       <fieldset class="settings-group" id="services-group" aria-describedby="svc-help">
         <legend>Services and downloads</legend>
-        <p class="setup-hint" id="setup-hint" hidden><span data-hint="demo"><strong>You're using the offline demo.</strong> It only knows a few phrases. Add a LibreTranslate server or an AI model below for real translations.</span><span data-hint="none" hidden><strong>No translation service yet.</strong> Add a LibreTranslate server or an AI model below to start translating.</span></p>
+        <div class="setup-hint" id="setup-hint" hidden>
+          <p><span data-hint="demo"><strong>You're using the offline demo.</strong> It only knows a few phrases.</span><span data-hint="none" hidden><strong>Choose how to translate.</strong></span>
+          Download a language to translate on this device, also without internet, or add a LibreTranslate server or an AI model below.</p>
+          <button class="btn btn-tonal" type="button" id="setup-hint-offline"><i data-icon="download"></i>Download a language</button>
+        </div>
         <p class="field-help" id="svc-help">The checked service is used first. If it fails or doesn't have a language, the next one in the same group is tried. Keys stay in this browser. Each download says where it comes from and can be deleted here.</p>
         <h3 class="svc-group-head" id="svc-group-translation">Translation</h3>
         <h4 class="svc-head" id="svc-classic-head">Classic</h4>

@@ -42,7 +42,7 @@ export function initTextView(opts) {
     srcLabel: $('src-label'), tgtLabel: $('tgt-label'), translateBtn: $('btn-translate'),
     mic: $('btn-mic'), homeMic: $('home-mic'), toCamera: $('btn-to-camera'), paste: $('btn-paste'),
     speakSrc: $('btn-speak-src'), copySrc: $('btn-copy-src'),
-    outCard: $('output-card'), placeholder: $('out-placeholder'), skeleton: $('out-skeleton'),
+    outCard: $('output-card'), autoNote: $('auto-note'), placeholder: $('out-placeholder'), skeleton: $('out-skeleton'),
     out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'), errNote: $('out-error-note'),
     errActions: $('out-error-actions'), divider: $('out-divider'), mockChip: $('mock-chip'), why: $('btn-why'), whyList: $('why-list'),
     speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), shareBtn: $('btn-share'), showBtn: $('btn-show'), starBtn: $('btn-star'),
@@ -52,7 +52,14 @@ export function initTextView(opts) {
   createLangBar(el.view.querySelector('[data-langbar]'), { onSwap: swapTexts });
 
   el.input.addEventListener('input', onInput);
-  el.input.addEventListener('focus', () => { warmUp(); if (!editing) { editing = true; applyMode(); } });
+  // a tap starts typing mode; Tab from the keyboard doesn't, or the Conversation, Mic and Camera
+  // buttons below would disappear before keyboard users reach them (typing a letter still switches)
+  let lastPointer = 0;
+  el.view.addEventListener('pointerdown', () => { lastPointer = Date.now(); }, true);
+  el.input.addEventListener('focus', () => {
+    warmUp();
+    if (!editing && (Date.now() - lastPointer < 1500 || !isPhone())) { editing = true; applyMode(); }
+  });
   el.input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runTranslate({ commit: true }); }
     if (e.key === 'Escape' && isPhone() && editing) { e.preventDefault(); exitEdit(); }
@@ -104,6 +111,7 @@ export function initTextView(opts) {
   });
   onChange((what) => { if (what === 'settings') renderLive(); });
 
+  placeLangBar();
   renderLabels();
   renderLive();
   updateCount();
@@ -141,7 +149,15 @@ export function clearText() {
 
 export function onShow() { visible = true; applyMode(); requestAnimationFrame(autosize); }
 export function onHide() { visible = false; applyMode(); stopSpeaking(); stopDictation?.(); }
-export function onLayoutChange() { applyMode(); autosize(); }
+export function onLayoutChange() { placeLangBar(); applyMode(); autosize(); }
+
+/** Phones show the language bar under the text, wider screens above it: keep the DOM (and so the
+ *  keyboard order) the same as what's on screen. */
+function placeLangBar() {
+  const slot = el.view.querySelector('.langbar-slot');
+  if (isPhone()) { if (slot.previousElementSibling !== el.panes) el.panes.after(slot); }
+  else if (slot.nextElementSibling !== el.panes) el.panes.before(slot);
+}
 export const getInput = () => (el ? el.input.value : '');
 export function focusInput() {
   editing = true;
@@ -298,6 +314,7 @@ async function runTranslate({ commit = false } = {}) {
     // typed in the language you translate into ("Detect language" → English, English typed):
     // translate the other way, into the last other language you used
     const target = state.source === 'auto' && detected && base(detected.language) === base(state.target) ? otherTarget() : state.target;
+    showAutoNote(target !== state.target ? { source, target } : null);
     const res = await translate(text, source, target);
     if (id !== reqId) return;
     if (state.source === 'auto' && !detected && res.detected) {
@@ -422,8 +439,11 @@ function showError(err) {
   el.err.classList.toggle('prompt', prompt);
   el.err.setAttribute('role', prompt ? 'status' : 'alert');
   el.err.querySelector('.ic')?.replaceWith(document.createRange().createContextualFragment(icon(prompt ? 'download' : 'warning')));
-  el.errNote.textContent = err?.detail?.source || '';
-  el.errNote.hidden = !el.errNote.textContent;
+  // where a download comes from: one tap away instead of a long address in tiny type
+  const where = err?.detail?.source || '';
+  el.errNote.querySelector('small').textContent = where;
+  el.errNote.open = false;
+  el.errNote.hidden = !where;
   el.errActions.innerHTML = '';
   const action = (label, fn) => {
     const b = document.createElement('button');
@@ -459,8 +479,17 @@ function showError(err) {
   setOutputActions(false);
 }
 
+/** Typed in the target language: say which language it goes into instead, also before the answer
+ *  (a download prompt for that language would otherwise look like a mistake). */
+function showAutoNote(n) {
+  if (!el.autoNote) return;
+  el.autoNote.hidden = !n;
+  el.autoNote.textContent = n ? `Your text is already ${langName(n.source)}, so it’s translated into ${langName(n.target)}.` : '';
+}
+
 function clearOutput() {
   ++reqId;
+  showAutoNote(null);
   endLoading();
   result = null;
   setOutState('empty');
