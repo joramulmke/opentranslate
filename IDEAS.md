@@ -8,6 +8,18 @@ Draw the translation over the original text in the photo (like Lens): each text 
 background colour with the translated text on top, sized to fit. Uses the line boxes that Tesseract,
 PP-OCRv6 and AI vision already return.
 
+(Done, Nov 2026; not yet tried on a phone or with Tesseract/PP-OCRv6 on real photos, only AI vision in a test.)
+Half there before (Nov 2026): a light box with the translation over each line. Plan (agreed Nov 2026):
+- The photo's own colours: each box takes the background colour around its line (sampled from the
+  photo's edges of the box) and a text colour that stands out from it, so it blends in.
+- Whole sentences: lines that belong together (a paragraph: close below each other, about the same left
+  edge and height) are translated as one text, then spread back over their lines by length. Better
+  translations than line by line.
+- Save and share the translated photo as a picture (the photo with the boxes drawn in), also the
+  "NEXT" from #5.
+- Pinch (or Ctrl + wheel) to zoom and drag to move the photo. Tapping a box zooms in until its line
+  fills the screen; tapping it again zooms back out. "Original" still shows the original text.
+
 ## 2. Live subtitles in Conversation
 
 Continuous speech recognition and translation as running captions, for talks or calls. Big, readable
@@ -90,6 +102,35 @@ Plan (agreed Nov 2026, built):
 (Done, Nov 2026: Chrome/Edge on computers. Live captions in it: later, with #2.) A floating translator window (Picture-in-Picture): on a computer, a small always-on-top window for translating while you work in other apps. It also fits the live subtitles idea.
    
 ## 9. File and Website Translation
+
+(Done, Nov 2026; not yet tried on a phone. Tried in a test: every format below, the PDF's two results,
+the size question, Stop, sharing a .docx to the app, and a real page through joram.eu's proxy. Left for
+later: a scanned PDF (no text) isn't translated here, only in camera text; text in pictures on websites;
+the files' own links and formatting inside a paragraph.)
+Plan (agreed Nov 2026):
+- Where: "Translate a file or website" in the ⋮ menu (and a home-screen shortcut, below) opens a sheet:
+  pick or drop a file, or paste a link. Files opened with or shared to the app that the text box can't
+  take well (.docx, .pptx, …) open there too.
+- Files, translated in place, same format out, translation only: Word .docx, PowerPoint .pptx, Excel
+  .xlsx (text cells only, numbers and formulas left alone), OpenDocument .odt/.ods/.odp, e-books .epub,
+  .html, .txt/.md, subtitles .srt/.vtt (lines and times kept), .csv, .po and .json strings. Office files
+  are ZIPs of XML: the text of each paragraph is swapped (formatting inside a paragraph, e.g. one bold
+  word, goes to the whole paragraph). The ZIP reader (fflate) loads only when needed, from jsDelivr.
+- PDF, two results: a readable page view (translated paragraphs page by page, next to the original;
+  download as .html or .txt) and "Original layout" (each page drawn like #1, translation over the text,
+  saved as a new PDF of page pictures, so any script works; its text can't be selected).
+- Websites by link: the page with its layout and pictures, text translated, in a safe frame with the
+  site's scripts off; a tapped link is translated too. Download as .html. Most sites can't be read from
+  another site (CORS), so: the user's own proxy in Settings (a URL template like
+  https://my-proxy.example/?url={url}), with a short guide and a tiny Cloudflare Worker to copy. The app has
+  one built in (the owner's Worker, open to every copy); a site can set another in change-me.txt
+  (web_proxy, or none). Without one, only sites that allow it work.
+- Size: up to 20,000 characters starts right away; above that it shows the size (characters, pages) and
+  the service and asks first. Progress and a Stop button while it runs.
+- Translation: segments are sent in batches (one per line); if a service returns a different number of
+  lines, that batch goes segment by segment.
+- Home-screen shortcuts (manifest): each gets its own icon (camera, speech bubbles, pen) instead of the
+  app icon, and a 4th, "Translate a file". (Done, Nov 2026.)
 
 ## 12. Share more to OpenTranslate
 

@@ -43,6 +43,7 @@ const SHELL = [
   './js/features/hwr.js',
   './js/features/stt.js',
   './js/features/camera.js',
+  './js/features/inplace.js',
   './js/features/conversation.js',
   './js/features/handwriting.js',
   './js/features/offline.js',
@@ -61,7 +62,7 @@ const SHELL = [
   './js/share.js',
   './js/features/pdf.js',
   './js/features/openfiles.js',
-  './js/features/captions.js', './js/ui/showcard.js', './js/ui/wordmark.js', './js/ui/backup.js',
+  './js/features/captions.js', './js/ui/showcard.js', './js/ui/wordmark.js', './js/ui/backup.js', './js/ui/docsheet.js', './js/features/doctranslate.js', './js/features/pdfdoc.js',
   './js/features/bgfetch.js',
   './js/features/persist.js',
   './js/features/wiktionary.js',
@@ -95,11 +96,14 @@ self.addEventListener('message', (e) => {
 });
 
 // "Share to OpenTranslate" (manifest share_target): keep what was shared (text, and up to 10 files: photos,
-// .txt files, PDFs), then open the app on it. js/share.js picks it up.
+// .txt files, PDFs, documents), then open the app on it. js/share.js picks it up.
 const SHARE_CACHE = 'ot-share-v1';
+// documents for "Translate a file" (IDEAS #9)
+const DOC_TYPES = /^application\/(vnd\.openxmlformats-officedocument|vnd\.oasis\.opendocument|epub\+zip|json|x-subrip)|^text\/(html|markdown|vtt|csv|x-gettext)/;
 const SHARE_MAX_FILES = 10;
 const shareable = (f) => f && typeof f !== 'string' && f.size > 0
-  && (/^image\//.test(f.type) || /^text\/plain|^application\/pdf/.test(f.type) || /\.(txt|pdf)$/i.test(f.name || ''));
+  && (/^image\//.test(f.type) || /^text\/plain|^application\/pdf/.test(f.type) || DOC_TYPES.test(f.type)
+    || /\.(txt|pdf|docx|pptx|xlsx|odt|ods|odp|epub|html?|md|srt|vtt|csv|po|json)$/i.test(f.name || ''));
 async function receiveShare(req) {
   const scope = self.registration.scope;
   let files = [];

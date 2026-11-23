@@ -7,6 +7,7 @@ import { ocrQuality } from './paddle.js';
 import { escapeHtml } from '../ui/langpicker.js';
 import { icon } from '../ui/icons.js';
 import { permissionState, onPermissionChange, blockedSteps, cameraCopy } from './permissions.js';
+import { groupLines, joinLines, spreadText, lineColors, drawTranslated, css } from './inplace.js';
 
 const $ = (id) => document.getElementById(id);
 // Settings › Text recognition › Reading: Accurate keeps more detail of small print (a book page), Fast is quicker
@@ -23,7 +24,7 @@ export function initCamera({ sendToText }) {
     status: $('cam-status'), statusText: $('cam-status-text'), hint: $('cam-hint'), controls: $('cam-controls'),
     shutter: $('cam-shutter'), importBtn: $('cam-import'), import2: $('cam-import-2'), retry: $('cam-retry'),
     file: $('cam-file'), retake: $('cam-retake'), toggleOrig: $('cam-toggle-orig'), openText: $('cam-open-text'),
-    stage: $('camera-stage'), strip: $('shot-strip'),
+    stage: $('camera-stage'), strip: $('shot-strip'), share: $('cam-share'),
   };
   createLangBar(el.view.querySelector('[data-langbar]'), { variant: 'dark' });
 
@@ -104,6 +105,8 @@ export function initCamera({ sendToText }) {
     el.retake.hidden = !after;
     el.toggleOrig.hidden = !after;
     el.openText.hidden = !after;
+    el.share.hidden = !after;
+    resetZoom();
     el.wrap.hidden = !after;
     el.video.hidden = after;
     el.hint.hidden = after || !stream;
@@ -124,6 +127,8 @@ export function initCamera({ sendToText }) {
     const scale = Math.min(availW / shot.w, availH / shot.h);
     el.shot.style.width = `${Math.floor(shot.w * scale)}px`;
     el.shot.style.height = `${Math.floor(shot.h * scale)}px`;
+    resetZoom();
+    if (shot.lineTexts) requestAnimationFrame(fitBoxes);
   }
   new ResizeObserver(fitShot).observe(el.wrap);
 
@@ -151,6 +156,7 @@ export function initCamera({ sendToText }) {
     if (id !== job) return;
     shot.lines = ocr.lines.filter((l) => l.confidence > 30 && /[\p{L}\p{N}]/u.test(l.text));
     shot.ocrText = shot.lines.map((l) => l.text).join('\n');
+    try { shot.colors = lineColors(canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height), shot.lines); } catch { shot.colors = []; }
     shot.note = ocr.note || '';   // e.g. AI vision didn't work and the device read the photo
     shot.lang = ocr.lang || null;  // e.g. a Florence-2 description is English, whatever the photo's language
     shot.description = !!ocr.description;
@@ -167,9 +173,21 @@ export function initCamera({ sendToText }) {
         source = d?.language || 'auto';
       }
       shot.ocrSource = source;
-      const res = await translate(shot.ocrText, source, state.target);
+      // lines that belong together are translated as one sentence, then spread back over their lines
+      const groups = shot.description ? null : groupLines(shot.lines);
+      const text = groups ? groups.map((g) => joinLines(g.map((i) => shot.lines[i].text))).join('\n') : shot.ocrText;
+      const res = await translate(text, source, state.target);
       if (id !== job) return;
       shot.translated = res.text;
+      shot.lineTexts = null;
+      if (groups) {
+        let parts = res.text.split('\n').map((t) => t.trim()).filter(Boolean);
+        if (groups.length === 1 && parts.length > 1) parts = [parts.join(' ')];
+        if (parts.length === groups.length) {
+          shot.lineTexts = [];
+          groups.forEach((g, k) => spreadText(parts[k], g.map((i) => shot.lines[i].text.length)).forEach((t, j) => { shot.lineTexts[g[j]] = t; }));
+        }
+      }
       shot.done = true; shot.pair = `${state.source}>${state.target}`;
       const note = [shot.note, fallbackNote(res)].filter(Boolean).join(' ');   // e.g. Classic stood in for Advanced
       if (note) toast(note);
@@ -188,22 +206,168 @@ export function initCamera({ sendToText }) {
   function drawOverlays(originalOnly = false) {
     const { w, h, lines } = shot;
     const showOrig = originalOnly || el.toggleOrig.getAttribute('aria-pressed') === 'true';
-    const tLines = (shot.translated || '').split('\n');
-    const perLine = tLines.length === lines.length && !shot.description;
+    const tLines = shot.lineTexts;
+    const perLine = !!tLines;
+    const colors = shot.colors || [];
     const boxes = perLine || showOrig
-      ? lines.map((l, i) => ({ bbox: l.bbox, box: l.box, text: showOrig ? l.text : tLines[i] }))
-      : [{ bbox: union(lines.map((l) => l.bbox)), text: shot.translated }];
-    el.overlays.innerHTML = boxes.map(({ bbox, box, text }, i) => {
+      ? lines.map((l, i) => ({ bbox: l.bbox, box: l.box, text: showOrig ? l.text : tLines[i], c: colors[i] }))
+      : [{ bbox: union(lines.map((l) => l.bbox)), text: shot.translated, c: colors[0] }];
+    el.overlays.innerHTML = boxes.map(({ bbox, box, text, c }, i) => {
       // a turned line (PP-OCRv6 on a slanted or sideways page) is covered by a box turned the same way
       const r = box || { cx: (bbox.x0 + bbox.x1) / 2, cy: (bbox.y0 + bbox.y1) / 2, w: bbox.x1 - bbox.x0, h: bbox.y1 - bbox.y0, angle: 0 };
       const left = ((r.cx - r.w / 2) / w) * 100, top = ((r.cy - r.h / 2) / h) * 100;
       const width = (r.w / w) * 100, height = (r.h / h) * 100;
       const hh = perLine || showOrig ? height : Math.min(height, 6);
+      const paint = !showOrig && c ? `background:${css(c.bg)};color:${css(c.fg)};box-shadow:none;` : '';
       return `<div class="ocr-box ${showOrig ? 'orig' : ''}" lang="${showOrig ? (shot.ocrSource || '') : state.target}"
-        style="left:${left}%;top:${top}%;width:${width}%;${perLine || showOrig ? `height:${height}%` : `min-height:${height}%;white-space:normal;align-items:flex-start`};--h:${hh};${r.angle ? `rotate:${r.angle.toFixed(4)}rad;` : ''}animation-delay:${i * 25}ms"
-        >${escapeHtml(text || '')}</div>`;
+        style="${paint}left:${left}%;top:${top}%;width:${width}%;${perLine || showOrig ? `height:${height}%` : `min-height:${height}%;white-space:normal;align-items:flex-start`};--h:${hh};${r.angle ? `rotate:${r.angle.toFixed(4)}rad;` : ''}animation-delay:${i * 25}ms"
+        ><span>${escapeHtml(text || '')}</span></div>`;
     }).join('');
+    if (perLine && !showOrig) requestAnimationFrame(fitBoxes);
   }
+
+  /** A translation longer than its line gets a smaller font (down to half), then is squeezed sideways. */
+  function fitBoxes() {
+    for (const b of el.overlays.querySelectorAll('.ocr-box')) {
+      b.style.removeProperty('--fit'); b.style.removeProperty('--squeeze');
+      const over = b.scrollWidth / Math.max(1, b.clientWidth);
+      if (over <= 1.01) continue;
+      const fit = Math.max(0.5, 1 / over);
+      b.style.setProperty('--fit', fit.toFixed(3));
+      const left = b.scrollWidth / Math.max(1, b.clientWidth);
+      if (left > 1.01) b.style.setProperty('--squeeze', (1 / left).toFixed(3));
+    }
+  }
+
+  /** The photo with the translation drawn in, as a JPEG. */
+  async function translatedPhoto() {
+    const img = new Image();
+    img.src = shot.src;
+    await img.decode();
+    const c = document.createElement('canvas');
+    c.width = shot.w; c.height = shot.h;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    if (shot.translated) drawTranslated(ctx, shot.lines, shot.lineTexts, shot.colors || [], shot.translated);
+    return new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
+  }
+  const phone = () => matchMedia('(pointer: coarse)').matches;
+  if (!phone()) { el.share.querySelector('span').textContent = 'Save'; el.share.setAttribute('aria-label', 'Save translated photo'); }
+  el.share.addEventListener('click', async () => {
+    if (!shot?.translated) { toast(shot?.done ? 'There is no translation to save.' : 'Still translating…'); return; }
+    const blob = await translatedPhoto();
+    const file = new File([blob], `translated-${state.target}.jpg`, { type: 'image/jpeg' });
+    if (phone() && navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); } catch (e) { if (e.name !== 'AbortError') toast('Sharing didn’t work.'); }
+      return;
+    }
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: file.name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast('Translated photo saved');
+  });
+
+  /* Zoom: pinch, Ctrl + wheel (or a trackpad pinch), double-tap, or + / − keys; drag to move. */
+  const zoom = { s: 1, x: 0, y: 0 };
+  let zoomedBox = null;   // the box tapped to zoom to it
+  const pointers = new Map();
+  function applyZoom() {
+    const w = el.shot.offsetWidth; const h = el.shot.offsetHeight;   // size without the zoom
+    zoom.s = Math.min(5, Math.max(1, zoom.s));
+    // keep the photo covering where it was: no empty space at its edges
+    zoom.x = Math.min(0, Math.max(w * (1 - zoom.s), zoom.x));
+    zoom.y = Math.min(0, Math.max(h * (1 - zoom.s), zoom.y));
+    if (zoom.s === 1) { zoom.x = 0; zoom.y = 0; }
+    el.shot.style.transform = zoom.s === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+    el.wrap.classList.toggle('zoomed', zoom.s > 1);
+  }
+  function resetZoom() { zoomedBox = null; zoom.s = 1; zoom.x = 0; zoom.y = 0; el.shot.style.transform = ''; el.wrap.classList.remove('zoomed'); }
+  /** Zoom to s, keeping the screen point (px, py) where it is. */
+  function zoomAt(s, px, py) {
+    const r = el.shot.getBoundingClientRect();
+    const left = r.left - zoom.x; const top = r.top - zoom.y;
+    const qx = (px - left - zoom.x) / zoom.s; const qy = (py - top - zoom.y) / zoom.s;
+    const ns = Math.min(5, Math.max(1, s));
+    zoom.x = px - left - ns * qx; zoom.y = py - top - ns * qy; zoom.s = ns;
+    applyZoom();
+  }
+  el.wrap.addEventListener('wheel', (e) => {
+    if (!shot || !(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    zoomAt(zoom.s * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
+  }, { passive: false });
+  // Double taps are seen here (phones may not send dblclick). A tap on a box waits a moment: a second tap
+  // makes it a double tap (zoom the photo), not two box taps.
+  let boxTap = 0;
+  let lastTap = null;
+  let doubleAt = 0;
+  el.wrap.addEventListener('dblclick', (e) => { if (shot && performance.now() - doubleAt > 500) zoomAt(zoom.s > 1 ? 1 : 2.5, e.clientX, e.clientY); });
+  /** Tap a box: zoom in until its line fills the screen; tap it again to zoom back out. */
+  function zoomToBox(box) {
+    if (zoomedBox === box && zoom.s > 1) { resetZoom(); zoomedBox = null; return; }
+    const r = box.getBoundingClientRect();
+    const sr = el.shot.getBoundingClientRect();
+    const wr = el.wrap.getBoundingClientRect();
+    const cs = getComputedStyle(el.wrap);
+    const top = wr.top + parseFloat(cs.paddingTop); const bottom = wr.bottom - parseFloat(cs.paddingBottom);
+    const qx = (r.left + r.width / 2 - sr.left) / zoom.s; const qy = (r.top + r.height / 2 - sr.top) / zoom.s;
+    const w = r.width / zoom.s; const h = r.height / zoom.s;
+    const ns = Math.min(5, Math.max(1.5, Math.min((0.92 * wr.width) / w, (0.5 * (bottom - top)) / h)));
+    const left = sr.left - zoom.x; const topL = sr.top - zoom.y;
+    zoom.s = ns;
+    zoom.x = wr.left + wr.width / 2 - left - ns * qx;
+    zoom.y = (top + bottom) / 2 - topL - ns * qy;
+    applyZoom();
+    zoomedBox = box;
+  }
+  let tap = null;   // a press that may be a tap on a box
+  el.wrap.addEventListener('pointerdown', (e) => {
+    if (!shot || e.target.closest('button')) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    tap = pointers.size === 1 ? { box: e.target.closest('.ocr-box'), x: e.clientX, y: e.clientY } : null;
+    el.wrap.setPointerCapture?.(e.pointerId);
+  });
+  el.wrap.addEventListener('pointermove', (e) => {
+    const p = pointers.get(e.pointerId);
+    if (!p) return;
+    const pts = [...pointers.values()];
+    if (pointers.size === 2) {
+      const [a, b] = pts;
+      const d0 = Math.hypot(a.x - b.x, a.y - b.y);
+      p.x = e.clientX; p.y = e.clientY;
+      const d1 = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d0 > 10) zoomAt(zoom.s * (d1 / d0), (a.x + b.x) / 2, (a.y + b.y) / 2);
+    } else if (pointers.size === 1 && zoom.s > 1) {
+      zoom.x += e.clientX - p.x; zoom.y += e.clientY - p.y;
+      p.x = e.clientX; p.y = e.clientY;
+      applyZoom();
+    } else { p.x = e.clientX; p.y = e.clientY; }
+  });
+  const lift = (e) => pointers.delete(e.pointerId);
+  el.wrap.addEventListener('pointerup', (e) => {
+    const t = tap; tap = null;
+    lift(e);
+    if (!t || !shot || Math.hypot(e.clientX - t.x, e.clientY - t.y) >= 10) return;
+    const now = performance.now();
+    if (lastTap && now - lastTap.at < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+      clearTimeout(boxTap); boxTap = 0; lastTap = null; doubleAt = now;
+      zoomAt(zoom.s > 1 ? 1 : 2.5, e.clientX, e.clientY);
+      return;
+    }
+    lastTap = { at: now, x: e.clientX, y: e.clientY };
+    if (t.box) boxTap = setTimeout(() => { boxTap = 0; if (el.overlays.contains(t.box)) zoomToBox(t.box); }, 350);
+  });
+  el.wrap.addEventListener('pointercancel', lift);
+  el.view.addEventListener('keydown', (e) => {
+    if (!shot || e.target.closest('input, textarea, [role="menu"], dialog')) return;
+    const r = el.shot.getBoundingClientRect();
+    const cx = r.left + r.width / 2; const cy = r.top + r.height / 2;
+    if (e.key === '+' || e.key === '=') zoomAt(zoom.s * 1.25, cx, cy);
+    else if (e.key === '-') zoomAt(zoom.s / 1.25, cx, cy);
+    else if (e.key === '0') resetZoom();
+    else return;
+    e.preventDefault();
+  });
 
   const union = (bs) => bs.reduce((a, b) => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) }));
 
