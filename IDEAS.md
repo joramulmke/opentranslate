@@ -26,10 +26,11 @@ their language and restarts the mic by itself (it pauses after two silences toda
 - Text size: A− / A+ on the captions screen, 4 steps, remembered.
 - Audio: Microphone (default) or, on a computer, "Tab or screen audio" (a video call, a YouTube tab) via
   screen sharing with audio. That needs a recording engine; with Chrome's speech service chosen, the app
-  says so and uses the next engine. Hidden where the browser can't share audio (phones).
+  says so and uses the next engine. Hidden where the browser can't share audio (phones; see #13 for
+  "Sound from this phone", and #11 for other apps' sound in a native app).
 - Save the transcript: Copy, Share, or download as .txt (both languages, with times).
 - Floating window (#8): "Pop out captions" on a computer shows the latest lines big in the always-on-top
-  window; the main tab keeps the microphone.
+  window; the main tab keeps the microphone. On phones: floating captions as a video, see #13.
 - Keep screen on: already done (Conversation keeps the screen on).
 - Costs: Whisper and ElevenLabs charge per minute, so continuous captions can add up; the setup says so
   when one of them is chosen.
@@ -133,3 +134,26 @@ Android has no widgets for PWAs. The way there: wrap OpenTranslate as a Play Sto
 built with Bubblewrap) and write the widget natively (Kotlin), e.g. a quick "translate" box or a phrase of the
 day from saved phrases. Needs a Play developer account, app signing and Digital Asset Links on joram.eu.
 The store listing would also ask for an IARC age rating (then add iarc_rating_id to the manifest).
+- Live subtitles (#2) from other apps' sound: a native app can caption a video call, YouTube or a podcast
+  playing on the phone itself, which a web app can't (no browser lets web apps capture screen or app audio
+  on phones). Android 10+: AudioPlaybackCapture with MediaProjection (asks "start recording?" each time;
+  apps can opt out, e.g. some call apps). iPhone: other apps' sound can't be captured, only the
+  microphone, so this would be Android only.
+
+## 13. Live subtitles on phones (try on a real phone first)
+
+Two things for live subtitles (#2) on phones, where there's no tab audio and no floating window like #8.
+Try each on a real Android phone (and an iPhone) before building it out.
+- "Sound from this phone": an audio choice that turns off echo cancellation (and noise suppression), so
+  the microphone also hears the phone's own loudspeaker, e.g. a video playing in another app. Quality
+  depends on the phone; only offered where it works well enough.
+- Floating captions: the latest caption lines drawn on a canvas, turned into a video (canvas.captureStream)
+  and put into the phone's floating video window (requestPictureInPicture). Works where floating videos
+  work (Chrome on Android, Safari on iPhone). Only the captions, no buttons. Open question: does the
+  microphone keep running while the app is in the background with only the video floating?
+- Screen readers can't read text inside a video, so the floating captions say nothing to them. That goes
+  into the accessibility notices (below); the captions screen in the app stays fully readable.
+
+Accessibility notices: a short "Accessibility" section at the bottom of Settings listing what doesn't
+work with screen readers or other assistive tech, and what to use instead. First entry: the floating
+captions on phones (a video, so not readable; use the captions screen instead). Later entries as found.
