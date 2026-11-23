@@ -708,6 +708,28 @@ export class ElevenLabsProvider {
     });
   }
 
+  /**
+   * Read text aloud with word timings (for the word highlight, IDEAS #16): resolves to
+   * { blob: MP3, words: [{ start, end, t }] } — character range in text and start time in seconds.
+   */
+  async speakTimed(text, lang) {
+    const code = lang && lang !== 'auto' ? String(lang).split('-')[0] : undefined;
+    const d = await this._req(`/text-to-speech/${encodeURIComponent(this.voiceId)}/with-timestamps?output_format=mp3_44100_128`, {
+      body: { text, model_id: this.ttsName, ...(code && /flash|turbo/.test(this.ttsName) ? { language_code: code } : {}) },
+    });
+    const bin = atob(d?.audio_base64 || '');
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'audio/mpeg' });
+    // alignment.characters is the text as sent, one entry per character (UTF-16 code unit)
+    const a = d?.alignment;
+    const words = [];
+    if (a?.characters?.length === text.length && a.character_start_times_seconds?.length === text.length) {
+      for (const m of text.matchAll(/\S+/g)) words.push({ start: m.index, end: m.index + m[0].length, t: a.character_start_times_seconds[m.index] });
+    }
+    return { blob, words };
+  }
+
   /** Speech to text with Scribe. */
   async transcribe(blob, lang) {
     const ext = /mp4|m4a|aac/.test(blob.type) ? 'm4a' : /ogg/.test(blob.type) ? 'ogg' : /wav/.test(blob.type) ? 'wav' : 'webm';

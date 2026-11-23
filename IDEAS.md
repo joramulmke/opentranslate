@@ -142,6 +142,9 @@ The store listing would also ask for an IARC age rating (then add iarc_rating_id
   on phones). Android 10+: AudioPlaybackCapture with MediaProjection (asks "start recording?" each time;
   apps can opt out, e.g. some call apps). iPhone: other apps' sound can't be captured, only the
   microphone, so this would be Android only.
+- Full brightness for Show to someone (#15): a web app can't turn up the screen brightness, a native app
+  can (Android: the window's screenBrightness, only while the card is open, no permission needed; iPhone:
+  UIScreen.brightness).
 
 ## 13. Live subtitles on phones (try on a real phone first)
 
@@ -193,7 +196,7 @@ Show the translation big to the person you're talking to, e.g. at a pharmacy or 
   dark or the other way round, as the theme. Closes with ✕, Back or Escape.
 - Reads the translation aloud after 5 seconds ("Reading aloud in 5…"), with a Stop button; Play to hear it
   again. No voice for the language: no countdown.
-- Keeps the screen on while open (Screen Wake Lock). A web app can't turn up the brightness.
+- Keeps the screen on while open (Screen Wake Lock). A web app can't turn up the brightness (native app: #11).
 - Full screen (Fullscreen API) where the browser allows it; otherwise a page-filling layer.
 
 ## 16. Highlight each word while reading aloud

@@ -130,6 +130,7 @@
               <span class="spacer"></span>
               <button class="icon-btn" id="btn-copy" type="button" aria-label="Copy translation" disabled><i data-icon="copy"></i></button>
               <button class="icon-btn" id="btn-share" type="button" aria-label="Share translation" disabled hidden><i data-icon="share"></i></button>
+              <button class="icon-btn" id="btn-show" type="button" aria-label="Show full screen" title="Show full screen" disabled><i data-icon="fullscreen"></i></button>
               <button class="icon-btn" id="btn-star" type="button" aria-label="Save translation" aria-pressed="false" disabled><i data-icon="starBorder"></i></button>
             </div>
             <div class="error-card" id="out-error" hidden role="alert">
@@ -328,6 +329,16 @@
   </dialog>
 
   <!-- History / Saved -->
+  <!-- Show to someone (IDEAS #15) -->
+  <dialog class="show-card" id="show-card" aria-label="Translation, full screen">
+    <button class="icon-btn show-close" id="show-close" type="button" aria-label="Close"><i data-icon="close"></i></button>
+    <div class="show-box"><p class="show-text" id="show-text"></p></div>
+    <div class="show-bar">
+      <span class="show-status" id="show-status" aria-live="polite"></span>
+      <button class="show-play" id="show-play" type="button"></button>
+    </div>
+  </dialog>
+
   <dialog class="sheet bottom" id="history-dialog" aria-labelledby="history-title">
     <div class="drag-handle" aria-hidden="true"></div>
     <div class="sheet-head">

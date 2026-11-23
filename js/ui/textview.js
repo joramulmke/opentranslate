@@ -11,6 +11,8 @@ import { icon } from './icons.js';
 import { toast, copyToClipboard } from './snackbar.js';
 import { wiktionaryLink } from '../features/wiktionary.js';
 import { isPhone } from './layout.js';
+import { wordMarker } from './wordmark.js';
+import { showCard } from './showcard.js';
 import { speak, stopSpeaking, nextIsSlow, canDictate, dictate, dictationMessage } from '../features/speech.js';
 import { ensureMicrophone } from '../features/permissions.js';
 import { downloadPacks, formatMB } from './offlineui.js';
@@ -43,7 +45,7 @@ export function initTextView(opts) {
     outCard: $('output-card'), placeholder: $('out-placeholder'), skeleton: $('out-skeleton'),
     out: $('out-text'), err: $('out-error'), errTitle: $('out-error-title'), errMsg: $('out-error-msg'),
     errActions: $('out-error-actions'), mockChip: $('mock-chip'), why: $('btn-why'), whyList: $('why-list'),
-    speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), shareBtn: $('btn-share'), starBtn: $('btn-star'),
+    speakBtn: $('btn-speak'), copyBtn: $('btn-copy'), shareBtn: $('btn-share'), showBtn: $('btn-show'), starBtn: $('btn-star'),
     inputCard: $('input-card'), live: $('out-live'), wikt: $('wikt-link'),
   };
 
@@ -67,6 +69,12 @@ export function initTextView(opts) {
   // the phone's share menu (WhatsApp, email…); only where the browser can share text
   el.shareBtn.hidden = typeof navigator.share !== 'function';
   el.shareBtn.addEventListener('click', shareResult);
+  el.showBtn.addEventListener('click', () => {
+    if (!result) return;
+    stopSpeaking();
+    commitHistory();
+    showCard(result.text, result.target);
+  });
   el.why?.addEventListener('click', () => {
     const open = el.whyList.hidden;
     el.whyList.hidden = !open;
@@ -384,6 +392,7 @@ function setOutputActions(on) {
   }
   el.copyBtn.disabled = !on;
   el.shareBtn.disabled = !on;
+  el.showBtn.disabled = !on;
   el.starBtn.disabled = !on;
 }
 
@@ -500,7 +509,7 @@ function toggleSpeak() {
     clearTimeout(speakLabelTimer);
     if (again) speakLabelTimer = setTimeout(() => { if (!btn.dataset.speaking) setIcon(false); }, 10500);
   };
-  speak(text, target, { onStart: (slow) => setIcon(true, slow), onEnd: () => setIcon(false) })
+  speak(text, target, { onStart: (slow) => setIcon(true, slow), onEnd: () => setIcon(false), onWord: wordMarker(el.out) })
     .catch((e) => {
       setIcon(false);
       toast(e.message === 'NO_TTS' ? 'Read aloud is not supported in this browser' : `No ${langName(result.target)} voice on this device`);
