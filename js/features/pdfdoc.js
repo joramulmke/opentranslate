@@ -3,6 +3,7 @@
 //  - original layout: each page drawn as a picture with the translation over its text, like camera text
 //    (#1), saved as a new PDF. Pictures, so any script works; its text can't be selected.
 import { openPdf } from './pdf.js';
+import { isRtl } from '../languages.js';
 import { groupLines, joinLines, spreadText, lineColors, drawTranslated } from './inplace.js';
 
 const LAYOUT_SIDE = 1754;   // longest side of a drawn page in pixels (A4 at 150 dpi)
@@ -55,7 +56,7 @@ export async function openPdfDocument(file, onStatus = () => {}) {
     pages, texts, where,
     close: () => task.destroy(),
     /** Draw page i at the layout size; with translations (one per paragraph of that page), drawn over its text. */
-    async drawPage(i, translations = null) {
+    async drawPage(i, translations = null, target = '') {
       const p = pages[i];
       const page = await doc.getPage(p.n);
       const scale = LAYOUT_SIDE / Math.max(p.width, p.height);
@@ -71,13 +72,15 @@ export async function openPdfDocument(file, onStatus = () => {}) {
         const colors = lineColors(ctx.getImageData(0, 0, canvas.width, canvas.height), lines);
         const perLine = [];
         p.groups.forEach((g, k) => spreadText(translations[k] || '', g.map((j) => lines[j].text.length)).forEach((t, m) => { perLine[g[m]] = t; }));
-        drawTranslated(ctx, lines, perLine, colors);
+        drawTranslated(ctx, lines, perLine, colors, '', { rtl: isRtl(target) });
       }
       return canvas;
     },
   };
 }
 
+/** Arabic, Hebrew, Persian, Urdu… run right to left; an unknown source ('auto') is left to the browser. */
+const dirOf = (code) => (isRtl(code) ? 'rtl' : code && code !== 'auto' ? 'ltr' : 'auto');
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /** The page view's HTML (inside the app): each paragraph, original and translation. */
@@ -86,7 +89,7 @@ export function pageViewHtml(pdf, translated, { source, target }) {
   return pdf.pages.map((p) => {
     const rows = p.groups.map((g, j) => {
       const tag = p.heads[j] ? 'h4' : 'p';
-      const html = `<div class="pdf-pair${p.heads[j] ? ' head' : ''}"><${tag} class="pdf-orig" lang="${esc(source)}">${esc(pdf.texts[k])}</${tag}><${tag} class="pdf-tr" lang="${esc(target)}">${esc(translated[k])}</${tag}></div>`;
+      const html = `<div class="pdf-pair${p.heads[j] ? ' head' : ''}"><${tag} class="pdf-orig" lang="${esc(source)}" dir="${dirOf(source)}">${esc(pdf.texts[k])}</${tag}><${tag} class="pdf-tr" lang="${esc(target)}" dir="${dirOf(target)}">${esc(translated[k])}</${tag}></div>`;
       k++;
       return html;
     }).join('');
@@ -98,7 +101,7 @@ export function pageViewHtml(pdf, translated, { source, target }) {
 export function translatedHtml(pdf, translated, { title, target }) {
   let k = 0;
   const body = pdf.pages.map((p) => p.groups.map((g, j) => { const t = esc(translated[k++]); return p.heads[j] ? `<h2>${t}</h2>` : `<p>${t}</p>`; }).join('\n')).join('\n<hr>\n');
-  return `<!DOCTYPE html>\n<html lang="${esc(target)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title>
+  return `<!DOCTYPE html>\n<html lang="${esc(target)}" dir="${dirOf(target)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(title)}</title>
 <style>body{font:17px/1.6 system-ui,sans-serif;max-width:42em;margin:2em auto;padding:0 1em}hr{border:0;border-top:1px solid #ccc;margin:2em 0}</style></head>
 <body>\n${body}\n</body></html>\n`;
 }

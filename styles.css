@@ -1667,3 +1667,11 @@ dialog.show-card::backdrop { background: var(--surface); }
 .proxy-guide code, .proxy-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
 .proxy-code { max-height: 220px; overflow: auto; margin: 0 0 8px; padding: 12px; border-radius: 8px; background: var(--surface-container); white-space: pre; max-width: 100%; }
 .proxy-guide .btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+/* right-to-left translations (Arabic, Hebrew…) in the photo: squeeze from the right edge */
+.ocr-box[dir="rtl"] > span { transform-origin: right center; }
+@media (forced-colors: active) {
+  /* menus that float over the page (Share, captions…) need an edge when backgrounds are dropped */
+  .cap-menu, [popover] { border: 1px solid CanvasText; }
+  .cap-menu button:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
+}

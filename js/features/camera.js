@@ -9,6 +9,8 @@ import { icon } from '../ui/icons.js';
 import { permissionState, onPermissionChange, blockedSteps, cameraCopy } from './permissions.js';
 import { groupLines, joinLines, spreadText, lineColors, drawTranslated, css } from './inplace.js';
 import { isPhone, canShareFile, sendFiles, today, slugWords } from '../ui/sendfile.js';
+import { isRtl } from '../languages.js';
+import { describeJpeg } from '../ui/jpegmeta.js';
 
 const $ = (id) => document.getElementById(id);
 // Settings › Text recognition › Reading: Accurate keeps more detail of small print (a book page), Fast is quicker
@@ -224,7 +226,7 @@ export function initCamera({ sendToText }) {
       const width = (r.w / w) * 100, height = (r.h / h) * 100;
       const hh = perLine || showOrig ? height : Math.min(height, 6);
       const paint = !showOrig && c ? `background:${css(c.bg)};color:${css(c.fg)};box-shadow:none;` : '';
-      return `<div class="ocr-box ${showOrig ? 'orig' : ''}" lang="${showOrig ? (shot.ocrSource || '') : state.target}"
+      return `<div class="ocr-box ${showOrig ? 'orig' : ''}" lang="${showOrig ? (shot.ocrSource || '') : state.target}" dir="${isRtl(showOrig ? shot.ocrSource : state.target) ? 'rtl' : 'ltr'}"
         style="${paint}left:${left}%;top:${top}%;width:${width}%;${perLine || showOrig ? `height:${height}%` : `min-height:${height}%;white-space:normal;align-items:flex-start`};--h:${hh};${r.angle ? `rotate:${r.angle.toFixed(4)}rad;` : ''}animation-delay:${i * 25}ms"
         ><span>${escapeHtml(text || '')}</span></div>`;
     }).join('');
@@ -253,8 +255,11 @@ export function initCamera({ sendToText }) {
     c.width = sh.w; c.height = sh.h;
     const ctx = c.getContext('2d');
     ctx.drawImage(img, 0, 0);
-    if (sh.translated) drawTranslated(ctx, sh.lines, sh.lineTexts, sh.colors || [], sh.translated);
-    return new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
+    if (sh.translated) drawTranslated(ctx, sh.lines, sh.lineTexts, sh.colors || [], sh.translated, { rtl: isRtl(sh.pair?.split('>')[1] || state.target) });
+    const jpeg = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
+    // the words go along inside the file, for galleries and screen readers: "Pharmacy (German: Apotheke)"
+    const from = sh.ocrSource && sh.ocrText?.trim() ? ` (${langName(sh.ocrSource)}: ${sh.ocrText.replace(/\s+/g, ' ').trim()})` : '';
+    return sh.translated ? describeJpeg(jpeg, sh.translated.replace(/\s+/g, ' ').trim() + from) : jpeg;
   }
 
   /* Share (phones) or Save (computers): a small menu with this photo, all photos (when there are
@@ -345,7 +350,8 @@ export function initCamera({ sendToText }) {
     if (sharingAll) return;
     const stop = sharingAll = { cancelled: false };
     const list = album; const back = albumAt; const files = []; const taken = new Set();
-    const progress = (i) => toast(`Reading photo ${i + 1} of ${list.length}…`, { action: 'Cancel', onAction: () => { stop.cancelled = true; } });
+    const cancel = () => { stop.cancelled = true; };   // Cancel, ✕ and Escape all stop
+    const progress = (i) => toast(`Reading photo ${i + 1} of ${list.length}…`, { action: 'Cancel', onAction: cancel, onDismiss: cancel });
     try {
       for (let i = 0; i < list.length; i++) {
         if (album !== list || stop.cancelled) break;

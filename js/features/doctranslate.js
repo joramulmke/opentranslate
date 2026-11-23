@@ -4,6 +4,16 @@
 // when one is opened, from jsDelivr like the PDF reader.
 import { state, translate, detect } from '../state.js';
 import { spreadText } from './inplace.js';
+import { isRtl } from '../languages.js';
+
+/** The translated page's language and direction: an Arabic or Hebrew translation reads right to left,
+ *  and a page translated out of one goes back to left to right. */
+function setLang(root, target, xhtml = false) {
+  root.setAttribute('lang', target);
+  if (xhtml) root.setAttribute('xml:lang', target);
+  if (isRtl(target)) root.setAttribute('dir', 'rtl');
+  else if (root.getAttribute('dir')?.toLowerCase() === 'rtl') root.setAttribute('dir', 'ltr');
+}
 
 const FFLATE = 'https://cdn.jsdelivr.net/npm/fflate@0.8.2/esm/browser.js';
 let fflate = null;
@@ -287,8 +297,7 @@ function htmlDoc(text, target, xhtml = false) {
     texts: seg.texts,
     build: (tr) => {
       seg.apply(tr);
-      doc.documentElement.setAttribute('lang', target);
-      if (xhtml) doc.documentElement.setAttribute('xml:lang', target);
+      setLang(doc.documentElement, target, xhtml);
       return xhtml ? new XMLSerializer().serializeToString(doc) : '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
     },
   };
@@ -382,7 +391,7 @@ async function openZip(file, ext, target) {
       const out = {};
       for (const d of docs) {
         d.apply(tr.slice(k, k + d.texts.length)); k += d.texts.length;
-        if (d.html) d.doc.documentElement.setAttribute('lang', target);
+        if (d.html) setLang(d.doc.documentElement, target);
         files[d.name] = strToU8(d.html ? '<!DOCTYPE html>\n' + d.doc.documentElement.outerHTML : new XMLSerializer().serializeToString(d.doc));
       }
       if (ext === 'epub') setEpubLanguage(files, target, strFromU8, strToU8);
@@ -468,7 +477,7 @@ export function openPage(html, url, target) {
   return {
     texts: seg.texts,
     title: () => doc.title,
-    build: (tr) => { seg.apply(tr); doc.documentElement.setAttribute('lang', target); return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML; },
+    build: (tr) => { seg.apply(tr); setLang(doc.documentElement, target); return '<!DOCTYPE html>\n' + doc.documentElement.outerHTML; },
     original: () => '<!DOCTYPE html>\n' + doc.documentElement.outerHTML,
   };
 }

@@ -33,7 +33,7 @@ const SHELL = [
   './js/ui/langbar.js',
   './js/ui/langpicker.js',
   './js/ui/sheet.js',
-  './js/ui/snackbar.js', './js/ui/sendfile.js',
+  './js/ui/snackbar.js', './js/ui/sendfile.js', './js/ui/jpegmeta.js',
   './js/ui/textview.js',
   './js/ui/historysheet.js',
   './js/ui/settingssheet.js',
