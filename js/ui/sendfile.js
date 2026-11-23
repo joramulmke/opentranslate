@@ -31,7 +31,8 @@ export async function sendFiles(files, what = files.length > 1 ? 'files' : 'file
       if (e.name === 'AbortError') return 'cancelled';
       // making the file took a while and the phone no longer counts it as the tap's answer: one more tap
       if (e.name === 'NotAllowedError') {
-        toast(`${cap(what)} ready`, { action: 'Share', onAction: () => navigator.share({ files }).catch((e2) => { if (e2.name !== 'AbortError') download(files, what, 'Sharing didn’t work, so '); }) });
+        // the words say what to do: a screen reader hears the message, not that a tap is still needed
+        toast(`${cap(what)} ready. Tap Share to send ${files.length > 1 ? 'them' : 'it'}.`, { action: 'Share', onAction: () => navigator.share({ files }).catch((e2) => { if (e2.name !== 'AbortError') download(files, what, 'Sharing didn’t work, so '); }) });
         return 'asked';
       }
       fallback = 'Sharing didn’t work, so ';
@@ -48,10 +49,12 @@ function download(files, what, lead = '') {
     setTimeout(() => URL.revokeObjectURL(a.href), 30000);
   }, i * 300));   // one at a time, or the browser may drop some
   const many = files.length > 1;
-  // "Translated photo saved to Downloads" / "Sharing didn't work, so the translated photo was saved to Downloads"
-  if (!lead) { toast(`${cap(many ? `${files.length} ${what}` : what)} saved to Downloads`); return; }
-  const it = many ? `${files.length} ${what} were` : `${/\./.test(what) ? what : `the ${what}`} was`;
-  toast(`${lead}${it} saved to Downloads`);
+  // Only what we know: the browser may still ask where to save, or ask before taking several files.
+  // "Downloading translated photo" / "Sharing didn't work, so the translated photo is downloading"
+  const ask = many ? ' If your browser asks, allow it to download several files.' : '';
+  if (!lead) { toast(`Downloading ${many ? `${files.length} ${what}` : /\./.test(what) ? what : what.toLowerCase()}.${ask}`, { duration: many ? 9000 : 6000 }); return; }
+  const it = many ? `${files.length} ${what} are` : `${/\./.test(what) ? what : `the ${what}`} is`;
+  toast(`${lead}${it} downloading.${ask}`, { duration: many ? 9000 : 6000 });
 }
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);

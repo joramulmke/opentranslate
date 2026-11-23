@@ -116,8 +116,10 @@ export function initCamera({ sendToText }) {
     if (!after) { el.status.hidden = true; el.overlays.innerHTML = ''; }
   }
 
-  function status(text) {
+  /** `quiet`: shown but not read out, when a toast already says the same */
+  function status(text, quiet = false) {
     el.status.hidden = !text;
+    el.status.setAttribute('aria-live', quiet ? 'off' : 'polite');
     if (text) el.statusText.textContent = text;
   }
 
@@ -259,7 +261,7 @@ export function initCamera({ sendToText }) {
     const jpeg = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.9));
     // the words go along inside the file, for galleries and screen readers: "Pharmacy (German: Apotheke)"
     const from = sh.ocrSource && sh.ocrText?.trim() ? ` (${langName(sh.ocrSource)}: ${sh.ocrText.replace(/\s+/g, ' ').trim()})` : '';
-    return sh.translated ? describeJpeg(jpeg, sh.translated.replace(/\s+/g, ' ').trim() + from) : jpeg;
+    return sh.translated ? describeJpeg(jpeg, sh.translated.replace(/\s+/g, ' ').trim() + from, sh.pair?.split('>')[1] || state.target) : jpeg;
   }
 
   /* Share (phones) or Save (computers): a small menu with this photo, all photos (when there are
@@ -272,6 +274,7 @@ export function initCamera({ sendToText }) {
     const share = sharesPhotos();
     el.share.querySelector('span').textContent = share ? 'Share' : 'Save';
     el.share.setAttribute('aria-label', share ? 'Share translated photo or text' : 'Save translated photo or copy text');
+    shareMenu.setAttribute('aria-label', share ? 'Share' : 'Save');   // the menu is named like its button
     const ic = el.share.querySelector('svg, i');
     if (ic && ic.dataset.shareIcon !== String(share)) { ic.outerHTML = icon(share ? 'share' : 'download'); el.share.firstElementChild.dataset.shareIcon = String(share); }
   };
@@ -358,7 +361,7 @@ export function initCamera({ sendToText }) {
         const sh = list[i].shot;
         if (!(sh?.done && (!sh.ocrText || sh.pair === `${state.source}>${state.target}`))) {
           progress(i);
-          status(`Reading photo ${i + 1} of ${list.length}…`);
+          status(`Reading photo ${i + 1} of ${list.length}…`, true);   // the toast says it already: read out once
           await showPhoto(i);
           if (!(await settled(i, list, stop))) break;
         }
