@@ -85,12 +85,8 @@
       <button class="icon-btn tb-back" id="btn-back" type="button" aria-label="Back" title="Back"><i data-icon="back"></i></button>
       <button class="icon-btn tb-saved" id="btn-saved" type="button" aria-label="Saved translations" title="Saved"><i data-icon="star"></i></button>
       <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
-          <rect x="4" y="6" width="26" height="22" rx="7" fill="var(--brand-a)"/>
-          <path d="M10 28 l0 8 l8 -8z" fill="var(--brand-a)"/>
-          <rect x="18" y="18" width="26" height="22" rx="7" fill="var(--brand-b)"/>
-          <path d="M38 40 l0 6 l-7 -6z" fill="var(--brand-b)"/>
-          <path d="M24 29h14M24 33h9" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+        <svg class="brand-mark" viewBox="-0.5 0.5 25 24" aria-hidden="true">
+          <g stroke-linejoin="round" stroke-width="1"><path d="M12.87 15.07l-2.54-2.51.03-.03c1.74-1.94 2.98-4.17 3.71-6.53H17V4h-7V2H8v2H1v1.99h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04z" style="fill:var(--brand-a);stroke:var(--brand-a)"/><path d="M18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z" transform="translate(.6 .4)" style="fill:var(--brand-b);stroke:var(--brand-b)" fill-rule="evenodd"/></g>
         </svg>
         <span class="brand-name">OpenTranslate</span>
       </div>
@@ -110,7 +106,7 @@
     <nav class="navbar" aria-label="Modes">
       <div role="tablist" aria-orientation="horizontal" class="nav-list">
         <button role="tab" id="tab-text" class="nav-item" data-tab="text" aria-controls="view-text" aria-selected="true">
-          <span class="nav-ind"><i data-icon="translate"></i></span><span class="nav-label">Text</span></button>
+          <span class="nav-ind"><i data-icon="notes"></i></span><span class="nav-label">Text</span></button>
         <button role="tab" id="tab-camera" class="nav-item" data-tab="camera" aria-controls="view-camera" aria-selected="false" tabindex="-1">
           <span class="nav-ind"><i data-icon="camera"></i></span><span class="nav-label">Camera</span></button>
         <button role="tab" id="tab-conversation" class="nav-item" data-tab="conversation" aria-controls="view-conversation" aria-selected="false" tabindex="-1">
@@ -265,7 +261,7 @@
           <button class="cap-chip" type="button" id="cap-pause" aria-pressed="true" title="Stops listening after 2 minutes of silence, to save battery">Pause when quiet</button>
           <button class="cap-chip" type="button" id="cap-source" hidden><i data-icon="mic"></i><span>Microphone</span></button>
           <button class="cap-btn" type="button" id="cap-transcript" aria-label="Transcript: copy, share or download" title="Transcript" popovertarget="cap-transcript-menu"><i data-icon="notes"></i></button>
-          <button class="cap-btn" type="button" id="cap-popout" aria-label="Pop out captions into a floating window" title="Pop out captions" hidden><i data-icon="openIn"></i></button>
+          <button class="cap-btn" type="button" id="cap-popout" aria-label="Pop out captions into a floating window" title="Pop out captions" hidden><i data-icon="pip"></i></button>
         </div>
         <div class="cap-menu" id="cap-transcript-menu" popover role="menu" aria-label="Transcript">
           <button type="button" role="menuitem" data-transcript="copy"><i data-icon="copy"></i><span>Copy transcript</span></button>
@@ -688,7 +684,7 @@
       <button type="button" role="menuitem" data-menu="saved"><i data-icon="star"></i><span>Saved translations</span></button>
       <button type="button" role="menuitem" data-menu="docs"><i data-icon="doc"></i><span>Translate a file or website</span></button>
       <button type="button" role="menuitem" data-menu="theme" data-theme-toggle><i data-icon="darkMode"></i><span>Dark theme</span></button>
-      <button type="button" role="menuitem" data-menu="pip" id="menu-pip" hidden><i data-icon="translate"></i><span>Floating window</span></button>
+      <button type="button" role="menuitem" data-menu="pip" id="menu-pip" hidden><i data-icon="pip"></i><span>Floating window</span></button>
       <button type="button" role="menuitem" data-menu="install" id="menu-install"><i data-icon="install"></i><span>Install app</span></button>
       <button type="button" role="menuitem" data-menu="settings" id="menu-settings"><i data-icon="settings"></i><span>Settings</span></button>
       <button type="button" role="menuitem" data-menu="feedback"><i data-icon="feedback"></i><span>Feedback</span></button>
