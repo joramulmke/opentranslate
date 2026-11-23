@@ -16,7 +16,8 @@ text, scrolling; each line translated as soon as it is final.
 Plan (agreed Nov 2026): build it into Conversation › Listening, which already listens, translates only
 their language and restarts the mic by itself (it pauses after two silences today).
 - Runs until you stop it or leave: no pause after silence (after ~2 minutes of silence it pauses, to save
-  battery, and says so). Chrome's speech service: `continuous = true` in Listening, restarted when Chrome
+  battery, and says so). A switch "Pause after 2 minutes of silence" (on by default, remembered) in the
+  Listening setup and on the captions screen turns that off, e.g. for a long talk with breaks. Chrome's speech service: `continuous = true` in Listening, restarted when Chrome
   ends it (about every minute). Recording engines (Whisper, ElevenLabs, on-device): the next recording
   starts at once while the last one is transcribed, so no words get lost between pieces.
 - Captions: translation big, original small under it (as now); the words being heard show greyed until
