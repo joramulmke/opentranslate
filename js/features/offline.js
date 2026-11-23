@@ -2,6 +2,7 @@
 // Web Worker, with Mozilla's open translation models downloaded per language ("language packs").
 // A pack = English ↔ that language. Other pairs go through English (de → en → fr).
 // Models are stored in Cache Storage and work without a network once downloaded.
+import { keepDownloadsSafe } from './persist.js';
 import { registerProvider, ProviderError } from '../providers.js';
 import { STATIC_LANGUAGES } from '../languages.js';
 import { bgDownload, bgResume, langLabel } from './bgfetch.js';
@@ -255,6 +256,7 @@ export async function downloadPack(lang) {
   if (downloadsBlocked) throw new ProviderError('BROWSER_BLOCKED', BLOCKED_REASON);
   if (lang === PIVOT || packState(lang) === 'ready') return;
   if (downloads.has(lang)) return downloads.get(lang).promise;
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   const ctrl = new AbortController();
   const d = { loaded: 0, total: 0, abort: () => ctrl.abort() };
   downloads.set(lang, d);

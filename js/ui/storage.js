@@ -13,6 +13,7 @@ import { formatMB } from './offlineui.js';
 import { escapeHtml as esc } from './langpicker.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
+import { persistState, persistSupported, setKeepSafe, onPersistChange } from '../features/persist.js';
 
 const $ = (id) => document.getElementById(id);
 const size = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1)} GB` : formatMB(b));
@@ -80,9 +81,12 @@ export async function renderStorage() {
   items = await collect();
   const sum = items.reduce((a, x) => a + x.bytes, 0);
   const used = Math.max(sum, (await usage()) || 0);
+  const kept = await persistState();
+  const safety = !items.length || kept === 'unsupported' ? '' : kept === 'kept' ? ' · Kept safe' : ' · May be deleted when space runs low';
   const text = used > 0
-    ? `Using ${size(used)} on this device${items.length ? ` · ${items.length} download${items.length === 1 ? '' : 's'}` : ''}`
+    ? `Using ${size(used)} on this device${items.length ? ` · ${items.length} download${items.length === 1 ? '' : 's'}` : ''}${safety}`
     : 'Nothing downloaded on this device yet.';
+  renderKeepSafe(kept);
   if (line.textContent !== text) line.textContent = text;
   $('btn-storage').hidden = !items.length;
   if (!items.length) setOpen(false);
@@ -125,8 +129,32 @@ async function onFree(id) {
   (list.querySelector('[data-free]') || ($('btn-storage').hidden ? $('storage-line') : $('btn-storage'))).focus();
 }
 
+/** The "Keep downloads safe" switch under the storage line, and what the browser answered. */
+function renderKeepSafe(kept) {
+  const row = $('keep-safe-row');
+  if (!row) return;
+  row.hidden = !persistSupported();
+  const on = settings.get().keepSafe === true || kept === 'kept';
+  $('set-keep-safe').checked = on;
+  // once the browser keeps them, it can't be told to forget: the switch stays on
+  $('set-keep-safe').disabled = kept === 'kept';
+  const installed = matchMedia('(display-mode: standalone), (display-mode: window-controls-overlay)').matches;
+  $('keep-safe-note').textContent = kept === 'kept'
+    ? 'The browser keeps your downloads, even when space runs low'
+    : on
+      ? `The browser hasn't agreed yet. ${installed ? 'It may agree after you use OpenTranslate more often.' : 'Install the app to keep them safe: it asks again then.'}`
+      : 'Asks the browser not to delete downloads when space runs low';
+}
+
 export function initStorage() {
   if (!$('storage-line')) return;
+  $('set-keep-safe')?.addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    const ok = await setKeepSafe(on);
+    if (on) toast(ok ? 'Downloads are kept safe.' : "The browser didn't agree yet. It's asked again later.");
+    renderStorage();
+  });
+  onPersistChange(() => { if ($('settings-dialog')?.open) renderStorage(); });
   $('btn-storage').addEventListener('click', () => setOpen($('storage-list').hidden));
   $('storage-list').addEventListener('click', (ev) => {
     const b = ev.target.closest('[data-free]');

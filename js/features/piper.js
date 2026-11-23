@@ -8,6 +8,7 @@ const formatMB = (bytes) => `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 
 const CACHE = 'ot-piper-v1';
 const HF = 'https://huggingface.co/rhasspy/piper-voices/resolve/main/';
+import { keepDownloadsSafe } from './persist.js';
 import { ORT_FILES, loadOrt, cachedFile, haveFile } from './ort.js';
 import { bgDownload, bgResume, langLabel } from './bgfetch.js';
 const PHONEMIZE = 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/';
@@ -183,6 +184,7 @@ const engineUsed = () => present.size > 0 || kokoroBytes > 0;
 /** Download Kokoro: the model, its symbol list and the picked voice of every language (each 0.5 MB). */
 export function downloadKokoro({ picked = {}, onProgress } = {}) {
   if (kokoroJob) return kokoroJob.promise;
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   kokoroJob = { progress: 0 };
   kokoroJob.promise = (async () => {
     const c = await caches.open(CACHE);
@@ -211,6 +213,7 @@ export function downloadKokoro({ picked = {}, onProgress } = {}) {
 
 /** Another voice for a language (0.5 MB, needs internet once). */
 export async function downloadKokoroVoice(id) {
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   await cachedFetch(kokoroVoiceUrl(id));
   await refreshVoices();
 }
@@ -269,6 +272,7 @@ export async function downloadVoice(lang, { onProgress } = {}) {
   const v = VOICES.find((x) => x.lang === lang);
   if (!v) throw new Error('No offline voice for this language');
   if (jobs.has(lang)) return;
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   jobs.set(lang, 0); emit();
   try {
     const c = await caches.open(CACHE);

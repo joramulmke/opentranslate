@@ -1,6 +1,7 @@
 // OCR via Tesseract.js, loaded lazily from a CDN on first use (camera + handwriting).
 // Language files come from jsDelivr (npm package @tesseract.js-data/<lang>, from the Tesseract project's
 // trained data) and Tesseract.js keeps them in IndexedDB ("keyval-store"), so each is downloaded once.
+import { keepDownloadsSafe } from './persist.js';
 import { TESSERACT_LANGS } from '../languages.js';
 import { settings } from '../store.js';
 import { sheet } from './permissions.js';
@@ -212,6 +213,7 @@ export async function ocrDownloaded() {
 
 /** Download one language now (for later use without internet). onProgress(0..1). */
 export async function ocrDownload(lang, onProgress) {
+  keepDownloadsSafe();   // first download: ask to keep downloads safe (doesn't wait)
   const handler = (m) => { if (/loading language traineddata/.test(m.status)) onProgress?.(m.progress || 0); };
   const had = workers.has(lang);
   await getWorker(lang, handler);

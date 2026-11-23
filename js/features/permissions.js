@@ -57,11 +57,11 @@ function ensureDialog() {
 }
 
 /** Show the explain / blocked sheet. Resolves true when the user taps Allow. */
-export function sheet({ iconName, title, body, steps = [], allowLabel = 'Allow', cancelLabel = 'Not now', allow = true }) {
+export function sheet({ iconName, title, body, bodyHtml, steps = [], allowLabel = 'Allow', cancelLabel = 'Not now', allow = true }) {
   ensureDialog();
   $('perm-icon').innerHTML = icon(iconName);
   $('perm-title').textContent = title;
-  $('perm-body').textContent = body;
+  if (bodyHtml) $('perm-body').innerHTML = bodyHtml; else $('perm-body').textContent = body;
   $('perm-steps').innerHTML = steps.map((s) => `<li>${s}</li>`).join('');
   $('perm-steps').hidden = !steps.length;
   $('perm-allow').hidden = !allow;

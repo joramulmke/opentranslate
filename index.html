@@ -123,6 +123,7 @@
               <span class="mock-chip" id="mock-chip" hidden>Offline demo translation</span>
               <button class="why-btn" id="btn-why" type="button" aria-expanded="false" aria-controls="why-list" hidden>Why?</button>
               <ol class="why-list" id="why-list" aria-label="Services tried, in order" hidden></ol>
+              <a class="wikt-link" id="wikt-link" target="_blank" rel="noopener" hidden></a>
             </div>
             <div class="pane-footer out-footer">
               <button class="icon-btn" id="btn-speak" type="button" aria-label="Listen to translation" disabled><i data-icon="volume"></i></button>
@@ -350,6 +351,7 @@
           <button class="btn btn-text" type="button" id="btn-storage" aria-expanded="false" aria-controls="storage-list" hidden>Free up space</button>
         </div>
         <ul class="offline-list storage-list" id="storage-list" aria-label="Downloads on this device, largest first" hidden></ul>
+        <label class="switch-row" id="keep-safe-row" hidden><span>Keep downloads safe<small id="keep-safe-note">Asks the browser not to delete downloads when space runs low</small></span><input type="checkbox" id="set-keep-safe" role="switch"></label>
       </section>
       <fieldset class="settings-group" id="services-group" aria-describedby="svc-help">
         <legend>Services and downloads</legend>
@@ -477,6 +479,7 @@
       <button type="button" role="menuitem" data-menu="history"><i data-icon="history"></i><span>History</span></button>
       <button type="button" role="menuitem" data-menu="saved"><i data-icon="star"></i><span>Saved translations</span></button>
       <button type="button" role="menuitem" data-menu="theme" data-theme-toggle><i data-icon="darkMode"></i><span>Dark theme</span></button>
+      <button type="button" role="menuitem" data-menu="pip" id="menu-pip" hidden><i data-icon="translate"></i><span>Floating window</span></button>
       <button type="button" role="menuitem" data-menu="install" id="menu-install"><i data-icon="install"></i><span>Install app</span></button>
       <button type="button" role="menuitem" data-menu="settings" id="menu-settings"><i data-icon="settings"></i><span>Settings</span></button>
       <button type="button" role="menuitem" data-menu="feedback"><i data-icon="feedback"></i><span>Feedback</span></button>

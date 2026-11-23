@@ -1509,3 +1509,10 @@ html:has(dialog.sheet[open]) { overflow: hidden; }
 .fb-shot-img { display: block; justify-self: start; border: 1px solid var(--outline-variant); border-radius: 12px; overflow: hidden; }
 .fb-shot-img img { display: block; max-width: min(100%, 240px); max-height: 240px; width: auto; height: auto; }
 .fb-diag-head { margin: 10px 0 4px; font-size: 13px; font-weight: 500; color: var(--primary); }
+.storage-box .switch-row { margin-top: 8px; }
+.storage-box .switch-row small { display: block; font-size: 12px; line-height: 16px; color: var(--on-surface-variant); }
+/* "Look up “test” on Wiktionary ↗" under a short translation */
+.wikt-link { display: flex; align-items: center; width: fit-content; min-height: 44px; margin-top: 4px; padding: 0 4px;
+  color: var(--primary); font-size: 14px; text-decoration: underline; text-underline-offset: 3px; border-radius: 8px; }
+.wikt-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.wikt-link[hidden] { display: none; }

@@ -16,8 +16,17 @@ text, scrolling; each line translated as soon as it is final.
 
 ## 4. Look up a word on Wiktionary
 
-When the input is only a word or a few (e.g. "test", "Prüfung", "church community"), show a link to
+(Done, Nov 2026.) When the input is only a word or a few (e.g. "test", "Prüfung", "church community"), show a link to
 https://www.wiktionary.org/ for it: meanings, gender, plural, pronunciation. Not for whole sentences.
+
+Plan (agreed Nov 2026):
+- Looks up the translation, not the input: German→English "Prüfung" gives a link for "test".
+- In the target language's Wiktionary: `https://{target}.wiktionary.org/w/index.php?search={translation}`
+  (search URL: opens the entry if it exists, else search results, so capitalisation doesn't matter).
+  Languages without their own Wiktionary fall back to en.wiktionary.org.
+- A small link under the result, e.g. 'Look up "test" on Wiktionary ↗', in `js/ui/textview.js`. Shown only when
+  the input is 1–3 words (no sentence punctuation, no line break) and the translation has finished.
+  Opens in a new tab, with a proper screen-reader label.
 
 ## 5. Web Share
 
@@ -25,8 +34,25 @@ https://www.wiktionary.org/ for it: meanings, gender, plural, pronunciation. Not
 
 ## 6. Persistent downloads
 
-Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when
+(Done, Nov 2026; not yet tried in Firefox or on a phone.) Keep downloads safe (persistent storage): downloads can be several GB, and the browser may delete them when
    space runs low. One call asks it to keep them; the right moment is right after the first download.
+
+Plan (agreed Nov 2026, built):
+- On the first tap on Download, the app asks the user first, with its own sheet (`sheet()` from
+  `js/features/permissions.js`):
+  "Keep downloads safe? Downloads can be large. When space on this device runs low, the browser may delete
+  them without asking. OpenTranslate can ask the browser to keep them." Buttons: "Keep them safe" / "Not now".
+  The download starts either way.
+- Only after "Keep them safe" does the app ask the browser (`navigator.storage.persist()`). Firefox then shows
+  its own prompt; Chrome, Edge and Safari decide by themselves (installed, bookmarked, used a lot).
+- If the browser says no, ask the browser again later without a new sheet, because its answer can change:
+  after the app is installed (`appinstalled`, or the first start as an installed app), and at the next
+  downloads. Stop once it says yes. (Firefox remembers a "Block" and won't prompt again.)
+- "Not now" in the sheet: don't ask again by sheet. Settings gets a switch "Keep downloads safe" to change it.
+- A helper `ensurePersisted()` in `js/ui/storage.js`, called from the download buttons (language packs, voices,
+  models, PP-OCRv6, on-device AI; `js/features/offline.js`, `bgfetch.js`).
+- Show the result in Settings › storage line: "· Kept safe", or "· May be deleted when space runs low" with a
+  hint "Install the app to keep them safe". Nothing shown where the browser has no storage API.
 
 ## 7. background fetch
 
@@ -34,7 +60,7 @@ Keep downloads safe (persistent storage): downloads can be several GB, and the b
 
 ## 8. pip
    
-A floating translator window (Picture-in-Picture): on a computer, a small always-on-top window for translating while you work in other apps. It also fits the live subtitles idea.
+(Done, Nov 2026: Chrome/Edge on computers. Live captions in it: later, with #2.) A floating translator window (Picture-in-Picture): on a computer, a small always-on-top window for translating while you work in other apps. It also fits the live subtitles idea.
    
 ## 9. File and Website Translation
 
