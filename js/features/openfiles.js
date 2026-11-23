@@ -2,8 +2,10 @@
 //   photos → camera text (several: a strip to switch between them)
 //   PDF    → its text into the text box; a scanned PDF's pages → camera text, like photos
 //   .txt   → its text into the text box
-// The text box holds 5,000 characters; longer text is cut with a note (translating whole files is IDEAS #9).
+//   Word, PowerPoint, e-books and other documents, and PDFs longer than the text box → "Translate a file"
+// The text box holds 5,000 characters; longer .txt files are cut with a note.
 import { MAX } from '../ui/textview.js';
+import { canTranslateFile } from './doctranslate.js';
 import { toast } from '../ui/snackbar.js';
 
 const isImage = (f) => /^image\//.test(f.type);
@@ -19,17 +21,20 @@ export async function readTextFile(f) {
 
 /**
  * @param {File[]} files
- * @param {{ text?: string, toText: (text: string) => void, toCamera: (images: (Blob|HTMLCanvasElement)[]) => Promise<boolean> }} to
+ * @param {{ text?: string, toText: (text: string) => void, toCamera: (images: (Blob|HTMLCanvasElement)[]) => Promise<boolean>, toDocs?: (file: File) => void }} to
  */
-export async function openFiles(files, { text = '', toText, toCamera }) {
+export async function openFiles(files, { text = '', toText, toCamera, toDocs }) {
   const pdf = files.find(isPdf);
   const images = files.filter(isImage);
   const texts = files.filter((f) => isText(f) && !isPdf(f));
+  const doc = files.find((f) => !isImage(f) && !isPdf(f) && !isText(f) && canTranslateFile(f));
   try {
+    if (doc && toDocs) { toDocs(doc); return; }
     if (pdf) {
       toast('Reading the PDF…', { duration: 15000 });
       const { readPdf } = await import('./pdf.js');
       const r = await readPdf(pdf, { maxChars: MAX });
+      if (r.cut && toDocs) { toDocs(pdf); return; }   // too long for the text box: translate the whole PDF
       if (r.text) {
         toText(r.text);
         const notes = [];
@@ -58,7 +63,7 @@ export async function openFiles(files, { text = '', toText, toCamera }) {
       return;
     }
     if (text) { toText(text); return; }
-    toast('OpenTranslate can open photos, PDFs and .txt files.');
+    toast('OpenTranslate can open photos, PDFs, text files and documents (Word, PowerPoint, Excel, e-books…).');
   } catch (e) {
     toast(e.message || 'This file could not be opened.');
   }

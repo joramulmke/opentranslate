@@ -75,31 +75,53 @@
   "shortcuts": [
     {
       "name": "Camera",
+      "short_name": "Camera",
+      "description": "Translate text with the camera",
       "url": "./#camera",
       "icons": [
         {
-          "src": "icons/icon-192.png",
-          "sizes": "192x192"
+          "src": "icons/shortcuts/camera.png",
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     },
     {
       "name": "Conversation",
+      "short_name": "Conversation",
+      "description": "Translate a conversation",
       "url": "./#conversation",
       "icons": [
         {
-          "src": "icons/icon-192.png",
-          "sizes": "192x192"
+          "src": "icons/shortcuts/conversation.png",
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     },
     {
       "name": "Handwriting",
+      "short_name": "Handwriting",
+      "description": "Translate handwriting",
       "url": "./#handwriting",
       "icons": [
         {
-          "src": "icons/icon-192.png",
-          "sizes": "192x192"
+          "src": "icons/shortcuts/handwriting.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Translate a file",
+      "short_name": "File",
+      "description": "Translate a file or website",
+      "url": "./?open=docs",
+      "icons": [
+        {
+          "src": "icons/shortcuts/file.png",
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     }
@@ -120,7 +142,36 @@
             "text/plain",
             ".txt",
             "application/pdf",
-            ".pdf"
+            ".pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".docx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".pptx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xlsx",
+            "application/vnd.oasis.opendocument.text",
+            ".odt",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            ".ods",
+            "application/vnd.oasis.opendocument.presentation",
+            ".odp",
+            "application/epub+zip",
+            ".epub",
+            "text/html",
+            ".html",
+            ".htm",
+            "text/markdown",
+            ".md",
+            "application/x-subrip",
+            ".srt",
+            "text/vtt",
+            ".vtt",
+            "text/csv",
+            ".csv",
+            "text/x-gettext-translation",
+            ".po",
+            "application/json",
+            ".json"
           ]
         }
       ]
@@ -160,6 +211,49 @@
         ],
         "application/pdf": [
           ".pdf"
+        ],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+          ".docx"
+        ],
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": [
+          ".pptx"
+        ],
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+          ".xlsx"
+        ],
+        "application/vnd.oasis.opendocument.text": [
+          ".odt"
+        ],
+        "application/vnd.oasis.opendocument.spreadsheet": [
+          ".ods"
+        ],
+        "application/vnd.oasis.opendocument.presentation": [
+          ".odp"
+        ],
+        "application/epub+zip": [
+          ".epub"
+        ],
+        "text/html": [
+          ".html",
+          ".htm"
+        ],
+        "text/markdown": [
+          ".md"
+        ],
+        "application/x-subrip": [
+          ".srt"
+        ],
+        "text/vtt": [
+          ".vtt"
+        ],
+        "text/csv": [
+          ".csv"
+        ],
+        "text/x-gettext-translation": [
+          ".po"
+        ],
+        "application/json": [
+          ".json"
         ]
       },
       "launch_type": "single-client"

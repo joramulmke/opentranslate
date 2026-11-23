@@ -17,17 +17,8 @@ function load() {
   return lib;
 }
 
-const hasWords = (s) => (s.match(/[\p{L}\p{N}]/gu) || []).length >= 15;
-
-/**
- * Read a PDF.
- * @param {Blob} blob
- * @param {{ maxChars?: number, maxScans?: number, onStatus?: (text: string) => void }} opts
- * @returns {Promise<{ text: string, pages: number, textPages: number, cut: boolean, scans: HTMLCanvasElement[], scanPages: number }>}
- *   text: the text of the pages that have some (up to maxChars); scans: drawn pages without text, only
- *   when the PDF has no text at all (up to maxScans; scanPages counts them all).
- */
-export async function readPdf(blob, { maxChars = 5000, maxScans = 10, onStatus = () => {} } = {}) {
+/** Open a PDF with pdf.js. Call task.destroy() when done. */
+export async function openPdf(blob, onStatus = () => {}) {
   onStatus('Loading the PDF reader…');
   const pdfjs = await load();
   onStatus('Reading the PDF…');
@@ -46,6 +37,21 @@ export async function readPdf(blob, { maxChars = 5000, maxScans = 10, onStatus =
     if (e?.name === 'PasswordException') throw new Error('This PDF is protected with a password, so it can’t be read here.');
     throw new Error('This file could not be read as a PDF.');
   }
+  return { task, doc };
+}
+
+const hasWords = (s) => (s.match(/[\p{L}\p{N}]/gu) || []).length >= 15;
+
+/**
+ * Read a PDF.
+ * @param {Blob} blob
+ * @param {{ maxChars?: number, maxScans?: number, onStatus?: (text: string) => void }} opts
+ * @returns {Promise<{ text: string, pages: number, textPages: number, cut: boolean, scans: HTMLCanvasElement[], scanPages: number }>}
+ *   text: the text of the pages that have some (up to maxChars); scans: drawn pages without text, only
+ *   when the PDF has no text at all (up to maxScans; scanPages counts them all).
+ */
+export async function readPdf(blob, { maxChars = 5000, maxScans = 10, onStatus = () => {} } = {}) {
+  const { task, doc } = await openPdf(blob, onStatus);
   try {
     const parts = [];
     const empty = [];

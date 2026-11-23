@@ -2,6 +2,7 @@
 // Phones (< 720px): home screen + full-screen sub-views with back buttons (no tab bar).
 // 720px+: tabs in a bottom bar (720-1023px) or a navigation rail (1024px+).
 import { initBackup } from './ui/backup.js';
+import { initDocs, openDocs } from './ui/docsheet.js';
 import { hydrateIcons, icon } from './ui/icons.js';
 import { initProvider, state } from './state.js';
 import { settings, onChange } from './store.js';
@@ -172,6 +173,7 @@ function boot() {
   initHistorySheet({ onSelect: (item) => sendToText(item.text, { source: item.source, target: item.target }) });
   initSettingsSheet({ onThemeChange: applyTheme });
   initBackup();
+  initDocs();
 
   hooks.camera = initCamera({ sendToText });
   hooks.conversation = initConversation({ leave: () => goBack() });
@@ -223,6 +225,7 @@ function boot() {
     install: initInstall($('menu-install')),
     settings: () => openSettings(),
     feedback: openFeedback,
+    docs: () => openDocs(),
     pip: () => openPip().catch((e) => console.warn('[OpenTranslate] floating window:', e)),
   });
   $('menu-pip').hidden = !pipSupported();
@@ -245,9 +248,20 @@ function boot() {
     textView.setInput(linkText, { translateNow: true });
   }
 
+  // home-screen shortcut "Translate a file" (manifest shortcuts): ./?open=docs
+  const params = new URLSearchParams(location.search);
+  if (params.get('open') === 'docs') {
+    params.delete('open');
+    const rest = params.toString();
+    history.replaceState(history.state, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+    openDocs();
+  }
+
   // files opened with the installed app on a computer (manifest file_handlers) or shared from another app
-  // (manifest share_target, see sw.js): photos go to camera text, PDFs and .txt files into the text box
+  // (manifest share_target, see sw.js): photos go to camera text, short PDFs and .txt files into the text
+  // box, documents and long PDFs to "Translate a file"
   const fileTargets = {
+    toDocs: (file) => openDocs({ file }),
     toText: (text) => { navigate('text', { replace: true }); textView.setInput(text, { translateNow: true }); },
     toCamera: async (images) => {
       if (!(await hooks.camera?.openImages?.(images))) return false;
