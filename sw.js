@@ -1,7 +1,7 @@
 // Service worker: the app always opens from its cache (fast, works offline). A new version is downloaded
 // whole, in the background, into its own cache, and only takes over at the next start (js/app.js), so the
 // page never runs with a mix of old and new files. API responses and CDN assets are never cached here.
-const CACHE_NAME = 'ot-shell-v29';
+const CACHE_NAME = 'ot-shell-v30';
 const SHELL = [
   './',
   './index.html',
@@ -71,6 +71,7 @@ const SHELL = [
   './js/ui/offlineui.js',
   './vendor/bergamot/translator-worker.js',
   './vendor/bergamot/bergamot-translator-worker.js',
+  './vendor/franc/franc-min.js',
 ];
 // The on-device engine binary (5 MB) is cached on first use, not precached for every visitor.
 const ENGINE_CACHE = 'ot-engine-v1';

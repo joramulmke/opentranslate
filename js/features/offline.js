@@ -12,7 +12,8 @@ const FILES = 'https://firefox-settings-attachments.cdn.mozilla.net/';
 const CACHE = 'ot-offline-models-v1';
 const INDEX_KEY = 'ot.offline.v1';
 const WORKER_URL = new URL('../../vendor/bergamot/translator-worker.js', import.meta.url);
-const FRANC = 'https://cdn.jsdelivr.net/npm/franc-min@6.2.0/+esm';
+// shipped with the app (and in the offline cache), so "Detect language" works without internet too
+const FRANC = new URL('../../vendor/franc/franc-min.js', import.meta.url).href;
 const MAX_MAJOR = 2;          // newer model generations may need a newer engine build
 const MAX_LOADED = 2;         // the engine's memory is capped at 2 GB; a pivot needs two models
 const PIVOT = 'en';
@@ -464,10 +465,13 @@ const ISO3 = {
   ukr: 'uk', urd: 'ur', vie: 'vi', cmn: 'zh',
 };
 let franc = null;
-async function detectLang(text) {
-  franc ??= import(/* webpackIgnore: true */ FRANC).then((m) => m.francAll || m.default?.francAll);
+function loadFranc() {
+  franc ??= import(/* webpackIgnore: true */ FRANC).then((m) => m.francAll);
   franc.catch(() => { franc = null; });
-  const francAll = await franc;
+  return franc;
+}
+async function detectLang(text) {
+  const francAll = await loadFranc();
   // only the languages that can be translated here: far fewer mix-ups (German vs Dutch …)
   const usable = new Set([PIVOT, ...installedLanguages()]);
   let only = Object.keys(ISO3).filter((c) => usable.has(ISO3[c]));
@@ -500,6 +504,18 @@ registerProvider({
       /** For the fallback chain: can this pair be done right now without downloading? */
       ready: (source, target) => source === 'auto' ? installedLanguages().length > 0 : canTranslate(source, target),
       async detect(text) { return detectLang(text); },
+      /** Before the first translation (the text box got focus): start the engine and load the pair's
+       *  models, so the first answer doesn't wait for them. Only with the languages already downloaded. */
+      warmUp(source, target) {
+        if (!installedLanguages().length) return;
+        if (source === 'auto') { loadFranc().catch(() => {}); startEngine().catch(() => {}); return; }
+        const models = route(source, target);
+        if (!models?.length || missingFor(source, target).length) return;
+        serial(async () => {
+          const { call } = await startEngine();
+          for (const m of models) await ensureLoaded(call, m);
+        }).catch(() => {});
+      },
       async translate(text, source, target) {
         let detected;
         if (!source || source === 'auto') { detected = (await detectLang(text)).language; source = detected; }

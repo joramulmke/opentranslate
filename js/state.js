@@ -104,6 +104,11 @@ export class ProviderChain {
     }
   }
 
+  /** Get the first service ready to answer soon (load an on-device model ahead of time); no answer. */
+  warmUp(source, target) {
+    try { this.lead.warmUp?.(source, target); } catch { /* only a head start */ }
+  }
+
   async _run(method, args, canTry = () => true) {
     let firstErr = null;
     const skipped = []; const later = [];
@@ -262,11 +267,17 @@ export function langName(code) {
 }
 
 function requireProvider() {
-  if (!state.provider) throw state.providerError || new ProviderError('NO_PROVIDER', 'No translation provider is set up.');
+  if (!state.provider) throw state.providerError || new ProviderError('NO_PROVIDER', 'No translation service is set up.');
   return state.provider;
 }
 
 const wrap = (e) => (e instanceof ProviderError ? e : new ProviderError('SERVER', e?.message || String(e), e));
+
+/** Get the current service ready for the chosen languages, e.g. when the text box gets focus. */
+export function warmUp() {
+  const source = state.source === 'auto' && state.detected?.language ? state.detected.language : state.source;
+  state.provider?.warmUp?.(source, state.target);
+}
 
 export async function detect(text) {
   // no service in this mode: the other mode's can still tell the language
@@ -275,7 +286,9 @@ export async function detect(text) {
     if (other && !other.isMock) { try { return await other.detect(text); } catch { /* report below */ } }
   }
   const p = requireProvider();
-  try { return await p.detect(text); } catch (e) { throw wrap(e); }
+  const hit = cached(p, text, '?', '');
+  if (hit) return hit;
+  try { return remember(p, text, '?', '', await p.detect(text)); } catch (e) { throw wrap(e); }
 }
 
 /** Why the chosen mode didn't translate, as the end of "… because …". */
@@ -292,6 +305,27 @@ function becauseOf(err, mode) {
   }
 }
 
+// The last answers of each service, so the same text again (swap back, a language switched back and forth,
+// a history entry reopened) is instant. Kept per service object: new settings make a new one.
+const CACHE_SIZE = 60;
+const answers = new WeakMap();   // provider → Map("source>target\ntext" → result)
+const cacheKey = (text, source, target) => `${source}>${target}\n${text}`;
+function cached(provider, text, source, target) {
+  const m = answers.get(provider);
+  const k = cacheKey(text, source, target);
+  const hit = m?.get(k);
+  if (hit) { m.delete(k); m.set(k, hit); }   // most recent last
+  return hit ? { ...hit } : null;
+}
+function remember(provider, text, source, target, result) {
+  if (!(result?.text || result?.language) || provider.isMock) return result;   // a translation, or a detection
+  let m = answers.get(provider);
+  if (!m) answers.set(provider, (m = new Map()));
+  m.set(cacheKey(text, source, target), { ...result });
+  if (m.size > CACHE_SIZE) m.delete(m.keys().next().value);
+  return result;
+}
+
 /**
  * Translate with the current mode's services; if none of them can, with the other mode's (Classic ⇄
  * Advanced), and say so in the result. The offline demo never stands in: its output isn't a translation.
@@ -302,9 +336,11 @@ export async function translate(text, source, target) {
   const other = otherMode === 'advanced' ? state.advanced : state.classic;
   let err;
   if (state.provider) {
-    try { return await state.provider.translate(text, source, target); } catch (e) { err = wrap(e); }
+    const hit = cached(state.provider, text, source, target);
+    if (hit) return hit;
+    try { return remember(state.provider, text, source, target, await state.provider.translate(text, source, target)); } catch (e) { err = wrap(e); }
   } else {
-    err = state.providerError || new ProviderError('NO_PROVIDER', 'No translation provider is set up.');
+    err = state.providerError || new ProviderError('NO_PROVIDER', 'No translation service is set up.');
   }
   const otherName = otherMode === 'advanced' ? 'Advanced' : 'Classic';
   if (other && !other.isMock) {
@@ -321,19 +357,33 @@ export async function translate(text, source, target) {
   throw err;
 }
 
+// What browsers say when a script or request couldn't be fetched (Chrome, Firefox, Safari), in place of
+// words a person can act on: "Failed to fetch dynamically imported module: https://…"
+const LOAD_FAILED = /dynamically imported module|importing a module script failed|error loading dynamically|failed to fetch|networkerror when attempting|load failed|network request failed/i;
+
+/** An error's message for people: a failed load becomes plain words; `fallback` when there's no message. */
+export function errorText(err, fallback = 'Something went wrong.') {
+  const m = String(err?.message || err || '');
+  if (LOAD_FAILED.test(m)) return 'Couldn’t connect. Check your connection and try again.';
+  return m || fallback;
+}
+
 /** Human-facing copy for each error code. */
 export function describeError(err) {
+  if ((!err?.code || err.code === 'SERVER') && LOAD_FAILED.test(String(err?.message || err))) {
+    return { code: 'NETWORK', title: 'Couldn’t load', message: 'Part of the app couldn’t load. Check your connection and try again.' };
+  }
   const code = err?.code || 'SERVER';
   const map = {
     NEEDS_DOWNLOAD: ['Download needed', `${err.message} Download it once to translate without internet.`],
     BROWSER_BLOCKED: ['Not available in this browser', err.message],
-    NO_PROVIDER: ['No translation provider', err.message || 'Choose a provider in Settings to start translating.'],
-    NETWORK: ["Can't translate", `Check your connection and try again. ${err.message}`],
+    NO_PROVIDER: ['No translation service', err.message || 'Choose a service in Settings to start translating.'],
+    NETWORK: ["Can’t translate", `Check your connection and try again.${err.message && !LOAD_FAILED.test(err.message) ? ` ${err.message}` : ''}`],
     UNSUPPORTED_PAIR: ['Language pair not supported', err.message],
     AUTH: ['Access denied', err.message + ' Check the API key in Settings.'],
-    RATE_LIMIT: ['Slow down', err.message],
+    RATE_LIMIT: ['Service is busy', err.message],
     TOO_LONG: ['Text too long', err.message],
-    BAD_RESPONSE: ['Unexpected answer from server', err.message],
+    BAD_RESPONSE: ['Unexpected answer from the service', err.message],
     SERVER: ['Translation failed', err.message],
   };
   const [title, message] = map[code] || map.SERVER;

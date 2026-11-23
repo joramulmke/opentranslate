@@ -36,6 +36,11 @@ async function collect() {
   try { ocr = await ocrDownloaded(); } catch { /* no IndexedDB */ }
   const isoOf = new Map(ocrLanguages().map((x) => [x.code, x.iso]));
   for (const [code, bytes] of ocr) {
+    if (code === 'osd') {   // finds the script of a photo taken with "Detect language"
+      out.push({ id: 'ocr:osd', name: 'Script detection', kind: 'Camera text (Tesseract)', bytes,
+        after: "It's downloaded again the next time a photo's script needs finding out.", remove: () => ocrDelete(code) });
+      continue;
+    }
     out.push({ id: `ocr:${code}`, name: langName(isoOf.get(code) || code), kind: 'Camera text language (Tesseract)', bytes,
       after: "It's downloaded again the next time camera text needs it.", remove: () => ocrDelete(code) });
   }

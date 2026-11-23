@@ -1,6 +1,6 @@
 // Shared bits for on-device language downloads (error card, language picker, settings).
 import { downloadPack, packProgress, packState, packSize, onOfflineChange, deletePack, cancelDownload, MODEL_SOURCE } from '../features/offline.js';
-import { langName } from '../state.js';
+import { langName, errorText } from '../state.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
 import { sheet } from '../features/permissions.js';
@@ -67,5 +67,5 @@ export async function onDownloadClick(code) {
     if (ok) { await deletePack(code); toast(`Removed ${langName(code)}`); }
     return;
   }
-  downloadPacks([code]).catch((e) => { if (!/cancel/i.test(e.message)) toast(e.message); });
+  downloadPacks([code]).catch((e) => { if (!/cancel/i.test(e.message)) toast(errorText(e)); });
 }

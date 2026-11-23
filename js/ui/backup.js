@@ -67,7 +67,7 @@ export function describe(b) {
   const n = (x) => (Array.isArray(x) ? x.length : 0);
   const parts = [];
   if (b.settings) parts.push(b.apiKeys ? 'settings with API keys' : 'settings (without API keys)');
-  parts.push(`${n(b.phrasebook)} saved ${n(b.phrasebook) === 1 ? 'phrase' : 'phrases'}`);
+  parts.push(`${n(b.phrasebook)} saved ${n(b.phrasebook) === 1 ? 'translation' : 'translations'}`);
   parts.push(`${n(b.history)} history ${n(b.history) === 1 ? 'entry' : 'entries'}`);
   const d = b.date ? new Date(b.date) : null;
   return `${d && !isNaN(d) ? `Backup from ${d.toLocaleDateString()}` : 'Backup'}: ${parts.join(', ')}.`;

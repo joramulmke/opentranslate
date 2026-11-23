@@ -1,8 +1,8 @@
 // Camera tab: live preview, capture or import, OCR, translated text overlaid on the photo.
-import { state, subscribe, detect, translate, describeError, langName, fallbackNote } from '../state.js';
+import { state, subscribe, detect, translate, describeError, errorText, warmUp, langName, fallbackNote } from '../state.js';
 import { createLangBar } from '../ui/langbar.js';
 import { toast, copyToClipboard, hide as hideToast } from '../ui/snackbar.js';
-import { recognize, ocrLangFor, describeOcrStatus } from './ocr.js';
+import { recognize, ocrLangFor, describeOcrStatus, detectScript, looksUnreadable, warmOcr } from './ocr.js';
 import { ocrQuality } from './paddle.js';
 import { escapeHtml } from '../ui/langpicker.js';
 import { icon } from '../ui/icons.js';
@@ -37,6 +37,13 @@ export function initCamera({ sendToText }) {
   let job = 0;
   let album = [];      // several photos: [{ source: Blob|canvas, shot, thumb }]
   let albumAt = 0;
+  let scriptLang = null;   // with "Detect language": the language file that read the last photo's script
+  // another script together with Latin ("rus+eng"): signs mix them, and the next photo may be in Latin again
+  const withLatin = (l) => (l === 'eng' ? l : `${l}+eng`);
+
+  /** The language file(s) to read the next photo with. */
+  const ocrLang = () => state.source !== 'auto' ? ocrLangFor(state.source)
+    : scriptLang ? withLatin(scriptLang) : state.detected?.language ? ocrLangFor(state.detected.language) : 'eng';
 
   async function startStream() {
     stopStream();
@@ -57,6 +64,9 @@ export function initCamera({ sendToText }) {
       await el.video.play().catch(() => {});
       el.shutter.disabled = false;
       el.hint.hidden = false;
+      // while aiming: get text recognition and the translation ready, so the photo doesn't wait for them
+      warmOcr(ocrLang());
+      warmUp();
     } catch (e) {
       const denied = e.name === 'NotAllowedError' || e.name === 'SecurityError';
       const missing = e.name === 'NotFoundError' || e.name === 'OverconstrainedError';
@@ -148,15 +158,29 @@ export function initCamera({ sendToText }) {
     requestAnimationFrame(fitShot);
     status('Starting text recognition…');
 
-    const ocrSource = state.source === 'auto' ? (state.detected?.language || 'en') : state.source;
+    const auto = state.source === 'auto';
+    const lang = ocrLang();
+    const onProgress = (m) => id === job && status(describeOcrStatus(m));
     let ocr;
     try {
-      ocr = await recognize(canvas, { lang: ocrLangFor(ocrSource), iso: state.source === 'auto' ? null : ocrSource, psm: '3', onProgress: (m) => id === job && status(describeOcrStatus(m)) });
+      ocr = await recognize(canvas, { lang, iso: auto ? null : state.source, psm: '3', onProgress });
+      // "Detect language" and the text came out as nonsense: likely another script (Cyrillic, Arabic,
+      // Chinese …). Find out which, and read the photo again with that script's language file.
+      if (auto && !ocr.description && looksUnreadable(ocr)) {
+        status(describeOcrStatus({ status: 'script' }));
+        const found = await detectScript(canvas).catch(() => null);
+        if (id !== job) return;
+        if (found && withLatin(found) !== lang) {
+          const again = await recognize(canvas, { lang: withLatin(found), iso: null, psm: '3', onProgress }).catch(() => null);
+          if (id !== job) return;
+          if (again?.lines?.length && !looksUnreadable(again)) { ocr = again; scriptLang = found; }
+        } else if (found) scriptLang = found;
+      }
     } catch (e) {
       if (id !== job) return;
       shot.failed = true;   // read again when shown again; "Save all" goes on without it
       status('');
-      toast(e.message || 'Text recognition failed');
+      toast(errorText(e, 'Text recognition failed.'));
       return;
     }
     if (id !== job) return;
@@ -385,7 +409,7 @@ export function initCamera({ sendToText }) {
       }
       await sendFiles(files, files.length > 1 ? 'translated photos' : 'translated photo', zip ? 'The .zip needs internet the first time, so ' : '');
     } catch (e) {
-      toast(e.message || 'The photos could not be saved.');
+      toast(errorText(e, 'The photos couldn’t be saved.'));
     } finally { if (sharingAll === stop) sharingAll = null; }
   }
   async function shareText(copy) {

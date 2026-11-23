@@ -1,4 +1,4 @@
-// M3 snackbar. toast('Copied') or toast('Removed', { action: 'Undo', onAction })
+// M3 snackbar. toast('Copied') or toast('Removed', { action: 'Undo', onAction }); a full stop is added if missing
 //
 // Accessibility:
 // - Messages with an action (Undo) stay until the person uses it, dismisses it, or another
@@ -42,7 +42,11 @@ function wire(el) {
   }, true);
 }
 
+/** Every message is a sentence: "Text copied." (one place, so all messages end the same way). */
+const sentence = (m) => { const t = String(m ?? '').trim(); return !t || /[.!?…:]$/.test(t) ? t : `${t}.`; };
+
 export function toast(message, { action, onAction, onDismiss, duration = 6000 } = {}) {
+  message = sentence(message);
   const el = bar();
   wire(el);
   const text = document.getElementById('snackbar-text');

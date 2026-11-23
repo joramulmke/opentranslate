@@ -2,7 +2,7 @@
 // On phones it also drives the home ↔ typing ("edit") states of the reference layout:
 //   home: big "Translate text" sheet + language pills + Conversation · Mic · Camera
 //   edit: input focused or holding text; top bar becomes back · history/clear · pen · more
-import { state, subscribe, set, langName, detect, translate, describeError, setSource, setMode, fallbackNote } from '../state.js';
+import { state, subscribe, set, langName, detect, translate, describeError, errorText, warmUp, setSource, setMode, fallbackNote } from '../state.js';
 import { settings, history, phrasebook, onChange } from '../store.js';
 import { isRtl } from '../languages.js';
 import { createLangBar } from './langbar.js';
@@ -52,7 +52,7 @@ export function initTextView(opts) {
   createLangBar(el.view.querySelector('[data-langbar]'), { onSwap: swapTexts });
 
   el.input.addEventListener('input', onInput);
-  el.input.addEventListener('focus', () => { if (!editing) { editing = true; applyMode(); } });
+  el.input.addEventListener('focus', () => { warmUp(); if (!editing) { editing = true; applyMode(); } });
   el.input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runTranslate({ commit: true }); }
     if (e.key === 'Escape' && isPhone() && editing) { e.preventDefault(); exitEdit(); }
@@ -348,7 +348,7 @@ function showError(err) {
         btn.disabled = false; btn.textContent = 'Try again';
         // e.g. Gemini Nano: the reason names an address to paste into Chrome, which a page can't link to
         const copy = er.detail?.copy;
-        toast(er.message, copy ? { action: 'Copy address', onAction: () => copyToClipboard(copy, 'Copied. Paste it into Chrome’s address bar.') } : {});
+        toast(errorText(er), copy ? { action: 'Copy address', onAction: () => copyToClipboard(copy, 'Copied. Paste it into Chrome’s address bar.') } : {});
       });
     });
   }
@@ -502,7 +502,8 @@ function toggleSpeak() {
     btn.innerHTML = icon(on ? 'stop' : 'volume');
     // right after a play, the next one is slower (pronunciation practice): say so on the button
     const again = !on && nextIsSlow(text, target);
-    const label = on ? (slow ? 'Stop listening (playing slower)' : 'Stop listening') : again ? 'Listen again, slower' : 'Listen to translation';
+    // not "Stop listening": that's the mic's label (stop dictation)
+    const label = on ? (slow ? 'Stop reading aloud (playing slower)' : 'Stop reading aloud') : again ? 'Listen again, slower' : 'Listen to translation';
     btn.setAttribute('aria-label', label);
     btn.title = label;
     if (on) btn.dataset.speaking = '1'; else delete btn.dataset.speaking;
@@ -523,7 +524,7 @@ function toggleStar() {
   const added = phrasebook.toggle(e);
   commitHistory();
   renderStar();
-  toast(added ? 'Saved to phrasebook' : 'Removed from phrasebook', {
+  toast(added ? 'Translation saved' : 'Removed from saved translations', {
     action: 'Undo', onAction: () => { phrasebook.toggle(e); renderStar(); },
   });
 }

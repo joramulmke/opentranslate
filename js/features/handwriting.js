@@ -1,6 +1,6 @@
 // Handwriting tab: draw on a pad, OCR the strokes (Tesseract, single-line mode),
 // pick/edit the recognized text, then translate it.
-import { state, subscribe, detect, translate, describeError, langName } from '../state.js';
+import { state, subscribe, detect, translate, describeError, errorText, langName } from '../state.js';
 import { settings } from '../store.js';
 import { isRtl } from '../languages.js';
 import { createLangBar } from '../ui/langbar.js';
@@ -184,7 +184,7 @@ export function initHandwriting({ sendToText }) {
     } catch (e) {
       if (id !== job) return;
       status('');
-      toast(e.message || 'Recognition failed');
+      toast(errorText(e, 'Handwriting couldn’t be read.'));
     }
   }
 
@@ -264,7 +264,7 @@ export function initHandwriting({ sendToText }) {
   el.speakBtn.addEventListener('click', () => lastResult && speak(lastResult.text, lastResult.target).catch(() => toast(`No ${langName(lastResult.target)} voice on this device`)));
   el.copyBtn.addEventListener('click', async () => {
     if (!lastResult) return;
-    try { await navigator.clipboard.writeText(lastResult.text); toast('Translation copied'); } catch { toast('Copy failed'); }
+    try { await navigator.clipboard.writeText(lastResult.text); toast('Translation copied'); } catch { toast('Couldn’t copy. Select the text and copy it.'); }
   });
   el.openBtn.addEventListener('click', () => {
     const t = el.text.value.trim();

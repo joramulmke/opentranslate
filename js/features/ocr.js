@@ -160,11 +160,50 @@ export async function recognizeTesseract(image, { lang = 'eng', psm = '3', onPro
   }
 }
 
+/* ---------- which script a photo is in (camera with "Detect language") ---------- */
+
+// Tesseract's script names → the language file that reads that script
+const SCRIPT_LANG = {
+  Latin: 'eng', Cyrillic: 'rus', Arabic: 'ara', Han: 'chi_sim', HanS: 'chi_sim', HanT: 'chi_tra',
+  Japanese: 'jpn', Katakana: 'jpn', Hiragana: 'jpn', Hangul: 'kor', Korean: 'kor', Devanagari: 'hin',
+  Greek: 'ell', Hebrew: 'heb', Thai: 'tha', Bengali: 'ben', Tamil: 'tam', Telugu: 'tel', Kannada: 'kan',
+  Malayalam: 'mal', Gujarati: 'guj', Gurmukhi: 'pan', Armenian: 'hye', Georgian: 'kat', Ethiopic: 'amh',
+  Khmer: 'khm', Lao: 'lao', Myanmar: 'mya', Sinhala: 'sin',
+};
+let osd = null;   // Promise<worker> for script detection (4 MB, downloaded the first time it's needed)
+
+/** The Tesseract language for the script in the photo ("rus" for Cyrillic …), or null if unsure. */
+export async function detectScript(image) {
+  osd ??= loadLib().then((T) => T.createWorker('osd', 0, { legacyCore: true, legacyLang: true }));
+  osd.catch(() => { osd = null; });
+  const { data } = await (await osd).detect(image);
+  return (data?.script_confidence ?? 0) > 1 ? SCRIPT_LANG[data.script] || null : null;
+}
+
+/** Did the photo come out as nonsense? (Text in another script read with the wrong language file.)
+ *  A photo without any text isn't: there's nothing to read again. */
+export function looksUnreadable(ocr) {
+  const lines = ocr?.lines || [];
+  if (!lines.length) return false;
+  const chars = lines.reduce((a, l) => a + l.text.length, 0);
+  const conf = lines.reduce((a, l) => a + (l.confidence ?? 100) * l.text.length, 0) / Math.max(1, chars);
+  return conf < 60;
+}
+
+/** Start text recognition (and the language file) while the camera is still aiming. Tesseract only:
+ *  the other engines ask before their download, so they never start on their own. */
+export function warmOcr(lang) {
+  if (ocrPref() !== 'tesseract' || workers.has(lang)) return;
+  const noop = () => {};
+  getWorker(lang, noop).catch(() => {}).finally(() => progressHandlers.delete(noop));
+}
+
 export function describeOcrStatus(m) {
   const pct = Math.round((m.progress || 0) * 100);
   if (/loading tesseract core|initializing tesseract|initializing api/.test(m.status)) return 'Starting text recognition…';
   if (/loading language traineddata/.test(m.status)) return `Downloading language file from jsDelivr (cdn.jsdelivr.net)… ${pct}%`;
   if (/recognizing text/.test(m.status)) return `Reading text… ${pct}%`;
+  if (m.status === 'script') return 'Finding out which script the text is in…';
   if (m.status === 'starting') return 'Starting PP-OCRv6…';
   if (m.status === 'fallback') return 'PP-OCRv6 didn’t work, reading with Tesseract…';
   if (m.status === 'vision') return 'Reading with AI vision…';
@@ -223,7 +262,8 @@ export async function ocrDownload(lang, onProgress) {
 }
 
 export async function ocrDelete(lang) {
-  const w = workers.get(lang);
+  const w = lang === 'osd' ? osd : workers.get(lang);
+  if (lang === 'osd') osd = null;
   workers.delete(lang);
   try { (await w)?.terminate(); } catch { /* not started */ }
   const d = await db();

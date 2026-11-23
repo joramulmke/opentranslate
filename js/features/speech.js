@@ -2,7 +2,7 @@ import { canRecord, record, transcribe, speechOrder } from './stt.js';
 import { toast } from '../ui/snackbar.js';
 import { settings } from '../store.js';
 import { createProvider } from '../providers.js';
-import { langName } from '../state.js';
+import { langName, errorText } from '../state.js';
 import { sheet } from './permissions.js';
 import { voiceFor as piperVoice, offerFor, synthesize, downloadVoice, downloadSize, voiceLabel, kokoroFor } from './piper.js';
 // Read-aloud with the engines chosen in Settings › Voice › Read aloud:
@@ -59,7 +59,7 @@ async function offerVoice(lang) {
   });
   if (!ok) { settings.set({ ttsDeclined: [...(s.ttsDeclined || []), v.lang] }); return false; }
   toast(`Downloading the ${name} voice…`);
-  try { await downloadVoice(v.lang); } catch (e) { toast(`Download failed: ${e.message}`); return false; }
+  try { await downloadVoice(v.lang); } catch (e) { toast(`Download failed: ${errorText(e)}`); return false; }
   toast(`The ${name} voice is downloaded and works without internet.`);
   return true;
 }

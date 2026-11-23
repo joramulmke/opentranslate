@@ -46,7 +46,7 @@ export const getProviderDef = (id) => PROVIDERS.get(id);
 /** Build a provider instance from saved settings, or throw NO_PROVIDER if it's not usable. */
 export function createProvider(id, config = {}, { skipRequired = false } = {}) {
   const def = PROVIDERS.get(id);
-  if (!def) throw new ProviderError('NO_PROVIDER', 'No translation provider is selected.');
+  if (!def) throw new ProviderError('NO_PROVIDER', 'No translation service is selected.');
   const cfg = { ...defaults(def), ...config };
   for (const f of def.fields || []) {
     // fields shown only for one choice (showIf) are only required then
