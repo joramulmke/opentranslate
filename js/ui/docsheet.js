@@ -6,7 +6,7 @@ import { siteValue, loadSiteConfig } from '../siteconfig.js';
 import { setupDialog, openDialog } from './sheet.js';
 import { toast } from './snackbar.js';
 import { icon } from './icons.js';
-import { ASK_ABOVE, ACCEPT, FORMATS, extOf, outName, openDocument, translateTexts, sourceFor, fetchPage, openPage, workerCode } from '../features/doctranslate.js';
+import { DEFAULT_PROXY, ASK_ABOVE, ACCEPT, FORMATS, extOf, outName, openDocument, translateTexts, sourceFor, fetchPage, openPage, workerCode } from '../features/doctranslate.js';
 
 const $ = (id) => document.getElementById(id);
 const nf = (n) => n.toLocaleString('en');
@@ -18,8 +18,14 @@ let run = 0;          // the job shown; an older one stops when it sees a newer 
 let stopped = false;
 let cleanup = () => {};
 
-/** The proxy for websites: the one set in Settings, else this site's (change-me.txt web_proxy). */
-const proxyFor = () => settings.get().webProxy || siteValue('web_proxy') || '';
+/** The proxy for websites: the one set in Settings, else this site's (change-me.txt web_proxy; "none" for
+ * none), else the app's own. */
+function siteProxy() {
+  const v = siteValue('web_proxy');
+  if (/^(none|off|false|no)$/i.test(v || '')) return '';
+  return v || DEFAULT_PROXY;
+}
+const proxyFor = () => settings.get().webProxy || siteProxy();
 
 export function initDocs() {
   el = {
@@ -56,10 +62,10 @@ export function initDocs() {
   proxy.value = settings.get().webProxy || '';
   // this site's proxy (change-me.txt) is known once the site settings are read
   loadSiteConfig().catch(() => {}).then(() => {
-    const siteProxy = siteValue('web_proxy');
-    if (!siteProxy) return;
-    proxy.placeholder = siteProxy;
-    $('web-proxy-note').textContent = 'Empty: this site’s proxy (shown greyed) is used. {url} is replaced with the page’s link.';
+    const p = siteProxy();
+    if (!p) return;
+    proxy.placeholder = p;
+    $('web-proxy-note').textContent = 'Empty: the proxy shown greyed is used. {url} is replaced with the page’s link.';
     if (!el.start.hidden) proxyNote();
   });
   proxy.addEventListener('change', () => settings.set({ webProxy: proxy.value.trim() }));
@@ -92,7 +98,7 @@ function showStart() {
 function proxyNote() {
   el.proxyNote.textContent = settings.get().webProxy
     ? 'Pages are fetched through your proxy (Settings › Websites).'
-    : proxyFor() ? 'Pages are fetched through this site’s proxy (Settings › Websites).'
+    : proxyFor() ? 'Pages are fetched through OpenTranslate’s proxy (Settings › Websites).'
     : 'Most websites need your own proxy first: Settings › Websites.';
 }
 

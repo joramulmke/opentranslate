@@ -12,6 +12,9 @@ const zipLib = () => (fflate ||= import(FFLATE).catch((e) => {
   throw new Error(`The file reader could not be loaded. Check the internet connection and try again. (${e.message || e})`);
 }));
 
+/** The proxy every copy of the app uses unless Settings or change-me.txt (web_proxy) name another. */
+export const DEFAULT_PROXY = 'https://geoscope-proxy.joram-eu.workers.dev/fetch?url={url}';
+
 export const ASK_ABOVE = 20000;   // characters: bigger files ask before translating
 const BATCH_CHARS = 1800;
 const BATCH_SEGMENTS = 40;

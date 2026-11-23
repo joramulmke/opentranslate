@@ -122,8 +122,9 @@ Plan (agreed Nov 2026):
 - Websites by link: the page with its layout and pictures, text translated, in a safe frame with the
   site's scripts off; a tapped link is translated too. Download as .html. Most sites can't be read from
   another site (CORS), so: the user's own proxy in Settings (a URL template like
-  https://my-proxy.example/?url={url}), with a short guide and a tiny Cloudflare Worker to copy. A site
-  can set a default in change-me.txt (web_proxy; joram.eu uses its own). Without one, only sites that allow it work.
+  https://my-proxy.example/?url={url}), with a short guide and a tiny Cloudflare Worker to copy. The app has
+  one built in (the owner's Worker, open to every copy); a site can set another in change-me.txt
+  (web_proxy, or none). Without one, only sites that allow it work.
 - Size: up to 20,000 characters starts right away; above that it shows the size (characters, pages) and
   the service and asks first. Progress and a Stop button while it runs.
 - Translation: segments are sent in batches (one per line); if a service returns a different number of

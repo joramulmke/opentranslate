@@ -296,8 +296,12 @@ export function initCamera({ sendToText }) {
     e.preventDefault();
     zoomAt(zoom.s * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
   }, { passive: false });
-  let boxTapAt = 0;   // a double tap on a box is two box taps, not the photo's double tap
-  el.wrap.addEventListener('dblclick', (e) => { if (shot && performance.now() - boxTapAt > 600) zoomAt(zoom.s > 1 ? 1 : 2.5, e.clientX, e.clientY); });
+  // Double taps are seen here (phones may not send dblclick). A tap on a box waits a moment: a second tap
+  // makes it a double tap (zoom the photo), not two box taps.
+  let boxTap = 0;
+  let lastTap = null;
+  let doubleAt = 0;
+  el.wrap.addEventListener('dblclick', (e) => { if (shot && performance.now() - doubleAt > 500) zoomAt(zoom.s > 1 ? 1 : 2.5, e.clientX, e.clientY); });
   /** Tap a box: zoom in until its line fills the screen; tap it again to zoom back out. */
   function zoomToBox(box) {
     if (zoomedBox === box && zoom.s > 1) { resetZoom(); zoomedBox = null; return; }
@@ -343,7 +347,15 @@ export function initCamera({ sendToText }) {
   el.wrap.addEventListener('pointerup', (e) => {
     const t = tap; tap = null;
     lift(e);
-    if (t?.box && Math.hypot(e.clientX - t.x, e.clientY - t.y) < 10 && el.overlays.contains(t.box)) { boxTapAt = performance.now(); zoomToBox(t.box); }
+    if (!t || !shot || Math.hypot(e.clientX - t.x, e.clientY - t.y) >= 10) return;
+    const now = performance.now();
+    if (lastTap && now - lastTap.at < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+      clearTimeout(boxTap); boxTap = 0; lastTap = null; doubleAt = now;
+      zoomAt(zoom.s > 1 ? 1 : 2.5, e.clientX, e.clientY);
+      return;
+    }
+    lastTap = { at: now, x: e.clientX, y: e.clientY };
+    if (t.box) boxTap = setTimeout(() => { boxTap = 0; if (el.overlays.contains(t.box)) zoomToBox(t.box); }, 350);
   });
   el.wrap.addEventListener('pointercancel', lift);
   el.view.addEventListener('keydown', (e) => {

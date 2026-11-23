@@ -13,9 +13,10 @@ privacy_policy_link = https://joram.eu/imp
 demo_mode = false
 
 # Translating a website by its link (⋮ › Translate a file or website) needs a proxy, because most sites
-# can't be read from another site. This one is used when people haven't set their own in Settings ›
-# Websites. {url} is replaced with the page's link. It must allow this site's address (CORS).
-web_proxy = https://geoscope-proxy.joram-eu.workers.dev/fetch?url={url}
+# can't be read from another site. The app has one built in, used when people haven't set their own in
+# Settings › Websites. To use another for this site, uncomment and change this ({url} is replaced with the
+# page's link; the proxy must allow this site's address, CORS). "none" turns the built-in one off.
+# web_proxy = https://my-proxy.example.workers.dev/?url={url}
 
 # Hosting your own copy? Link previews and search engines don't read this file, so change one thing by
 # hand: in index.html, replace every https://joram.eu/opentranslate/ (canonical link and the og: preview
