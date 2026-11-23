@@ -1,5 +1,5 @@
 // Settings → "Version abc1234": which commit this copy of the app runs (version.json, stamped by the deploy).
-// "Check for updates" asks the server for its version; "Reload app" then switches to the newest version.
+// "Check for updates" asks the server for its version; "Update now" appears only when a newer one exists.
 // Only the app's own files are replaced: downloaded models, voices and settings stay.
 const REPO = 'https://github.com/joramulmke/opentranslate';
 const $ = (id) => document.getElementById(id);
@@ -39,12 +39,14 @@ export async function initVersion() {
         readVersion(true),
         navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {}),  // start downloading it
       ]);
-      status.textContent = latest.commit === running?.commit ? 'Up to date.' : `New version available: ${label(latest)}`;
+      const fresh = latest.commit === running?.commit;
+      status.textContent = fresh ? 'Up to date.' : `New version available: ${label(latest)}`;
+      reload.hidden = fresh;   // only offered when there is something to switch to
     } catch {
       status.textContent = 'Could not reach the server.';
+      reload.hidden = true;
     }
     check.disabled = false;
-    reload.hidden = false;
   });
 
   reload.addEventListener('click', async () => {

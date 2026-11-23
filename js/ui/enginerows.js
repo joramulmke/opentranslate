@@ -185,8 +185,8 @@ function hwrRows() {
       tags: () => [PRIVATE, OFFLINE, paddleSize(), quality('Good')], line: 'Neat handwriting and print · Latin script, Chinese, Japanese, Greek',
       info: paddleInfo(), actions: paddleButton() }),
     row({ group: 'hwr', value: 'tesseract', title: 'Basic (Tesseract)', checked: first === 'tesseract',
-      tags: () => [PRIVATE, OFFLINE, ocrSize(), quality('Fastest')], line: 'Neat printed letters · uses the camera text languages',
-      info: ocrInfo() }),
+      tags: () => [PRIVATE, OFFLINE, ocrSize(), quality('Fastest')], line: `Neat printed letters · ${ocrLine()} · shared with Camera text`,
+      info: ocrInfo(), actions: ocrManageButton('hwr') }),
   ].join('');
 }
 
@@ -195,6 +195,10 @@ const ocrJobs = new Map();         // tesseract code -> progress 0..1
 const ocrSum = () => [...ocrFiles.values()].reduce((a, b) => a + b, 0);
 const ocrSourceHtml = () => `Language files from ${extLink(OCR_SOURCE.page, 'jsDelivr (@tesseract.js-data)')}, trained by the Tesseract project · ${OCR_SOURCE.licence} licence · engine Tesseract.js from jsDelivr`;
 const ocrSize = () => (ocrFiles.size ? READY : download('Small'));
+/** Basic (Tesseract) is one engine with one set of language files, used by Camera text and Handwriting. */
+const ocrLine = () => (ocrFiles.size ? `${ocrFiles.size} language${ocrFiles.size > 1 ? 's' : ''} · ${formatMB(ocrSum())}` : 'each language downloads the first time it’s used');
+const ocrManageButton = (group) => `<button class="icon-btn sm" type="button" data-act="ocr-manage" aria-label="Manage Tesseract languages" aria-describedby="eng-${group}-tesseract-sub">${icon('download')}</button>`;
+let ocrOpener = null;
 const ocrInfo = () => details(
   `Language files from ${extLink(OCR_SOURCE.page, 'jsDelivr (@tesseract.js-data)')}, trained by the Tesseract project · ${OCR_SOURCE.licence} licence.`,
   'Engine Tesseract.js from jsDelivr. Runs in your browser; photos never leave this device.',
@@ -218,14 +222,12 @@ function paddleButton() {
 }
 
 function ocrRows() {
-  const n = ocrFiles.size;
   const ai = aiEntries().find((e) => e.config?.vision === 'on') || null;
   const first = ocrPref() === 'vision' && !ai ? 'tesseract' : ocrPref();
   return row({ group: 'ocr', value: 'tesseract', title: 'Basic (Tesseract)', checked: first === 'tesseract',
     tags: () => [PRIVATE, OFFLINE, ocrSize(), quality('Fastest')],
-    line: n ? `${n} language${n > 1 ? 's' : ''} · ${formatMB(ocrSum())}` : 'Each language downloads the first time it’s used',
-    info: ocrInfo(),
-    actions: `<button class="icon-btn sm" type="button" data-act="ocr-manage" aria-label="Manage camera text languages" aria-describedby="eng-ocr-tesseract-sub">${icon('download')}</button>` })
+    line: `${ocrLine().replace(/^./, (c) => c.toUpperCase())} · shared with Handwriting`,
+    info: ocrInfo(), actions: ocrManageButton('ocr') })
     + row({ group: 'ocr', value: 'paddle', title: 'Many languages (PP-OCRv6)', checked: first === 'paddle',
       tags: () => [PRIVATE, OFFLINE, paddleSize(), quality('Good')], line: 'Better on photos · Latin script, Chinese, Japanese, Greek',
       info: paddleInfo(), actions: paddleButton(), extra: qualitySelect() })
@@ -326,7 +328,7 @@ export function closeOcrManager({ silent = false } = {}) {
   $('ocr-manager').hidden = true;
   document.querySelectorAll('.svc-add').forEach((r) => { r.hidden = false; });
   renderEngines();
-  if (!silent) document.querySelector('[data-act="ocr-manage"]')?.focus();
+  if (!silent) (document.querySelector(`[data-act="ocr-manage"][aria-describedby="${ocrOpener}"]`) || document.querySelector('[data-act="ocr-manage"]'))?.focus();
 }
 
 function ocrButton(code, name) {
@@ -542,7 +544,7 @@ export function initEngineRows({ isOpen, closeOthers }) {
     $(id).addEventListener('click', (e) => {
       const m = e.target.closest('[data-model]');
       if (m) { onModelButton(m.dataset.model); return; }
-      if (e.target.closest('[data-act="ocr-manage"]')) openOcrManager({ onOpen: closeOthers });
+      if (e.target.closest('[data-act="ocr-manage"]')) { ocrOpener = e.target.closest('[data-act="ocr-manage"]').getAttribute('aria-describedby'); openOcrManager({ onOpen: closeOthers }); }
       if (e.target.closest('[data-act="voice-manage"]')) openVoiceManager({ onOpen: closeOthers });
       if (e.target.closest('[data-act="paddle-dl"]')) onPaddleButton();
     });
