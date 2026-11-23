@@ -13,6 +13,28 @@ PP-OCRv6 and AI vision already return.
 Continuous speech recognition and translation as running captions, for talks or calls. Big, readable
 text, scrolling; each line translated as soon as it is final.
 
+Plan (agreed Nov 2026): build it into Conversation › Listening, which already listens, translates only
+their language and restarts the mic by itself (it pauses after two silences today).
+- Runs until you stop it or leave: no pause after silence (after ~2 minutes of silence it pauses, to save
+  battery, and says so). Chrome's speech service: `continuous = true` in Listening, restarted when Chrome
+  ends it (about every minute). Recording engines (Whisper, ElevenLabs, on-device): the next recording
+  starts at once while the last one is transcribed, so no words get lost between pieces.
+- Captions: translation big, original small under it (as now); the words being heard show greyed until
+  they're final; only final lines are translated (no extra API calls). Scrolls to the newest line, unless
+  you scrolled up: then a "Jump to latest" button. Screen readers hear final lines only.
+- Text size: A− / A+ on the captions screen, 4 steps, remembered.
+- Audio: Microphone (default) or, on a computer, "Tab or screen audio" (a video call, a YouTube tab) via
+  screen sharing with audio. That needs a recording engine; with Chrome's speech service chosen, the app
+  says so and uses the next engine. Hidden where the browser can't share audio (phones).
+- Save the transcript: Copy, Share, or download as .txt (both languages, with times).
+- Floating window (#8): "Pop out captions" on a computer shows the latest lines big in the always-on-top
+  window; the main tab keeps the microphone.
+- Keep screen on: already done (Conversation keeps the screen on).
+- Costs: Whisper and ElevenLabs charge per minute, so continuous captions can add up; the setup says so
+  when one of them is chosen.
+- Test: Playwright with a fake microphone (a WAV file) and a mocked transcription API; Chrome's own speech
+  service only on a real device.
+
 
 ## 4. Look up a word on Wiktionary
 
@@ -63,6 +85,22 @@ Plan (agreed Nov 2026, built):
 (Done, Nov 2026: Chrome/Edge on computers. Live captions in it: later, with #2.) A floating translator window (Picture-in-Picture): on a computer, a small always-on-top window for translating while you work in other apps. It also fits the live subtitles idea.
    
 ## 9. File and Website Translation
+
+## 12. Share more to OpenTranslate
+
+Today "Share → OpenTranslate" (Android) takes text, links and one photo. Plan (agreed Nov 2026):
+- .txt files: the text goes into the text box (UTF-8, else Windows-1252), up to 20,000 characters; a
+  note when it was cut.
+- PDFs: pdf.js (Mozilla's PDF reader, exact version from jsDelivr like the voice engine) loads only when a
+  PDF arrives; its text goes into the text box. Pages without text (scans) open in camera text instead,
+  one page per photo (see below). Everything stays on the device; only the reader is downloaded.
+- Several photos: camera text opens the first one, with a strip of thumbnails to switch; each photo keeps
+  its own result. Up to 10.
+- How: the manifest's share_target accepts image/*, text/plain and application/pdf; the service worker
+  keeps every file (not only the first photo) and opens ./?share=files. "Open with OpenTranslate" on a
+  computer (file_handlers) gets .pdf too, with the same code.
+- Test: submit a share form to ./share in Playwright (text, .txt, a text PDF, a scanned PDF, 3 photos);
+  then on your Android phone from Files, Gmail and WhatsApp.
 
 ## 10. App stores without Google Play: AltStore PAL, F-Droid, other Android stores, a plain APK
 
