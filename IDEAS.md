@@ -100,3 +100,13 @@ One download per language that covers everything for it: offline translation, th
 language in Settings with the total size and what's included, and offered from the language picker
 ("Get everything for Japanese, 120 MB"). Good for travel: set up at home on Wi-Fi, everything works abroad
 without data. Deleting a pack removes all its parts.
+
+## 21. Floating window for conversations (idea)
+
+The floating window (#8) for the whole Conversation screen, not only the read-only "Pop out captions" in
+Listening mode. On a computer, e.g. during a video call or while working in another app: a small
+always-on-top window with the last few lines (translation large, original small), whose turn it is, the
+mic button and a box for typing. Conversation and Text only modes; Listening keeps its captions-only pop-out.
+Same rules as #8: Chrome/Edge on computers (Document Picture-in-Picture), the main tab has to stay open, and
+the window follows the app's languages, mode and theme. Check whether the microphone and reading aloud
+keep working while the main tab is in the background.
